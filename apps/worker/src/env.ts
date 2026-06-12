@@ -31,12 +31,6 @@ export interface Env {
   GITHUB_REPOSITORY_OWNER?: string;
   RUNNER_SHARED_SECRET?: string;
 
-  // Admin account fallback. The canonical place to set the admin credentials
-  // is the GUI settings screen (persisted via the API). These env values are
-  // used by the init-time SQL bootstrap to (re)create the account whenever the
-  // user is missing from SQL.
-  ADMIN_EMAIL?: string;
-  ADMIN_PASSWORD?: string;
 }
 
 /** Minimal RateLimit binding shape (Workers Rate Limiting API). */

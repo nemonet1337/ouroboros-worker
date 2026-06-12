@@ -132,8 +132,6 @@ export const settingsSchema = {
   additionalProperties: true,
   properties: {
     registrationEnabled: { type: "boolean" },
-    adminEmail: { type: "string", format: "email", maxLength: 320 },
-    adminPassword: { type: "string", minLength: 8, maxLength: 1024 },
     weights: { type: "object" },
     gradeThresholds: { type: "object" },
     schedule: { type: "object" },

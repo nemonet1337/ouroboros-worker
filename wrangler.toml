@@ -68,19 +68,19 @@ MAIL_FROM = "ouroboros@nemonet.work"
 RUNNER_URL = "ouroboros.nemonet.work"
 
 # シークレット（`wrangler secret put <NAME>` で設定）:
-#   WORKERS_AI_API_TOKEN     Workers AI 専用の Cloudflare API トークン
-#                            （唯一の AI 認証情報。CLOUDFLARE_ACCOUNT_ID と
-#                            併用すると REST API 経由で推論する。未設定なら
-#                            AI バインディングを直接使用）
+#   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用の Cloudflare API トークン。
+#                            CLOUDFLARE_ACCOUNT_ID と併用すると REST API 経由で
+#                            推論。未設定なら AI バインディングを直接使用。
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
-#   ADMIN_EMAIL              管理者アカウントのメール（初期化時の SQL ブート
-#                            ストラップ用。GUI 設定画面からも変更可能）
-#   ADMIN_PASSWORD           管理者アカウントのパスワード（8 文字以上）
 #   GITHUB_TOKEN             PR/Issue 作成
 #   GITHUB_REPOSITORY        owner/repo
 #   GITHUB_REPOSITORY_OWNER  owner
 #   RUNNER_SHARED_SECRET     委譲先 runner の認証用
 #   OURO_ALERT_EMAILS        アラート通知先（カンマ区切り）
+#
+# 管理者アカウント: 初回リクエスト時（ユーザーが 0 人のとき）に /register から
+# 最初に登録したアカウントが自動的に管理者になります。
+# ADMIN_EMAIL / ADMIN_PASSWORD は使用しません。
 #
 # 注意: Ouroboros が接続する LLM は Workers AI 上のモデルに限定される。
 # ANTHROPIC_API_KEY 等の外部 AI ゲートウェイのキーは一切受け付けない。

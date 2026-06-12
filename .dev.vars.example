@@ -7,10 +7,6 @@
 WORKERS_AI_API_TOKEN=
 CLOUDFLARE_ACCOUNT_ID=
 
-# 管理者アカウント（初期化時に SQL へ自動作成。GUI 設定画面からも変更可能）
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=change-me-8chars
-
 GITHUB_TOKEN=ghp_...
 GITHUB_REPOSITORY=your-org/your-repo
 GITHUB_REPOSITORY_OWNER=your-org
