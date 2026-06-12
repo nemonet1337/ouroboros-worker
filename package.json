@@ -1,0 +1,22 @@
+{
+  "name": "ouroboros-worker",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "web"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspace packages/core",
+    "build:web": "npm run generate --workspace web",
+    "server": "npm run start --workspace @ouroboros/server",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

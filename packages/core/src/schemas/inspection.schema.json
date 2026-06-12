@@ -1,0 +1,319 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ouroboros/schemas/inspection.schema.json",
+  "title": "InspectionResult",
+  "description": "Complete result produced by the ouroboros AI inspection engine for one or more source files.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "requestId",
+    "completedAt",
+    "durationMs",
+    "language",
+    "scoreCard",
+    "findings",
+    "recommendations",
+    "files",
+    "summary",
+    "aiModel",
+    "contentHash"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this inspection result."
+    },
+    "requestId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifier of the originating InspectionRequest."
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the inspection completed."
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock duration of the inspection in milliseconds."
+    },
+    "language": { "$ref": "#/$defs/language" },
+    "scoreCard": { "$ref": "#/$defs/scoreCard" },
+    "findings": {
+      "type": "array",
+      "description": "All findings across all inspected files, ordered by severity (critical first) then scorePenalty (descending).",
+      "items": { "$ref": "#/$defs/inspectionFinding" }
+    },
+    "recommendations": {
+      "type": "array",
+      "description": "All AI-generated improvement recommendations across all files.",
+      "items": { "$ref": "#/$defs/recommendation" }
+    },
+    "files": {
+      "type": "array",
+      "description": "Per-file breakdown of scores, findings, and recommendations.",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fileResult" }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "2–4 sentence executive summary written in the project language."
+    },
+    "aiModel": {
+      "type": "string",
+      "description": "Identifier of the AI model used (e.g. \"claude-sonnet-4-6\")."
+    },
+    "contentHash": {
+      "type": "string",
+      "description": "SHA-256 of the concatenated file contents; used for cache invalidation."
+    }
+  },
+
+  "$defs": {
+    "language": {
+      "type": "string",
+      "enum": [
+        "typescript",
+        "javascript",
+        "python",
+        "go",
+        "rust",
+        "java",
+        "csharp",
+        "cpp",
+        "ruby",
+        "flutter"
+      ]
+    },
+
+    "inspectionCategory": {
+      "type": "string",
+      "enum": ["design", "performance", "modernization", "maintainability", "correctness"],
+      "description": "The quality dimension this item belongs to."
+    },
+
+    "findingSeverity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "info"]
+    },
+
+    "grade": {
+      "type": "string",
+      "enum": ["S", "A", "B", "C", "D", "F"],
+      "description": "S≥95, A≥85, B≥70, C≥55, D≥40, F<40"
+    },
+
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+
+    "scoreDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "weight", "summary"],
+      "properties": {
+        "score": { "$ref": "#/$defs/score" },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "scoreCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "grade", "breakdown"],
+      "properties": {
+        "overall": { "$ref": "#/$defs/score" },
+        "grade": { "$ref": "#/$defs/grade" },
+        "breakdown": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["design", "performance", "modernization", "maintainability", "correctness"],
+          "properties": {
+            "design":         { "$ref": "#/$defs/scoreDimension" },
+            "performance":    { "$ref": "#/$defs/scoreDimension" },
+            "modernization":  { "$ref": "#/$defs/scoreDimension" },
+            "maintainability":{ "$ref": "#/$defs/scoreDimension" },
+            "correctness":    { "$ref": "#/$defs/scoreDimension" }
+          }
+        }
+      }
+    },
+
+    "codeLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "startLine", "endLine", "snippet"],
+      "properties": {
+        "file":        { "type": "string", "minLength": 1 },
+        "startLine":   { "type": "integer", "minimum": 1 },
+        "endLine":     { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 0 },
+        "endColumn":   { "type": "integer", "minimum": 0 },
+        "snippet":     { "type": "string" }
+      }
+    },
+
+    "inspectionFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "title",
+        "description",
+        "location",
+        "impact",
+        "scorePenalty",
+        "hasRecommendation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable kebab-case identifier, unique within one InspectionResult."
+        },
+        "category": { "$ref": "#/$defs/inspectionCategory" },
+        "severity": { "$ref": "#/$defs/findingSeverity" },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short title summarising the finding (≤80 chars)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detailed explanation of what is wrong and why."
+        },
+        "location": { "$ref": "#/$defs/codeLocation" },
+        "impact": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Concrete description of the impact on performance, safety, or maintainability."
+        },
+        "scorePenalty": {
+          "$ref": "#/$defs/score",
+          "description": "Points deducted from the category score because of this finding."
+        },
+        "hasRecommendation": {
+          "type": "boolean",
+          "description": "True when a Recommendation with a matching findingId exists."
+        }
+      }
+    },
+
+    "recommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "findingId",
+        "title",
+        "before",
+        "after",
+        "diff",
+        "rationale",
+        "impactDescription",
+        "effort"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "findingId": {
+          "type": "string",
+          "description": "ID of the InspectionFinding this addresses."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short action-oriented title (e.g. \"Replace forEach with map/filter chain\")."
+        },
+        "before": {
+          "type": "string",
+          "description": "Original code excerpt (as it appears in the source)."
+        },
+        "after": {
+          "type": "string",
+          "description": "Improved replacement code."
+        },
+        "diff": {
+          "type": "string",
+          "description": "Unified diff (GNU diff -u format) between before and after."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Technical rationale: what changed, why it is better, which principle it follows."
+        },
+        "impactDescription": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Expected improvement in performance, readability, or maintainability."
+        },
+        "effort": {
+          "type": "string",
+          "enum": ["trivial", "minor", "moderate", "major"],
+          "description": "Estimated effort to apply the recommendation."
+        }
+      }
+    },
+
+    "functionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "location", "scoreCard", "findings", "recommendations"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Fully-qualified function or method name."
+        },
+        "location": { "$ref": "#/$defs/codeLocation" },
+        "scoreCard": { "$ref": "#/$defs/scoreCard" },
+        "findings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inspectionFinding" }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recommendation" }
+        }
+      }
+    },
+
+    "fileResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "scoreCard", "findings", "recommendations"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path from the project root."
+        },
+        "scoreCard": { "$ref": "#/$defs/scoreCard" },
+        "findings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/inspectionFinding" }
+        },
+        "recommendations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recommendation" }
+        },
+        "functions": {
+          "type": "array",
+          "description": "Per-function breakdown; populated when granularity is \"function\".",
+          "items": { "$ref": "#/$defs/functionResult" }
+        }
+      }
+    }
+  }
+}

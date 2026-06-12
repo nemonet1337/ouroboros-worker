@@ -1,0 +1,33 @@
+export * from "./ai";
+export * from "./vcs";
+export * from "./db";
+export * from "./logstore";
+export * from "./queue";
+export * from "./mailer";
+export * from "./runner";
+export * from "./ratelimit";
+
+import type { AiProvider } from "./ai";
+import type { VcsProvider } from "./vcs";
+import type { DbAdapter } from "./db";
+import type { LogStore } from "./logstore";
+import type { QueueAdapter } from "./queue";
+import type { Mailer } from "./mailer";
+import type { HealingRunner } from "./runner";
+import type { RateLimiter } from "./ratelimit";
+
+/**
+ * The full set of platform adapters an Ouroboros deployment wires up.
+ * Both apps/server (Node) and apps/worker (Cloudflare) construct one of these
+ * and hand it to the shared core logic.
+ */
+export interface Ports {
+  ai: AiProvider;
+  vcs: VcsProvider;
+  db: DbAdapter;
+  logs: LogStore;
+  queue: QueueAdapter;
+  mailer: Mailer;
+  runner: HealingRunner;
+  rateLimiter: RateLimiter;
+}

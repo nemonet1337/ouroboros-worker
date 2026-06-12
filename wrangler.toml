@@ -1,0 +1,77 @@
+name = "ouroboros-worker"
+main = "apps/worker/src/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# wrangler deploy 前に Nuxt SPA を生成する
+[build]
+command = "npm run build:web"
+
+# ビルド済み Nuxt GUI を配信（`nuxt generate` の出力 web/.output/public）
+[assets]
+directory = "./web/.output/public"
+binding = "ASSETS"
+
+# Workers AI — Cloudflare デプロイで唯一許可される AI ゲートウェイ。
+# 外部ゲートウェイ（Anthropic API など）はこのターゲットでは一切使用されない。
+# 利用可能なモデルは GET /api/v1/models（env.AI.models()）で動的に検出される。
+[ai]
+binding = "AI"
+
+# D1 (SQL) — users, tokens, sessions, settings, inspections, webhooks, healing_runs
+[[d1_databases]]
+binding = "DB"
+database_name = "ouroboros"
+database_id = "584f7ef3-a38f-4713-a599-8893bd290d9a"
+migrations_dir = "packages/core/src/db/migrations"
+
+# R2 — フラット .log テレメトリの保存先
+[[r2_buckets]]
+binding = "LOGS"
+bucket_name = "ouroboros-logs"
+
+# Queues — GUI イベントの非同期取り込み
+[[queues.producers]]
+binding = "GUI_EVENTS"
+queue = "ouroboros-gui-events"
+
+[[queues.consumers]]
+queue = "ouroboros-gui-events"
+max_batch_size = 10
+max_batch_timeout = 5
+
+# Workflows — 永続的な自己修復ライフサイクルのオーケストレーション
+[[workflows]]
+binding = "HEALING_WORKFLOW"
+name = "ouroboros-healing"
+class_name = "HealingWorkflow"
+
+# Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 100, period = 60 }
+
+# 廃止した GitHub Actions の日次 cron を置き換え
+[triggers]
+crons = ["0 2 * * *"]
+
+[vars]
+DEPLOY_TARGET = "cloudflare"
+OURO_WORKERS_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+OURO_BASE_BRANCH = "main"
+MAIL_FROM = "ouroboros@nemonet.work"
+# RUNNER_URL は、git/コンパイラを使う重い処理を委譲するセルフホスト LocalRunner (/internal/*) を指す
+RUNNER_URL = "ouroboros.nemonet.work"
+
+# シークレット（`wrangler secret put <NAME>` で設定）:
+#   GITHUB_TOKEN             PR/Issue 作成
+#   GITHUB_REPOSITORY        owner/repo
+#   GITHUB_REPOSITORY_OWNER  owner
+#   RUNNER_SHARED_SECRET     委譲先 runner の認証用
+#   OURO_ALERT_EMAILS        アラート通知先（カンマ区切り）
+#
+# 注意: AI ゲートウェイのシークレットは存在しない。Cloudflare デプロイは
+# Workers AI バインディング（AI）専用で、ANTHROPIC_API_KEY 等の外部
+# ゲートウェイは受け付けない（ローカルデプロイの .env のみで使用）。

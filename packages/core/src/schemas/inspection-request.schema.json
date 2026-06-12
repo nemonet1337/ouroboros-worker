@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ouroboros/schemas/inspection-request.schema.json",
+  "title": "InspectionRequest",
+  "description": "Input submitted to the ouroboros inspection engine.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "language", "files", "requestedAt"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "projectContext": {
+      "type": "string",
+      "description": "Optional business/project description fed to the AI for context-aware analysis."
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "typescript",
+        "javascript",
+        "python",
+        "go",
+        "rust",
+        "java",
+        "csharp",
+        "cpp",
+        "ruby",
+        "flutter"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "description": "Source files to inspect. AST-filtered excerpts are accepted to reduce token usage.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "content"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Relative path from the project root."
+          },
+          "content": {
+            "type": "string",
+            "description": "Full file source or AST-filtered excerpt."
+          }
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "granularity": {
+          "type": "string",
+          "enum": ["file", "function"],
+          "default": "file",
+          "description": "Whether to produce per-function scores in addition to per-file scores."
+        },
+        "enabledCategories": {
+          "type": "array",
+          "description": "Restrict analysis to specific dimensions. Defaults to all five.",
+          "items": {
+            "type": "string",
+            "enum": ["design", "performance", "modernization", "maintainability", "correctness"]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "scoreThresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "If any dimension falls below its threshold a threshold_breached webhook is fired.",
+          "properties": {
+            "overall":         { "type": "number", "minimum": 0, "maximum": 100 },
+            "design":         { "type": "number", "minimum": 0, "maximum": 100 },
+            "performance":    { "type": "number", "minimum": 0, "maximum": 100 },
+            "modernization":  { "type": "number", "minimum": 0, "maximum": 100 },
+            "maintainability":{ "type": "number", "minimum": 0, "maximum": 100 },
+            "correctness":    { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        }
+      }
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

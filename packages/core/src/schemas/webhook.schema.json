@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ouroboros/schemas/webhook.schema.json",
+  "title": "WebhookPayload",
+  "description": "Payload POSTed to external services (Slack, Discord, GitHub, generic HTTP) on inspection events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "triggeredAt", "inspection"],
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": [
+        "inspection.completed",
+        "inspection.threshold_breached",
+        "inspection.failed"
+      ],
+      "description": "Type of event that triggered this webhook."
+    },
+    "triggeredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of the triggering event."
+    },
+    "inspection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "language",
+        "scoreCard",
+        "summary",
+        "findingCount",
+        "recommendationCount"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "typescript",
+            "javascript",
+            "python",
+            "go",
+            "rust",
+            "java",
+            "csharp",
+            "cpp",
+            "ruby",
+            "flutter"
+          ]
+        },
+        "scoreCard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["overall", "grade"],
+          "description": "Abbreviated score card (overall + grade only) to keep payloads compact.",
+          "properties": {
+            "overall": { "type": "number", "minimum": 0, "maximum": 100 },
+            "grade":   { "type": "string", "enum": ["S", "A", "B", "C", "D", "F"] }
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Deep-link to this result in the ouroboros WebUI (omitted when WebUI is not configured)."
+        }
+      }
+    },
+    "breaches": {
+      "type": "array",
+      "description": "Present only for inspection.threshold_breached events.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "threshold", "actual"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["overall", "design", "performance", "modernization", "maintainability", "correctness"]
+          },
+          "threshold": { "type": "number", "minimum": 0, "maximum": 100 },
+          "actual":    { "type": "number", "minimum": 0, "maximum": 100 }
+        }
+      }
+    },
+    "error": {
+      "type": "string",
+      "description": "Present only for inspection.failed events. Human-readable error message."
+    }
+  }
+}

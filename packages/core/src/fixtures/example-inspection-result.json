@@ -1,0 +1,173 @@
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "requestId": "00010001-aaaa-bbbb-cccc-ddddeeee1111",
+  "completedAt": "2026-05-22T10:30:00Z",
+  "durationMs": 3820,
+  "language": "typescript",
+  "aiModel": "claude-sonnet-4-6",
+  "contentHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "scoreCard": {
+    "overall": 63,
+    "grade": "C",
+    "breakdown": {
+      "design": {
+        "score": 55,
+        "weight": 0.25,
+        "summary": "単一責任原則の違反が複数箇所に見られ、データアクセス層とビジネスロジックが混在しています。"
+      },
+      "performance": {
+        "score": 48,
+        "weight": 0.25,
+        "summary": "O(n²) ループが2箇所存在し、非同期処理のawait漏れが1箇所検出されました。"
+      },
+      "modernization": {
+        "score": 72,
+        "weight": 0.20,
+        "summary": "ES2020の機能はほぼ活用されていますが、optional chainingを使えるケースが残っています。"
+      },
+      "maintainability": {
+        "score": 68,
+        "weight": 0.20,
+        "summary": "認知複雑度が関数あたり平均12で、推奨値（10以下）をわずかに超えています。"
+      },
+      "correctness": {
+        "score": 80,
+        "weight": 0.10,
+        "summary": "命名とロジックの乖離は軽微ですが、1件のエッジケース未処理が検出されました。"
+      }
+    }
+  },
+  "summary": "このコードベースは基本的な機能を実現しているものの、設計とパフォーマンスに改善余地があります。特に DataService クラスへの責任集中と、リスト処理における非効率なネストループが目立ちます。提供された5件の改善案を適用することで、総合スコアを約80点台まで引き上げられる見込みです。",
+  "findings": [
+    {
+      "id": "perf-nested-loop-001",
+      "category": "performance",
+      "severity": "high",
+      "title": "O(n²) ネストループ – getUsersByRole()",
+      "description": "getUsersByRole() 内で全ユーザーをフィルタリングする際、外側のループ内で再度 find() を呼んでおり計算量が O(n²) になっています。",
+      "location": {
+        "file": "src/services/user.service.ts",
+        "startLine": 42,
+        "endLine": 51,
+        "snippet": "for (const role of roles) {\n  const match = users.find(u => u.role === role);\n  result.push(match);\n}"
+      },
+      "impact": "ユーザー数が1000件を超えると処理時間が二乗で増加し、APIレスポンスタイムが著しく悪化します。",
+      "scorePenalty": 18,
+      "hasRecommendation": true
+    },
+    {
+      "id": "design-srp-violation-001",
+      "category": "design",
+      "severity": "medium",
+      "title": "単一責任原則違反 – DataService がDB・キャッシュ・検証を兼務",
+      "description": "DataService クラスがデータベースアクセス、インメモリキャッシュ管理、および入力バリデーションをすべて担っており、クラスの凝集度が低くなっています。",
+      "location": {
+        "file": "src/services/data.service.ts",
+        "startLine": 1,
+        "endLine": 210,
+        "snippet": "export class DataService {\n  // DB access, cache, validation all in one class\n}"
+      },
+      "impact": "テスト容易性の低下、変更時の影響範囲の拡大、およびキャッシュ戦略変更時の破壊的変更リスクがあります。",
+      "scorePenalty": 15,
+      "hasRecommendation": true
+    },
+    {
+      "id": "modern-optional-chain-001",
+      "category": "modernization",
+      "severity": "low",
+      "title": "Optional Chaining 未使用 – nullチェックが冗長",
+      "description": "TypeScript 3.7+ で利用可能な optional chaining (?.) を使わず、&&演算子による段階的nullチェックが散在しています。",
+      "location": {
+        "file": "src/utils/format.ts",
+        "startLine": 18,
+        "endLine": 22,
+        "snippet": "const name = user && user.profile && user.profile.displayName;"
+      },
+      "impact": "コードの可読性が低下し、将来的な型変更時に修正箇所が増えます。",
+      "scorePenalty": 8,
+      "hasRecommendation": true
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "rec-perf-nested-loop-001",
+      "findingId": "perf-nested-loop-001",
+      "title": "Map によるO(1)ルックアップへのリファクタリング",
+      "before": "for (const role of roles) {\n  const match = users.find(u => u.role === role);\n  result.push(match);\n}",
+      "after": "const roleIndex = new Map(users.map(u => [u.role, u]));\nconst result = roles.map(role => roleIndex.get(role)).filter(Boolean);",
+      "diff": "--- a/src/services/user.service.ts\n+++ b/src/services/user.service.ts\n@@ -42,6 +42,5 @@\n-for (const role of roles) {\n-  const match = users.find(u => u.role === role);\n-  result.push(match);\n-}\n+const roleIndex = new Map(users.map(u => [u.role, u]));\n+const result = roles.map(role => roleIndex.get(role)).filter(Boolean);",
+      "rationale": "Map を用いたインデックス構築（O(n)）とルックアップ（O(1)）により、全体の計算量を O(n + m) に削減します。n = ユーザー数、m = ロール数。",
+      "impactDescription": "ユーザー1000件・ロール50件のケースで約50倍の高速化が期待されます。",
+      "effort": "trivial"
+    },
+    {
+      "id": "rec-design-srp-001",
+      "findingId": "design-srp-violation-001",
+      "title": "DataService を3クラスへ分割",
+      "before": "export class DataService {\n  async fetchUser(id: string) { /* DB + cache + validation */ }\n}",
+      "after": "export class UserRepository { async findById(id: string) { /* DB only */ } }\nexport class UserCache { get(id: string) { /* cache only */ } }\nexport class UserValidator { validate(dto: unknown) { /* validation only */ } }",
+      "diff": "--- a/src/services/data.service.ts\n+++ b/src/services/data.service.ts\n@@ -1 +1,3 @@\n-export class DataService { ... }\n+export class UserRepository { ... }\n+export class UserCache { ... }\n+export class UserValidator { ... }",
+      "rationale": "単一責任原則（SRP）に従い、各クラスが1つの関心事のみを扱うよう分割します。依存性注入により疎結合を実現し、各クラスを独立してテスト可能にします。",
+      "impactDescription": "単体テストのセットアップ工数が30%減少し、キャッシュ戦略の変更が他のコードに影響しなくなります。",
+      "effort": "moderate"
+    },
+    {
+      "id": "rec-modern-optional-chain-001",
+      "findingId": "modern-optional-chain-001",
+      "title": "Optional Chaining への置き換え",
+      "before": "const name = user && user.profile && user.profile.displayName;",
+      "after": "const name = user?.profile?.displayName;",
+      "diff": "--- a/src/utils/format.ts\n+++ b/src/utils/format.ts\n@@ -18 +18 @@\n-const name = user && user.profile && user.profile.displayName;\n+const name = user?.profile?.displayName;",
+      "rationale": "TypeScript 3.7+ の optional chaining を用いることで、nullチェックを簡潔に記述できます。型安全性も向上します。",
+      "impactDescription": "コードの可読性が向上し、将来の型リファクタリング時の修正コストが削減されます。",
+      "effort": "trivial"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/services/user.service.ts",
+      "scoreCard": {
+        "overall": 55,
+        "grade": "C",
+        "breakdown": {
+          "design":         { "score": 60, "weight": 0.25, "summary": "コンストラクタ注入は適切ですが、メソッド数が多い。" },
+          "performance":    { "score": 40, "weight": 0.25, "summary": "O(n²)ループが主要なパフォーマンス問題。" },
+          "modernization":  { "score": 65, "weight": 0.20, "summary": "async/awaitは適切だが一部省略あり。" },
+          "maintainability":{ "score": 58, "weight": 0.20, "summary": "関数の平均行数が長めで認知複雑度が高い。" },
+          "correctness":    { "score": 75, "weight": 0.10, "summary": "主要ロジックは意図と一致している。" }
+        }
+      },
+      "findings": [
+        {
+          "id": "perf-nested-loop-001",
+          "category": "performance",
+          "severity": "high",
+          "title": "O(n²) ネストループ – getUsersByRole()",
+          "description": "getUsersByRole() 内で全ユーザーをフィルタリングする際、外側のループ内で再度 find() を呼んでいます。",
+          "location": {
+            "file": "src/services/user.service.ts",
+            "startLine": 42,
+            "endLine": 51,
+            "snippet": "for (const role of roles) {\n  const match = users.find(u => u.role === role);\n  result.push(match);\n}"
+          },
+          "impact": "ユーザー数が増加するとAPIレスポンスが悪化します。",
+          "scorePenalty": 18,
+          "hasRecommendation": true
+        }
+      ],
+      "recommendations": [
+        {
+          "id": "rec-perf-nested-loop-001",
+          "findingId": "perf-nested-loop-001",
+          "title": "Map によるO(1)ルックアップへのリファクタリング",
+          "before": "for (const role of roles) {\n  const match = users.find(u => u.role === role);\n  result.push(match);\n}",
+          "after": "const roleIndex = new Map(users.map(u => [u.role, u]));\nconst result = roles.map(role => roleIndex.get(role)).filter(Boolean);",
+          "diff": "--- a/src/services/user.service.ts\n+++ b/src/services/user.service.ts\n@@ -42,6 +42,5 @@\n-for (const role of roles) {\n-  const match = users.find(u => u.role === role);\n-  result.push(match);\n-}\n+const roleIndex = new Map(users.map(u => [u.role, u]));\n+const result = roles.map(role => roleIndex.get(role)).filter(Boolean);",
+          "rationale": "Map を用いたインデックス構築（O(n)）とルックアップ（O(1)）により、全体の計算量を O(n + m) に削減します。",
+          "impactDescription": "ユーザー1000件・ロール50件のケースで約50倍の高速化が期待されます。",
+          "effort": "trivial"
+        }
+      ]
+    }
+  ]
+}

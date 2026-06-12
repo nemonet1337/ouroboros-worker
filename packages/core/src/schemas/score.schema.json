@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ouroboros/schemas/score.schema.json",
+  "title": "ScoreCard",
+  "description": "Multi-dimensional quality score for a code unit (project / file / function).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["overall", "grade", "breakdown"],
+  "properties": {
+    "overall": {
+      "$ref": "#/$defs/score",
+      "description": "Weighted sum of all dimension scores (0–100)."
+    },
+    "grade": {
+      "$ref": "#/$defs/grade"
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Per-dimension scores. All five dimensions must be present.",
+      "additionalProperties": false,
+      "required": ["design", "performance", "modernization", "maintainability", "correctness"],
+      "properties": {
+        "design": { "$ref": "#/$defs/scoreDimension" },
+        "performance": { "$ref": "#/$defs/scoreDimension" },
+        "modernization": { "$ref": "#/$defs/scoreDimension" },
+        "maintainability": { "$ref": "#/$defs/scoreDimension" },
+        "correctness": { "$ref": "#/$defs/scoreDimension" }
+      }
+    }
+  },
+  "$defs": {
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Numeric quality score in the range [0, 100]."
+    },
+    "grade": {
+      "type": "string",
+      "enum": ["S", "A", "B", "C", "D", "F"],
+      "description": "Letter grade derived from the overall score. S≥95, A≥85, B≥70, C≥55, D≥40, F<40."
+    },
+    "scoreDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "weight", "summary"],
+      "properties": {
+        "score": { "$ref": "#/$defs/score" },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Contribution weight. All five dimension weights must sum to 1.0."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-sentence human-readable assessment of this dimension."
+        }
+      }
+    }
+  }
+}

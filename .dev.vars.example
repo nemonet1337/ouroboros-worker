@@ -1,0 +1,9 @@
+# Cloudflare Worker のローカルシークレット — `wrangler dev` 用に .dev.vars（gitignore 済み）へコピーしてください。
+# 注意: AI は Workers AI バインディング専用のため、ANTHROPIC_API_KEY 等の
+# 外部 AI ゲートウェイのキーは Cloudflare デプロイでは使用されません。
+GITHUB_TOKEN=ghp_...
+GITHUB_REPOSITORY=your-org/your-repo
+GITHUB_REPOSITORY_OWNER=your-org
+RUNNER_SHARED_SECRET=change-me
+OURO_ALERT_EMAILS=alerts@example.com
+RUNNER_URL=https://runner.example.com

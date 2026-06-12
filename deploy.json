@@ -1,0 +1,49 @@
+{
+  "project_name": "ouroboros",
+  "description": "AI-driven self-healing system: scans, fixes, and opens PRs automatically. Powered by Workers AI + D1 + R2 + Queues + Workflows.",
+  "repository_url": "https://github.com/nemonet1337/ouroboros",
+  "variables": [
+    {
+      "name": "ADMIN_EMAIL",
+      "description": "管理者アカウントのメールアドレス。初回リクエスト時にこのアカウントが自動作成されます。",
+      "type": "text"
+    },
+    {
+      "name": "ADMIN_PASSWORD",
+      "description": "管理者アカウントのパスワード（8 文字以上）。変更するとデプロイ時にハッシュが更新されます。",
+      "type": "secret"
+    },
+    {
+      "name": "GITHUB_TOKEN",
+      "description": "PR / Issue を作成するための GitHub Personal Access Token（repo スコープ）。",
+      "type": "secret"
+    },
+    {
+      "name": "GITHUB_REPOSITORY",
+      "description": "スキャン対象リポジトリ（owner/repo 形式、例: acme/my-api）。",
+      "type": "text"
+    },
+    {
+      "name": "GITHUB_REPOSITORY_OWNER",
+      "description": "リポジトリオーナー名（GitHub ユーザー名または組織名）。",
+      "type": "text"
+    },
+    {
+      "name": "RUNNER_URL",
+      "description": "（任意）git / コンパイラを実行するセルフホスト LocalRunner の URL（例: https://runner.example.com）。未設定の場合、自動修復の適用ステップはスキップされます。",
+      "type": "text",
+      "default": ""
+    },
+    {
+      "name": "RUNNER_SHARED_SECRET",
+      "description": "（任意）LocalRunner の /internal/* エンドポイントを保護する共有シークレット。RUNNER_URL が設定されている場合のみ必要です。",
+      "type": "secret"
+    },
+    {
+      "name": "OURO_ALERT_EMAILS",
+      "description": "（任意）アラート通知の送信先メールアドレス（カンマ区切り、例: ops@example.com,dev@example.com）。",
+      "type": "text",
+      "default": ""
+    }
+  ]
+}
