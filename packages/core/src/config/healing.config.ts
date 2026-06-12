@@ -22,7 +22,7 @@ const env = process.env;
 
 export const defaultHealingConfig: HealingConfig = {
   ai: {
-    model: "claude-sonnet-4-20250514",
+    model: "minimax/m3",
     maxRetries: 3,
     contextLines: 20,
   },

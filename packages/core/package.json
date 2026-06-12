@@ -9,8 +9,7 @@
     ".": "./src/index.ts",
     "./ports": "./src/ports/index.ts",
     "./db": "./src/db/index.ts",
-    "./auth": "./src/auth/index.ts",
-    "./node": "./src/node.ts"
+    "./auth": "./src/auth/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

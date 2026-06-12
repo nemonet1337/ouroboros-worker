@@ -7,7 +7,7 @@ export interface MailMessage {
 
 /**
  * Outbound email for alert/warning notifications.
- * Implementations: SmtpMailer (nodemailer, self-hosted),
+ * Implementations:
  * MailChannelsMailer (fetch, Cloudflare — MailChannels or SendGrid).
  */
 export interface Mailer {

@@ -6,100 +6,72 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nemonet1337/ouroboros)
 
-Ouroboros は **4 種のスキャナー**（CodeQL / 依存関係 / パフォーマンス / シークレット）で
-問題を検出し、LLM が解析してパッチを生成、Pull Request を自動作成します。認証・マルチテナントな
-API トークン・テレメトリログ・メールアラートを備えています。
+Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull Request を自動作成します。
+認証・マルチテナントな API トークン・テレメトリログ・メールアラートを備えています。
 
-**デュアルデプロイ**対応 — 同一の共有コアが、**Docker Compose によるセルフホスト**でも、
-**Cloudflare 上のエッジネイティブ**（Workers + D1 + R2 + Queues + Workflows + Workers AI）でも動作します。
+**Cloudflare Workers 特化** — Workers + D1 + R2 + Queues + Workflows + Workers AI の
+エッジネイティブ構成だけをサポートします。Docker / オンプレミス向けの実装は
+v2.1 で削除されました。
 
-> **v2 の変更点:** GitHub Actions 実行モデルは廃止しました。トリガーはコンテナ内スケジューラ
-> （セルフホスト）または Cloudflare の cron / Workflow（エッジ）に移行。PR/Issue のバックエンドは
-> 引き続き GitHub ですが、差し替え可能な `VcsProvider` の背後に抽象化されています。
+> **AI ゲートウェイ:** Ouroboros が接続する LLM は **Cloudflare Workers AI 上の
+> モデルに限定**されます（デフォルト: `minimax/m3`）。利用可能な全モデルは GUI の
+> 設定画面から選択できます。AI の認証情報は Workers AI 専用の API トークン
+> **`WORKERS_AI_API_TOKEN`**（Worker シークレット）のみで管理され、Anthropic /
+> OpenAI などの外部ゲートウェイのトークンは API レベルで拒否されます。
 
 ---
 
 ## アーキテクチャ
 
 ```
-                         ┌──────────────────────────────┐
-                         │      packages/core           │  ランタイム非依存
-                         │  scanners · analyzer · fixer │  （共有ライブラリ）
-                         │  inspection · orchestrator   │
-                         │  auth · db · logging         │
-                         │  ports/  （抽象化レイヤー）   │
-                         └───────────────┬──────────────┘
-              ┌──────────────────────────┴──────────────────────────┐
-              ▼                                                       ▼
-   ┌────────────────────────┐                          ┌────────────────────────────┐
-   │  apps/server (Docker)  │                          │   apps/worker (Cloudflare)  │
-   │  Node + Hono           │                          │   Workers + Hono            │
-   │  SQLite · ファイルログ │                          │   D1 · R2 ログ              │
-   │  SMTP · 内部キュー     │                          │   MailChannels · Queues     │
-   │  LocalRunner (git+CI)  │◀── dispatch /internal ───│   DispatchRunner            │
-   │  AnthropicProvider     │      （重い処理を委譲）   │   WorkersAI (+Anthropic)    │
-   │  インターバル cron     │                          │   Workflows · レート制限    │
-   └────────────────────────┘                          └────────────────────────────┘
+   ┌──────────────────────────────┐
+   │      packages/core           │  共有ライブラリ
+   │  analyzer · inspection       │
+   │  orchestrator · auth · db    │
+   │  logging · HTTP API (Hono)   │
+   │  ports/  （抽象化レイヤー）   │
+   └───────────────┬──────────────┘
+                   ▼
+   ┌────────────────────────────┐
+   │   apps/worker (Cloudflare)  │
+   │   Workers + Hono            │
+   │   D1 · R2 ログ              │
+   │   MailChannels · Queues     │
+   │   Workers AI (minimax/m3)   │
+   │   Workflows · レート制限    │
+   │   DispatchRunner ──HTTP──▶ 外部 runner（git/CI の重い処理を委譲、任意）
+   └────────────────────────────┘
 ```
 
-プラットフォーム差分はすべて `packages/core/src/ports` の**ポート**に隠蔽されています:
+| ポート          | 実装（Cloudflare Worker）         |
+| -------------- | -------------------------------- |
+| `DbAdapter`    | D1                               |
+| `LogStore`     | R2 オブジェクト                   |
+| `QueueAdapter` | Cloudflare Queues                |
+| `AiProvider`   | Workers AI（唯一の AI ゲートウェイ）|
+| `Mailer`       | MailChannels                     |
+| `VcsProvider`  | GitHub (fetch)                   |
+| `HealingRunner`| `DispatchRunner` → 外部 runner（任意）|
+| `RateLimiter`  | Workers Rate Limiting API        |
 
-| ポート          | セルフホスト (Node)            | Cloudflare (Worker)              |
-| -------------- | ----------------------------- | -------------------------------- |
-| `DbAdapter`    | `better-sqlite3`              | D1                               |
-| `LogStore`     | フラット `.log` ファイル       | R2 オブジェクト                   |
-| `QueueAdapter` | 内部（インプロセス）           | Cloudflare Queues                |
-| `AiProvider`   | Anthropic (fetch)             | Workers AI（+ Anthropic フォールバック） |
-| `Mailer`       | SMTP (nodemailer)             | MailChannels                     |
-| `VcsProvider`  | GitHub (fetch)                | GitHub (fetch)                   |
-| `HealingRunner`| `LocalRunner`（git/コンパイラ）| `DispatchRunner` → セルフホストへ |
-| `RateLimiter`  | なし（no-op）                  | Workers Rate Limiting API        |
-
-エッジの注記: Workers にはファイルシステム/git/コンパイラが無いため、パッチ適用＋検証＋commit＋push は
-セルフホストの `LocalRunner`（`/internal/heal`）へ **HTTP で委譲**します。一方で **Cloudflare Workflow**
-が「スキャン → 解析 → 修正 → PR」という永続的なライフサイクルを駆動します。
+注記: Workers にはファイルシステム/git/コンパイラが無いため、パッチ適用＋検証＋commit＋push は
+`RUNNER_URL` で指定した外部 runner（`/internal/heal`）へ **HTTP で委譲**できます（任意）。
+**Cloudflare Workflow** が「スキャン → 解析 → 修正 → PR」という永続的なライフサイクルを駆動します。
 
 ---
 
 ## ディレクトリ構成
 
 ```
-packages/core/        共有・ランタイム非依存ロジック + ports + db + auth + HTTP API
-apps/server/          セルフホスト Node アプリ（Docker）
-apps/worker/          Cloudflare Worker（D1/R2/Queues/Workflows/AI）
-web/                  Nuxt 3 GUI（静的 SPA としてビルドされ、各アプリが配信）
-docker-compose.yml    セルフホストデプロイ
+packages/core/        共有ロジック + ports + db + auth + HTTP API
+apps/worker/          Cloudflare Worker（D1/R2/Queues/Workflows/Workers AI）
+web/                  Nuxt 3 GUI（静的 SPA としてビルドされ、ASSETS で配信）
 wrangler.toml         Cloudflare デプロイ
 ```
 
 ---
 
-## クイックスタート — セルフホスト（Docker Compose）
-
-```bash
-cp .env.example .env          # ANTHROPIC_API_KEY, GITHUB_TOKEN, GITHUB_REPOSITORY を設定
-docker compose up --build
-open http://localhost:3000     # 最初に登録したアカウントが管理者になります
-```
-
-ローカルデプロイの AI ゲートウェイ（Anthropic API など）は `.env` の環境変数で
-設定します。Docker を使わない場合もサーバー起動時にカレントディレクトリの
-`.env` が自動で読み込まれます（既存の環境変数が優先。`OURO_ENV_FILE` でパスを変更可能）。
-
-状態はローカルに保存されます: SQLite は `ouro-data` ボリューム、テレメトリ `.log` は `ouro-logs` ボリューム。
-
-### Docker を使わない場合
-
-```bash
-npm install
-npm run build:web
-OURO_DB_PATH=./ouroboros.db OURO_LOG_DIR=./logs \
-OURO_GUI_DIR=./web/.output/public npm run server
-```
-
----
-
-## クイックスタート — Cloudflare（エッジ）
+## クイックスタート — Cloudflare
 
 最短経路は README 冒頭の **Deploy to Cloudflare** ボタンです（リポジトリを Fork して
 Workers にデプロイ）。手動でセットアップする場合:
@@ -113,10 +85,12 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # スキーマ: packages/core/src/db/migrations
 
+wrangler secret put ADMIN_EMAIL                      # 管理者アカウント（初期化時に SQL へ自動作成）
+wrangler secret put ADMIN_PASSWORD                   # 8 文字以上
+wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo
-wrangler secret put RUNNER_SHARED_SECRET            # 委譲先 LocalRunner の認証用
-# 自己修復を使う場合、RUNNER_URL (vars) に到達可能なセルフホスト /internal エンドポイントを設定
+wrangler secret put RUNNER_SHARED_SECRET            # （任意）委譲先 runner の認証用
 
 wrangler deploy                                      # または: wrangler dev
 ```
@@ -124,12 +98,21 @@ wrangler deploy                                      # または: wrangler dev
 `wrangler.toml` が D1・R2・Queues・Workflows・Workers AI・レート制限バインディング・
 日次 cron トリガー・静的 GUI アセットを配線します。
 
-> **AI ゲートウェイの分離:** Cloudflare デプロイでは **Workers AI バインディングのみ**が
-> AI ゲートウェイとして使われます。外部ゲートウェイ（Anthropic / OpenAI / Gemini /
-> OpenRouter）のトークンは API レベルで拒否されます。利用可能なモデルは
-> `GET /api/v1/models` がアカウントの Workers AI から動的に検出し、GUI のモデル
-> セレクタに全モデルが表示されます。外部ゲートウェイを使いたい場合はローカル
-> デプロイ（`.env`）を選択してください。
+### 管理者アカウント
+
+- **ADMIN_EMAIL / ADMIN_PASSWORD は GUI（Admin ページ）で設定**できます。保存すると
+  即座に SQL へ反映されます。
+- 初期化時（マイグレーション直後）に、アカウントを作成する SQL 処理が実行されます:
+  **ユーザーが SQL 上に存在しない場合は `ADMIN_EMAIL` / `ADMIN_PASSWORD` の値で
+  管理者アカウントを登録**し、既に存在する場合はパスワードハッシュを更新します。
+
+### AI モデル
+
+- デフォルトモデルは **`minimax/m3`**（`wrangler.toml` の `OURO_WORKERS_AI_MODEL`）。
+- `GET /api/v1/models` がアカウントの Workers AI から全モデルを動的に検出し、
+  **GUI の設定画面で Workers AI が提供するすべてのモデルを選択**できます。
+- AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。`CLOUDFLARE_ACCOUNT_ID` と併用
+  すると Workers AI REST API 経由で推論し、未設定なら AI バインディングを直接使用します。
 
 > **Deploy ボタンの注意:** D1 / R2 / Queues / Workflows のリソースは初回に作成が必要です
 > （上記 `wrangler` コマンド、または Cloudflare ダッシュボードから）。
@@ -138,15 +121,15 @@ wrangler deploy                                      # または: wrangler dev
 
 ## 主な機能
 
-- **自己修復ループ** — 並列スキャナー → AI による解析・グルーピング → AI 修正＋検証 →
+- **自己修復ループ** — スキャン → AI による解析・グルーピング → AI 修正＋検証 →
   PR 作成 → 任意の自動マージ（CI ゲート＋AI 安全レビュー）→ エスカレーション Issue。
 - **認証とマルチテナント** — メール/パスワード（WebCrypto PBKDF2）、httpOnly セッション、
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
-- **登録制御** — 公開登録の管理者トグル。最初のユーザーが管理者として初期化されます。
-- **テレメトリ** — 構造化ログをフラット `.log` ファイルに永続化（ローカルディレクトリまたは R2）。
-- **メールアラート** — 高リスクなスキャンや修正失敗を通知（セルフホスト=SMTP、エッジ=MailChannels）。
-- **非同期オーケストレーション（エッジ）** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。
-- **レート制限（エッジ）** — 公開エンドポイントに Workers Rate Limiting。
+- **登録制御** — 公開登録の管理者トグル。管理者アカウントは初期化時に自動作成されます。
+- **テレメトリ** — 構造化ログをフラット `.log` ファイルとして R2 に永続化。
+- **メールアラート** — 高リスクなスキャンや修正失敗を MailChannels で通知。
+- **非同期オーケストレーション** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。
+- **レート制限** — 公開エンドポイントに Workers Rate Limiting。
 - **コードインスペクション** — AI スコアリングエンジンを `POST /api/v1/inspect` で提供。
   6 次元（セキュリティ / パフォーマンス / 冗長性 / 可読性 / 設計 / 正確性）の重み付きスコアを、
   ファイル単位または関数・メソッド・クラス単位（`granularity: "function"`）で算出し、
@@ -167,6 +150,7 @@ wrangler deploy                                      # または: wrangler dev
 | GET/POST/DELETE | `/api/v1/tokens`     | セッション/トークン |
 | GET/PUT | `/api/v1/config`             | admin（PUT）      |
 | GET/PUT | `/api/v1/settings`           | admin（PUT）      |
+| GET     | `/api/v1/models`              | セッション/トークン |
 | POST    | `/api/v1/inspect`             | scope `inspect`  |
 | POST    | `/api/v1/healing`            | scope `heal`     |
 | GET     | `/api/v1/metrics`             | セッション/トークン |
@@ -184,6 +168,7 @@ wrangler deploy                                      # または: wrangler dev
 npm run typecheck                      # 全ワークスペース
 npm run test                           # core ユニットテスト（vitest）
 npm run dev --workspace web            # Nuxt 開発サーバー
+npm run worker:dev                     # wrangler dev
 ```
 
 ---

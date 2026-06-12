@@ -23,8 +23,8 @@ export interface RunFixOptions {
 
 /**
  * Performs the filesystem/git/compiler-heavy parts of self-healing.
- * Implementations: LocalRunner (in-process, Node — runs scanners, AIFixer,
- * git), DispatchRunner (Cloudflare — HTTP POST to a remote LocalRunner).
+ * Implementation: DispatchRunner (HTTP POST to an external runner service
+ * that performs git/compiler work the Worker cannot).
  */
 export interface HealingRunner {
   readonly kind: "local" | "dispatch";

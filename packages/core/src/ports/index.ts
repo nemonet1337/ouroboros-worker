@@ -18,7 +18,7 @@ import type { RateLimiter } from "./ratelimit";
 
 /**
  * The full set of platform adapters an Ouroboros deployment wires up.
- * Both apps/server (Node) and apps/worker (Cloudflare) construct one of these
+ * apps/worker (Cloudflare) constructs one of these
  * and hand it to the shared core logic.
  */
 export interface Ports {

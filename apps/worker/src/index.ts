@@ -19,8 +19,15 @@ async function ensureMigrated(env: Env): Promise<void> {
   const { D1Adapter } = await import("./adapters/d1.adapter");
   const db = new D1Adapter(env.DB);
   await runMigrations(db);
+  // Init-time admin bootstrap (SQL step): if the admin user is missing from
+  // SQL, register it with the ADMIN_EMAIL / ADMIN_PASSWORD values. The same
+  // account can be (re)configured at any time from the GUI settings screen.
   if (env.ADMIN_EMAIL && env.ADMIN_PASSWORD) {
-    await new AuthService(db).ensureAdminUser(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
+    try {
+      await new AuthService(db).ensureAdminUser(env.ADMIN_EMAIL, env.ADMIN_PASSWORD);
+    } catch (err) {
+      console.error("admin bootstrap failed:", (err as Error).message);
+    }
   }
   migrated = true;
 }

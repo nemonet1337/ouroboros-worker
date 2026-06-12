@@ -1,5 +1,4 @@
-// Runtime-agnostic core API. Safe to import from both Node and Cloudflare Workers.
-// Node-only pieces (scanners, AIFixer, git rollback) live in "./node".
+// Ouroboros core API — built for (and only for) Cloudflare Workers.
 
 export * from "./types";
 export * from "./ports";
@@ -21,7 +20,6 @@ export type { AuthedUser, TokenIdentity } from "./auth/service";
 export { Logger } from "./logging/logger";
 export type { LogLevel } from "./logging/logger";
 
-export { AnthropicProvider } from "./ai/anthropic.provider";
 export { GitHubProvider } from "./vcs/github.provider";
 export type { GitHubConfig } from "./vcs/github.provider";
 
@@ -42,7 +40,7 @@ export { defaultHealingConfig } from "./config/healing.config";
 export type { HealingConfig } from "./config/healing.config";
 export { defaultInspectionConfig } from "./config/inspection.config";
 export type { InspectionConfig } from "./config/inspection.config";
-export { EXTERNAL_GATEWAY_CONFIG_KEYS, isWorkersAiModelId } from "./config/deployment";
+export { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "./config/deployment";
 export type { DeployTarget } from "./config/deployment";
 
 // Inspection engine (heuristic scoring) — runtime-agnostic

@@ -168,25 +168,40 @@ export class AuthService {
   }
 
   /**
-   * Idempotent bootstrap: called at server/worker startup when ADMIN_EMAIL and
-   * ADMIN_PASSWORD are set in the environment.
+   * Idempotent admin bootstrap, run as a SQL step during Worker initialisation
+   * (right after migrations) and whenever the admin credentials are saved from
+   * the GUI settings screen.
    *
-   * - No users yet → registers the first user (who becomes admin automatically).
-   * - Admin with that email already exists → updates their password hash so that
-   *   rotating the env var takes effect without manual DB surgery.
-   * - Users exist but not with that email → no-op (manually provisioned admin).
+   * - User with that email already exists → updates their password hash and
+   *   promotes them to admin, so rotating the credentials takes effect without
+   *   manual DB surgery.
+   * - User does not exist in SQL → INSERTs an admin account with the given
+   *   ADMIN_EMAIL / ADMIN_PASSWORD values, regardless of how many other users
+   *   already exist.
    */
   async ensureAdminUser(email: string, password: string): Promise<void> {
     if (!email || !password) return;
     const normalized = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new AuthError("invalid email");
+    if (password.length < 8) throw new AuthError("password must be at least 8 characters");
+
     const existing = await this.users.findByEmail(normalized);
     if (existing) {
       await this.users.updatePassword(existing.id, await hashPassword(password));
+      if (existing.role !== "admin") await this.users.updateRole(existing.id, "admin");
       return;
     }
-    const userCount = await this.users.count();
-    if (userCount === 0) {
-      await this.register(email, password);
-    }
+    const isFirstUser = (await this.users.count()) === 0;
+    const now = Date.now();
+    await this.users.insert({
+      id: newId(),
+      email: normalized,
+      password_hash: await hashPassword(password),
+      role: "admin",
+      created_at: now,
+      updated_at: now,
+    });
+    // The bootstrap admin locks public registration closed by default.
+    if (isFirstUser) await this.setRegistrationEnabled(false);
   }
 }

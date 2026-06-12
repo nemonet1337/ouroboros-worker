@@ -30,9 +30,13 @@ export function buildContext(env: Env): WorkerContext {
   const logs = new R2LogStore(env.LOGS);
   const logger = new Logger(logs, { file: "ouroboros.log", minLevel: "info" });
 
-  // Cloudflare deploy: the Workers AI binding is the sole AI gateway — no
-  // external fallback, by design.
-  const ai = new WorkersAiProvider(env.AI, env.OURO_WORKERS_AI_MODEL);
+  // Workers AI is the sole AI gateway — no external fallback, by design. The
+  // only AI credential is the WORKERS_AI_API_TOKEN secret (REST path).
+  const ai = new WorkersAiProvider(env.AI, {
+    model: env.OURO_WORKERS_AI_MODEL,
+    apiToken: env.WORKERS_AI_API_TOKEN,
+    accountId: env.CLOUDFLARE_ACCOUNT_ID,
+  });
 
   const [owner, repo] = (env.GITHUB_REPOSITORY ?? "/").split("/");
   const vcs = new GitHubProvider({

@@ -72,6 +72,13 @@ export class UserRepository {
       [passwordHash, Date.now(), id]
     );
   }
+
+  async updateRole(id: string, role: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE users SET role = ?, updated_at = ? WHERE id = ?`,
+      [role, Date.now(), id]
+    );
+  }
 }
 
 export class SessionRepository {

@@ -1,6 +1,16 @@
 # Cloudflare Worker のローカルシークレット — `wrangler dev` 用に .dev.vars（gitignore 済み）へコピーしてください。
-# 注意: AI は Workers AI バインディング専用のため、ANTHROPIC_API_KEY 等の
-# 外部 AI ゲートウェイのキーは Cloudflare デプロイでは使用されません。
+# 注意: AI は Workers AI 専用。ANTHROPIC_API_KEY 等の外部 AI ゲートウェイの
+# キーは一切使用されません。AI 認証情報は WORKERS_AI_API_TOKEN のみです。
+
+# Workers AI 専用の Cloudflare API トークン（任意。CLOUDFLARE_ACCOUNT_ID と
+# 併用すると REST API 経由で推論。未設定なら AI バインディングを直接使用）
+WORKERS_AI_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
+
+# 管理者アカウント（初期化時に SQL へ自動作成。GUI 設定画面からも変更可能）
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=change-me-8chars
+
 GITHUB_TOKEN=ghp_...
 GITHUB_REPOSITORY=your-org/your-repo
 GITHUB_REPOSITORY_OWNER=your-org

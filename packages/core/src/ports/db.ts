@@ -1,9 +1,8 @@
 export type SqlParam = string | number | null;
 
 /**
- * Minimal SQL adapter satisfied by both better-sqlite3 (self-hosted)
- * and Cloudflare D1 (edge). Repositories build only `?`-placeholder SQL
- * so the same queries run unchanged on both back ends.
+ * Minimal SQL adapter satisfied by Cloudflare D1. Repositories build only
+ * `?`-placeholder SQL.
  */
 export interface DbAdapter {
   readonly dialect: "sqlite" | "d1";
