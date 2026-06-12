@@ -4,7 +4,7 @@ import type { Ports } from "../ports";
 import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
 import {
-  EXTERNAL_GATEWAY_CONFIG_KEYS,
+  DEFAULT_WORKERS_AI_MODEL,
   isWorkersAiModelId,
   type DeployTarget,
 } from "../config/deployment";
@@ -46,7 +46,13 @@ const DEFAULT_SETTINGS = {
   notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
 };
 
-const SECRET_CONFIG_KEYS = ["gitToken", "anthropicToken", "openaiToken", "geminiToken", "openrouterToken"];
+const SECRET_CONFIG_KEYS = ["gitToken"];
+
+/** Legacy external-gateway config keys — purged on every read/write. The only
+ * AI credential is the WORKERS_AI_API_TOKEN secret, managed outside the GUI. */
+const LEGACY_GATEWAY_CONFIG_KEYS = ["anthropicToken", "openaiToken", "geminiToken", "openrouterToken"];
+
+const ADMIN_EMAIL_KEY = "admin_email";
 
 export interface TriggerHealingResult {
   runId: string;
@@ -61,11 +67,9 @@ export interface ApiDeps {
   /** Platform-specific kickoff: inline cycle (server) or Workflow instance (worker). */
   triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
   cookieSecure?: boolean;
-  /**
-   * "local" (default): AI gateways are configured via .env / stored tokens.
-   * "cloudflare": ONLY the Workers AI binding (ports.ai) is accepted — external
-   * gateway tokens are rejected and models are discovered from the binding.
-   */
+  /** Always "cloudflare": ONLY the Workers AI binding (ports.ai) is accepted —
+   * external gateway tokens are rejected and models are discovered from the
+   * binding. */
   deployTarget?: DeployTarget;
 }
 
@@ -98,7 +102,7 @@ function maskSecret(value: unknown): string {
  */
 export function createApi(deps: ApiDeps): Hono<Env> {
   const { ports, auth, logger } = deps;
-  const deployTarget: DeployTarget = deps.deployTarget ?? "local";
+  const deployTarget: DeployTarget = deps.deployTarget ?? "cloudflare";
   const app = new Hono<Env>();
   const log = logger.child("api");
 
@@ -225,64 +229,61 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     for (const k of SECRET_CONFIG_KEYS) {
       if (decrypted[k]) masked[k] = maskSecret(decrypted[k]);
     }
-    // External gateways do not exist on Cloudflare — never surface their tokens.
-    if (deployTarget === "cloudflare") {
-      for (const k of EXTERNAL_GATEWAY_CONFIG_KEYS) masked[k] = "";
-      if (masked.selectedAiService) masked.selectedAiService = "workers-ai";
-    }
+    // External gateways do not exist — never surface legacy tokens.
+    for (const k of LEGACY_GATEWAY_CONFIG_KEYS) delete masked[k];
+    masked.selectedAiService = "workers-ai";
+    masked.selectedModelValue ||= DEFAULT_WORKERS_AI_MODEL;
     return c.json(masked);
   });
 
   app.put("/config", requireAdmin, validateBody(configSchema), async (c) => {
     const incoming = c.get("body") as Record<string, unknown>;
 
-    // Cloudflare deploys accept the Workers AI binding and nothing else:
-    // external gateway tokens / services are rejected, and the selected model
-    // must be one the binding actually serves.
-    if (deployTarget === "cloudflare") {
-      const offendingTokens = EXTERNAL_GATEWAY_CONFIG_KEYS.filter((k) => {
-        const v = incoming[k];
-        return typeof v === "string" && v !== "" && !v.startsWith("••••");
-      });
-      const service = incoming.selectedAiService;
-      const offendingService = typeof service === "string" && service !== "" && service !== "workers-ai";
-      if (offendingTokens.length > 0 || offendingService) {
+    // The Workers AI binding is the only AI gateway: external gateway tokens /
+    // services are rejected, and the selected model must be one the binding
+    // actually serves.
+    const offendingTokens = LEGACY_GATEWAY_CONFIG_KEYS.filter((k) => {
+      const v = incoming[k];
+      return typeof v === "string" && v !== "" && !v.startsWith("••••");
+    });
+    const service = incoming.selectedAiService;
+    const offendingService = typeof service === "string" && service !== "" && service !== "workers-ai";
+    if (offendingTokens.length > 0 || offendingService) {
+      return c.json(
+        {
+          error: {
+            code: "external_gateway_rejected",
+            message: "this deployment only accepts the Cloudflare Workers AI gateway",
+            details: offendingTokens,
+          },
+        },
+        400
+      );
+    }
+    const model = incoming.selectedModelValue;
+    if (typeof model === "string" && model !== "") {
+      if (!isWorkersAiModelId(model)) {
         return c.json(
           {
             error: {
               code: "external_gateway_rejected",
-              message: "this deployment only accepts the Cloudflare Workers AI gateway",
-              details: offendingTokens,
+              message: `"${model}" is not a Workers AI model id`,
             },
           },
           400
         );
       }
-      const model = incoming.selectedModelValue;
-      if (typeof model === "string" && model !== "") {
-        if (!isWorkersAiModelId(model)) {
-          return c.json(
-            {
-              error: {
-                code: "external_gateway_rejected",
-                message: `"${model}" is not a Workers AI model id`,
-              },
+      const detected = await ports.ai.listModels?.().catch(() => undefined);
+      if (detected?.length && !detected.some((m) => m.value === model)) {
+        return c.json(
+          {
+            error: {
+              code: "unknown_model",
+              message: `"${model}" is not served by Workers AI on this account`,
             },
-            400
-          );
-        }
-        const detected = await ports.ai.listModels?.().catch(() => undefined);
-        if (detected?.length && !detected.some((m) => m.value === model)) {
-          return c.json(
-            {
-              error: {
-                code: "unknown_model",
-                message: `"${model}" is not served by Workers AI on this account`,
-              },
-            },
-            400
-          );
-        }
+          },
+          400
+        );
       }
     }
 
@@ -302,12 +303,10 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         merged[k] = existing[k] ?? "";
       }
     }
-    // On Cloudflare, purge any external gateway state (including tokens stored
-    // before a migration from a local deploy) and pin the service.
-    if (deployTarget === "cloudflare") {
-      for (const k of EXTERNAL_GATEWAY_CONFIG_KEYS) merged[k] = "";
-      merged.selectedAiService = "workers-ai";
-    }
+    // Purge any external gateway state (including tokens stored before the
+    // Cloudflare-only migration) and pin the service.
+    for (const k of LEGACY_GATEWAY_CONFIG_KEYS) delete merged[k];
+    merged.selectedAiService = "workers-ai";
     const toSave: Record<string, unknown> = { ...merged };
     for (const k of SECRET_CONFIG_KEYS) {
       if (typeof toSave[k] === "string" && toSave[k] !== "") {
@@ -318,27 +317,12 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // ── AI models (deployment-aware discovery) ─────────────────────────────────
-  // Cloudflare: every model served by the Workers AI binding (env.AI.models()).
-  // Local: models of the env-/token-configured Anthropic gateway.
+  // ── AI models — every model served by the Workers AI binding ──────────────
   app.get("/models", requireAuth(), async (c) => {
-    let provider = ports.ai.name;
+    const provider = ports.ai.name;
     let models: AiModelInfo[] = [];
     try {
-      if (deployTarget === "local") {
-        // Prefer the token saved through the GUI; fall back to the .env-built provider.
-        const raw = await settingsRepo.get(CONFIG_KEY);
-        const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-        if (typeof cfg.anthropicToken === "string" && cfg.anthropicToken !== "") {
-          const { AnthropicProvider } = await import("../ai/anthropic.provider");
-          const p = new AnthropicProvider(await decrypt(cfg.anthropicToken));
-          provider = p.name;
-          models = await p.listModels();
-        }
-      }
-      if (models.length === 0) {
-        models = (await ports.ai.listModels?.()) ?? [];
-      }
+      models = (await ports.ai.listModels?.()) ?? [];
     } catch (err) {
       await log.error("model discovery failed", { reason: (err as Error).message });
       return c.json({ error: { code: "model_discovery_failed", message: (err as Error).message } }, 502);
@@ -353,6 +337,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({
       ...DEFAULT_SETTINGS,
       ...stored,
+      adminEmail: (await settingsRepo.get(ADMIN_EMAIL_KEY)) ?? "",
       registrationEnabled: await auth.isRegistrationEnabled(),
     });
   });
@@ -362,12 +347,23 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     if (typeof body.registrationEnabled === "boolean") {
       await auth.setRegistrationEnabled(body.registrationEnabled);
     }
+    // Admin credentials are configured from the GUI: saving them immediately
+    // (re)provisions the admin account in SQL via ensureAdminUser. The
+    // password is never stored in settings — only the user row's hash.
+    if (typeof body.adminEmail === "string" && typeof body.adminPassword === "string" && body.adminPassword !== "") {
+      await auth.ensureAdminUser(body.adminEmail, body.adminPassword);
+      await settingsRepo.set(ADMIN_EMAIL_KEY, body.adminEmail.trim().toLowerCase());
+    }
     const raw = await settingsRepo.get(SETTINGS_KEY);
     const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const { registrationEnabled: _omit, ...rest } = body;
+    const { registrationEnabled: _omit, adminEmail: _email, adminPassword: _pw, ...rest } = body;
     const merged = { ...DEFAULT_SETTINGS, ...existing, ...rest };
     await settingsRepo.set(SETTINGS_KEY, JSON.stringify(merged));
-    return c.json({ ...merged, registrationEnabled: await auth.isRegistrationEnabled() });
+    return c.json({
+      ...merged,
+      adminEmail: (await settingsRepo.get(ADMIN_EMAIL_KEY)) ?? "",
+      registrationEnabled: await auth.isRegistrationEnabled(),
+    });
   });
 
   // ── Inspection ─────────────────────────────────────────────────────────────
@@ -378,24 +374,13 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
     const rawConfig = await settingsRepo.get(CONFIG_KEY);
     const cfg = rawConfig ? (JSON.parse(rawConfig) as Record<string, unknown>) : {};
-    let customAi = ports.ai;
-    let model: string | undefined;
-    if (deployTarget === "cloudflare") {
-      // Workers AI binding only — external gateways are never consulted on the
-      // edge, regardless of what tokens may exist in stored config.
-      const selected = cfg.selectedModelValue;
-      if (typeof selected === "string" && isWorkersAiModelId(selected)) model = selected;
-    } else if (typeof cfg.anthropicToken === "string" && cfg.anthropicToken !== "") {
-      const anthropicKey = await decrypt(cfg.anthropicToken);
-      model =
-        (cfg.selectedModelValue as string) ||
-        process.env.OURO_AI_MODEL ||
-        defaultInspectionConfig.ai.model;
-      const { AnthropicProvider } = await import("../ai/anthropic.provider");
-      customAi = new AnthropicProvider(anthropicKey, model);
-    }
+    // Workers AI binding only — external gateways are never consulted,
+    // regardless of what tokens may exist in stored config.
+    const selected = cfg.selectedModelValue;
+    const model =
+      typeof selected === "string" && isWorkersAiModelId(selected) ? selected : DEFAULT_WORKERS_AI_MODEL;
 
-    const engine = new InspectionEngine(customAi, model ? { ai: { ...defaultInspectionConfig.ai, model } } : {});
+    const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } });
     try {
       const result = await engine.inspect(req);
       const userId = c.get("identity")!.user.id;

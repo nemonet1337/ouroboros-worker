@@ -62,9 +62,9 @@ DB には SHA-256 ハッシュのみ保存されます。
 ```
 
 ### `GET /version`
-`deployTarget` は `"local"`（セルフホスト Node）または `"cloudflare"`（Worker）。
+`deployTarget` は常に `"cloudflare"`。
 ```json
-{ "name": "ouroboros", "version": "2.0.0", "apiVersion": "v1", "deployTarget": "local" }
+{ "name": "ouroboros", "version": "2.0.0", "apiVersion": "v1", "deployTarget": "cloudflare" }
 ```
 
 ### `GET /openapi.json`
@@ -128,33 +128,31 @@ OpenAPI 3.1 仕様（JSON）。認証不要。
 git 連携・AI プロバイダ・対象言語などのアプリ全体設定。
 
 ### `GET /config`
-要認証。**秘匿値**（`gitToken` / `anthropicToken` / `openaiToken` / `geminiToken` /
-`openrouterToken`）はマスク（`••••` + 末尾4文字）されて返ります。
+要認証。**秘匿値**（`gitToken`）はマスク（`••••` + 末尾4文字）されて返ります。
+AI の認証情報は GUI/設定には存在しません（Worker シークレット
+`WORKERS_AI_API_TOKEN` のみ）。
 
 ### `PUT /config`
 要 **admin**。秘匿値フィールドが空文字またはマスク済みプレースホルダ（`••••…`）の場合、
 既存の保存値が**保持**されます（誤上書き防止）。
 ```json
 { "gitService": "github", "gitPackage": "owner/repo",
-  "selectedLanguages": ["TypeScript"], "anthropicToken": "sk-ant-…" }
+  "selectedLanguages": ["TypeScript"], "selectedModelValue": "minimax/m3" }
 ```
 
-> **Cloudflare デプロイの制約:** `deployTarget` が `cloudflare` の場合、外部 AI
-> ゲートウェイのトークン（`anthropicToken` / `openaiToken` / `geminiToken` /
-> `openrouterToken`）や `workers-ai` 以外の `selectedAiService` を送ると
-> `400 external_gateway_rejected` で拒否されます。`selectedModelValue` は
-> Workers AI のモデル id（`@cf/...` 等）であり、かつアカウントで検出された
-> モデルに含まれている必要があります（`400 unknown_model`）。
+> **制約:** 外部 AI ゲートウェイのトークン（`anthropicToken` / `openaiToken` /
+> `geminiToken` / `openrouterToken`）や `workers-ai` 以外の `selectedAiService` を
+> 送ると `400 external_gateway_rejected` で拒否されます。`selectedModelValue` は
+> Workers AI のモデル id（`@cf/...` / `minimax/m3` 等）であり、かつアカウントで
+> 検出されたモデルに含まれている必要があります（`400 unknown_model`）。
 
 ---
 
 ## AI モデル検出（models）
 
 ### `GET /models`
-要認証。デプロイターゲットに応じて利用可能なモデルを検出します。
-
-- `cloudflare`: Workers AI バインディング（`env.AI.models()`）が扱う**すべての**モデル
-- `local`: `.env`（または GUI で保存したトークン）で設定された Anthropic ゲートウェイのモデル
+要認証。Workers AI バインディング（`env.AI.models()`）が扱う**すべての**モデルを
+検出します。これらは GUI の設定画面からそのまま選択できます。
 
 ```json
 {
@@ -178,9 +176,14 @@ git 連携・AI プロバイダ・対象言語などのアプリ全体設定。
 
 ### `PUT /settings`
 要 **admin**。部分更新可。`registrationEnabled` を含めると公開登録の有効/無効を切り替えます。
+`adminEmail` + `adminPassword` を含めると管理者アカウントを即座に SQL へ反映します
+（存在しなければこの値で登録、存在すればパスワードを更新）。パスワードは保存されず、
+ユーザー行のハッシュにのみ反映されます。
 ```json
 { "weights": { "security": 25, "performance": 20, "redundancy": 15,
-  "readability": 15, "design": 15, "correctness": 10 }, "registrationEnabled": true }
+  "readability": 15, "design": 15, "correctness": 10 },
+  "registrationEnabled": true,
+  "adminEmail": "admin@example.com", "adminPassword": "********" }
 ```
 
 ---

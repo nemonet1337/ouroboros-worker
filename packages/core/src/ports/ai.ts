@@ -17,8 +17,8 @@ export interface AiModelInfo {
 
 /**
  * Abstraction over an LLM text-completion backend.
- * Implementations: AnthropicProvider (fetch-based, local/self-hosted only),
- * WorkersAiProvider (Cloudflare Workers AI binding, edge only).
+ * Implementation: WorkersAiProvider (Cloudflare Workers AI — the only
+ * permitted AI gateway).
  */
 export interface AiProvider {
   readonly name: string;

@@ -1,26 +1,21 @@
 /**
- * Where Ouroboros is running. The two targets are intentionally hard-separated:
- *
- * - "local"      — self-hosted Node server (Docker Compose or bare metal).
- *                  AI access is configured through environment variables
- *                  (.env): ANTHROPIC_API_KEY, OURO_AI_MODEL, ... External
- *                  gateways (Anthropic, etc.) are allowed.
- * - "cloudflare" — Cloudflare Worker. The ONLY permitted AI gateway is the
- *                  Workers AI binding (env.AI); external gateway tokens are
- *                  rejected at the API layer and models are discovered
- *                  dynamically from the binding.
+ * Ouroboros runs exclusively on Cloudflare Workers. The ONLY permitted AI
+ * gateway is the Workers AI binding (env.AI); external gateway tokens are
+ * rejected at the API layer and models are discovered dynamically from the
+ * binding. The Workers AI REST API token (when used) lives solely in the
+ * WORKERS_AI_API_TOKEN secret — never in the GUI config store.
  */
-export type DeployTarget = "local" | "cloudflare";
+export type DeployTarget = "cloudflare";
 
-/** External AI gateway config keys that are only honoured on a local deploy. */
-export const EXTERNAL_GATEWAY_CONFIG_KEYS = [
-  "anthropicToken",
-  "openaiToken",
-  "geminiToken",
-  "openrouterToken",
-] as const;
+/** Default Workers AI model used for every AI task unless overridden in the GUI. */
+export const DEFAULT_WORKERS_AI_MODEL = "minimax/m3";
 
-/** Workers AI model ids are namespaced ("@cf/...", "@hf/..."). */
+/**
+ * Workers AI model ids are namespaced — either with an explicit catalog prefix
+ * ("@cf/...", "@hf/...") or as partner-hosted "vendor/model" ids
+ * (e.g. "minimax/m3"). Anything without a namespace separator is an external
+ * gateway model and is rejected.
+ */
 export function isWorkersAiModelId(id: string): boolean {
-  return id.startsWith("@");
+  return id.startsWith("@") || /^[a-z0-9][\w.-]*\/.+/i.test(id);
 }

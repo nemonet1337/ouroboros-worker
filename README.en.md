@@ -6,101 +6,74 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nemonet1337/ouroboros)
 
-Ouroboros runs **4 scanners** (CodeQL / dependencies / performance / secrets) to detect
-issues, uses an LLM to analyze and generate patches, and opens pull requests automatically — with
-authentication, multi-tenant API tokens, telemetry logging, and email alerting.
+Ouroboros detects issues, uses an LLM to analyze and generate patches, and opens pull
+requests automatically — with authentication, multi-tenant API tokens, telemetry logging,
+and email alerting.
 
-It is **deployment-dual**: the same shared core runs either **self-hosted via Docker Compose** or
-**edge-native on Cloudflare** (Workers + D1 + R2 + Queues + Workflows + Workers AI).
+It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues + Workflows +
+Workers AI). The Docker / on-premises implementations were removed in v2.1.
 
-> **v2 note:** the GitHub Actions execution model has been removed. Triggering is now an in-container
-> scheduler (self-hosted) or a Cloudflare cron/Workflow (edge). GitHub is still used as the VCS
-> backend for PRs/issues, behind a pluggable `VcsProvider`.
+> **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
+> (default model: `minimax/m3`). Every model Workers AI serves is selectable from the GUI
+> settings screen. The only AI credential is the dedicated Workers AI API token,
+> **`WORKERS_AI_API_TOKEN`** (a Worker secret) — external gateway tokens (Anthropic /
+> OpenAI / Gemini / OpenRouter) are rejected at the API layer.
 
 ---
 
 ## Architecture
 
 ```
-                         ┌──────────────────────────────┐
-                         │      packages/core           │  runtime-agnostic
-                         │  scanners · analyzer · fixer │  (shared library)
-                         │  inspection · orchestrator   │
-                         │  auth · db · logging         │
-                         │  ports/  (the abstraction)   │
-                         └───────────────┬──────────────┘
-              ┌──────────────────────────┴──────────────────────────┐
-              ▼                                                       ▼
-   ┌────────────────────────┐                          ┌────────────────────────────┐
-   │  apps/server (Docker)  │                          │   apps/worker (Cloudflare)  │
-   │  Node + Hono           │                          │   Workers + Hono            │
-   │  SQLite · FS logs      │                          │   D1 · R2 logs              │
-   │  SMTP · in-proc queue  │                          │   MailChannels · Queues     │
-   │  LocalRunner (git+CI)  │◀── dispatch /internal ───│   DispatchRunner            │
-   │  AnthropicProvider     │       (heavy work)       │   WorkersAI (+Anthropic)    │
-   │  interval cron         │                          │   Workflows · Rate Limiting │
-   └────────────────────────┘                          └────────────────────────────┘
+   ┌──────────────────────────────┐
+   │      packages/core           │  shared library
+   │  analyzer · inspection       │
+   │  orchestrator · auth · db    │
+   │  logging · HTTP API (Hono)   │
+   │  ports/  (the abstraction)   │
+   └───────────────┬──────────────┘
+                   ▼
+   ┌────────────────────────────┐
+   │   apps/worker (Cloudflare)  │
+   │   Workers + Hono            │
+   │   D1 · R2 logs              │
+   │   MailChannels · Queues     │
+   │   Workers AI (minimax/m3)   │
+   │   Workflows · Rate Limiting │
+   │   DispatchRunner ──HTTP──▶ external runner (optional heavy git/CI work)
+   └────────────────────────────┘
 ```
 
-Every platform difference is hidden behind a **port** in `packages/core/src/ports`:
+| Port           | Implementation (Cloudflare Worker)      |
+| -------------- | --------------------------------------- |
+| `DbAdapter`    | D1                                      |
+| `LogStore`     | R2 objects                              |
+| `QueueAdapter` | Cloudflare Queues                       |
+| `AiProvider`   | Workers AI (the only AI gateway)        |
+| `Mailer`       | MailChannels                            |
+| `VcsProvider`  | GitHub (fetch)                          |
+| `HealingRunner`| `DispatchRunner` → external runner (optional) |
+| `RateLimiter`  | Workers Rate Limiting API               |
 
-| Port           | Self-hosted (Node)            | Cloudflare (Worker)             |
-| -------------- | ----------------------------- | ------------------------------- |
-| `DbAdapter`    | `better-sqlite3`              | D1                              |
-| `LogStore`     | flat `.log` files             | R2 objects                      |
-| `QueueAdapter` | in-process                    | Cloudflare Queues               |
-| `AiProvider`   | Anthropic (fetch)             | Workers AI (+ Anthropic fallback) |
-| `Mailer`       | SMTP (nodemailer)             | MailChannels                    |
-| `VcsProvider`  | GitHub (fetch)                | GitHub (fetch)                  |
-| `HealingRunner`| `LocalRunner` (git/compilers) | `DispatchRunner` → self-hosted  |
-| `RateLimiter`  | no-op                         | Workers Rate Limiting API       |
-
-Edge note: Workers have no filesystem/git/compilers, so the patch+validate+commit+push step is
-**dispatched over HTTP** to a self-hosted `LocalRunner` (`/internal/heal`), while a **Cloudflare
-Workflow** drives the durable scan → analyze → fix → PR lifecycle.
+Note: Workers have no filesystem/git/compilers, so the patch+validate+commit+push step can be
+**dispatched over HTTP** to an external runner (`/internal/heal`, optional via `RUNNER_URL`),
+while a **Cloudflare Workflow** drives the durable scan → analyze → fix → PR lifecycle.
 
 ---
 
 ## Repository layout
 
 ```
-packages/core/        shared, runtime-agnostic logic + ports + db + auth + http API
-apps/server/          self-hosted Node app (Docker)
-apps/worker/          Cloudflare Worker (D1/R2/Queues/Workflows/AI)
-web/                  Nuxt 3 GUI (built to a static SPA, served by either app)
-docker-compose.yml    self-hosted deployment
+packages/core/        shared logic + ports + db + auth + http API
+apps/worker/          Cloudflare Worker (D1/R2/Queues/Workflows/Workers AI)
+web/                  Nuxt 3 GUI (built to a static SPA, served via ASSETS)
 wrangler.toml         Cloudflare deployment
 ```
 
 ---
 
-## Quick start — Self-hosted (Docker Compose)
+## Quick start — Cloudflare
 
-```bash
-cp .env.example .env          # set ANTHROPIC_API_KEY, GITHUB_TOKEN, GITHUB_REPOSITORY
-docker compose up --build
-open http://localhost:3000     # the FIRST account you register becomes the admin
-```
-
-On the local deploy, AI gateways (e.g. the Anthropic API) are configured through
-environment variables in `.env`. When running without Docker the server loads
-`.env` from the working directory at startup (existing environment variables
-take precedence; override the path with `OURO_ENV_FILE`).
-
-State is local: SQLite in the `ouro-data` volume, telemetry `.log` files in `ouro-logs`.
-
-### Run without Docker
-
-```bash
-npm install
-npm run build:web
-OURO_DB_PATH=./ouroboros.db OURO_LOG_DIR=./logs \
-OURO_GUI_DIR=./web/.output/public npm run server
-```
-
----
-
-## Quick start — Cloudflare (edge)
+The fastest path is the **Deploy to Cloudflare** button above. Manual setup:
 
 ```bash
 npm install
@@ -111,10 +84,12 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from packages/core/src/db/migrations
 
+wrangler secret put ADMIN_EMAIL                      # admin account (auto-created in SQL at init)
+wrangler secret put ADMIN_PASSWORD                   # at least 8 characters
+wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo
-wrangler secret put RUNNER_SHARED_SECRET            # auth for the dispatched LocalRunner
-# set RUNNER_URL (vars) to a reachable self-hosted /internal endpoint for healing
+wrangler secret put RUNNER_SHARED_SECRET            # (optional) auth for the dispatched runner
 
 wrangler deploy                                      # or: wrangler dev
 ```
@@ -122,26 +97,37 @@ wrangler deploy                                      # or: wrangler dev
 `wrangler.toml` wires D1, R2, Queues, Workflows, Workers AI, the Rate Limiting binding,
 the daily cron trigger, and the static GUI assets.
 
-> **AI gateway separation:** the Cloudflare deploy uses the **Workers AI binding
-> exclusively**. External gateway tokens (Anthropic / OpenAI / Gemini / OpenRouter)
-> are rejected at the API layer. Available models are discovered dynamically from
-> your account's Workers AI catalog via `GET /api/v1/models`, and the GUI model
-> selector lists every model it serves. If you need an external gateway, use the
-> local deploy (`.env`) instead.
+### Admin account
+
+- **ADMIN_EMAIL / ADMIN_PASSWORD are configured from the GUI** (Admin page); saving applies
+  them to SQL immediately.
+- At initialisation (right after migrations) a SQL bootstrap step runs: **if the user does
+  not exist in SQL it is registered using the `ADMIN_EMAIL` / `ADMIN_PASSWORD` values**;
+  if it exists, its password hash is updated.
+
+### AI models
+
+- The default model is **`minimax/m3`** (`OURO_WORKERS_AI_MODEL` in `wrangler.toml`).
+- `GET /api/v1/models` discovers every model from your account's Workers AI catalog, and
+  **all of them are selectable from the GUI settings screen**.
+- The only AI credential is **`WORKERS_AI_API_TOKEN`**. Combined with
+  `CLOUDFLARE_ACCOUNT_ID` it routes inference through the Workers AI REST API; without it
+  the in-Worker AI binding is used directly.
 
 ---
 
 ## Features
 
-- **Self-healing loop** — parallel scanners → AI analysis/grouping → AI fix + validation →
+- **Self-healing loop** — scan → AI analysis/grouping → AI fix + validation →
   PR creation → optional auto-merge (CI gate + AI safety review) → escalation issues.
 - **Authentication & multi-tenancy** — email/password (WebCrypto PBKDF2), httpOnly sessions,
   and scoped, revocable **API tokens** (`read` / `inspect` / `heal` / `admin`).
-- **Registration control** — admin toggle for public registration; first user bootstraps as admin.
-- **Telemetry** — structured logs persisted as flat `.log` files (local dir or R2).
-- **Email alerts** — high-risk scans and failed fixes (SMTP self-hosted, MailChannels on edge).
-- **Async orchestration (edge)** — GUI events via Cloudflare Queues; healing lifecycle via Workflows.
-- **Rate limiting (edge)** — Workers Rate Limiting on public endpoints.
+- **Registration control** — admin toggle for public registration; the admin account is
+  bootstrapped automatically at init.
+- **Telemetry** — structured logs persisted as flat `.log` files in R2.
+- **Email alerts** — high-risk scans and failed fixes via MailChannels.
+- **Async orchestration** — GUI events via Cloudflare Queues; healing lifecycle via Workflows.
+- **Rate limiting** — Workers Rate Limiting on public endpoints.
 - **Code inspection** — AI scoring engine exposed at `POST /api/v1/inspect`.
   Scores six weighted dimensions (security / performance / redundancy / readability / design /
   correctness) per file or per function/method/class (`granularity: "function"`), and returns
@@ -162,6 +148,7 @@ Full reference: **[docs/api.ja.md](./docs/api.ja.md)** · machine-readable: `GET
 | GET/POST/DELETE | `/api/v1/tokens`     | session/token   |
 | GET/PUT | `/api/v1/config`             | admin (PUT)     |
 | GET/PUT | `/api/v1/settings`           | admin (PUT)     |
+| GET    | `/api/v1/models`              | session/token   |
 | POST   | `/api/v1/inspect`             | scope `inspect` |
 | POST   | `/api/v1/healing`            | scope `heal`    |
 | GET    | `/api/v1/metrics`             | session/token   |
@@ -179,6 +166,7 @@ Tokens are sent as `Authorization: Bearer ouro_…`. Errors use a unified
 npm run typecheck                      # all workspaces
 npm run test                           # core unit tests (vitest)
 npm run dev --workspace web            # Nuxt dev server
+npm run worker:dev                     # wrangler dev
 ```
 
 ---

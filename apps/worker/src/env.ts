@@ -19,16 +19,22 @@ export interface Env {
   OURO_BASE_BRANCH?: string;
   MAIL_FROM?: string;
 
-  // secrets — note: no AI gateway secrets. The Cloudflare deploy uses the
-  // Workers AI binding (AI) exclusively; external gateways are not accepted.
+  // secrets — the ONLY AI credential is WORKERS_AI_API_TOKEN (a Cloudflare
+  // API token scoped to Workers AI). External gateways (Anthropic, OpenAI, …)
+  // are not accepted anywhere in this deployment.
+  WORKERS_AI_API_TOKEN?: string;
+  /** Cloudflare account id — only needed when WORKERS_AI_API_TOKEN is set and
+   * inference should go through the Workers AI REST API instead of the binding. */
+  CLOUDFLARE_ACCOUNT_ID?: string;
   GITHUB_TOKEN?: string;
   GITHUB_REPOSITORY?: string;
   GITHUB_REPOSITORY_OWNER?: string;
   RUNNER_SHARED_SECRET?: string;
 
-  // Admin user bootstrap — set these to auto-create (or update) the single
-  // admin account on first request after deploy.  Rotating ADMIN_PASSWORD
-  // updates the stored hash on the next Worker startup.
+  // Admin account fallback. The canonical place to set the admin credentials
+  // is the GUI settings screen (persisted via the API). These env values are
+  // used by the init-time SQL bootstrap to (re)create the account whenever the
+  // user is missing from SQL.
   ADMIN_EMAIL?: string;
   ADMIN_PASSWORD?: string;
 }

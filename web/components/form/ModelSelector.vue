@@ -34,14 +34,11 @@ function clearModel() {
         :options="config.availableServices.value"
         option-attribute="label"
         value-attribute="value"
-        :placeholder="config.isCloudflare.value ? 'Cloudflare Workers AI' : 'Select service (enter a token first)'"
-        :disabled="config.isCloudflare.value || config.availableServices.value.length === 0"
+        placeholder="Cloudflare Workers AI"
+        disabled
       />
-      <template v-if="config.isCloudflare.value" #help>
-        <span class="text-orange-400 text-xs">Cloudflare deploy — Workers AI binding only</span>
-      </template>
-      <template v-else-if="config.availableServices.value.length === 0" #help>
-        <span class="text-amber-400 text-xs">Enter at least one API token above to unlock</span>
+      <template #help>
+        <span class="text-orange-400 text-xs">Workers AI only — every model it serves is selectable below</span>
       </template>
     </UFormGroup>
 

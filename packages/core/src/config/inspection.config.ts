@@ -43,7 +43,7 @@ export const DEFAULT_GRADE_THRESHOLDS = {
 
 export const defaultInspectionConfig: InspectionConfig = {
   ai: {
-    model: "claude-sonnet-4-6",
+    model: "minimax/m3",
     maxTokens: 8192,
     maxRetries: 2,
   },
