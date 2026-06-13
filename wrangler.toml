@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # wrangler deploy 前に Nuxt SPA を生成する
 [build]
-command = "npm run build:web"
+command = "bash scripts/resolve-d1.sh && npm run build:web"
 
 # ビルド済み Nuxt GUI を配信（`nuxt generate` の出力 web/.output/public）
 [assets]
