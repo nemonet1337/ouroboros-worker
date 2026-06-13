@@ -12,6 +12,7 @@ import { handleGuiEvents } from "./queues/gui-events";
 export { HealingWorkflow } from "./workflows/healing";
 
 let migrated = false;
+let cachedApp: ReturnType<typeof buildApp> | undefined;
 
 async function ensureMigrated(env: Env): Promise<void> {
   if (migrated) return;
@@ -75,7 +76,14 @@ function buildApp(env: Env): Hono {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    return buildApp(env).fetch(request, env, ctx);
+    try {
+      cachedApp ??= buildApp(env);
+      return await cachedApp.fetch(request, env, ctx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[worker] unhandled fetch error:", msg);
+      return Response.json({ error: { code: "worker_error", message: msg } }, { status: 500 });
+    }
   },
 
   async queue(batch: MessageBatch<GuiEvent>, env: Env): Promise<void> {
