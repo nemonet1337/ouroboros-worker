@@ -19,18 +19,11 @@ jobs:
       - run: npm ci
 
       - name: Resolve D1 database_id from database_name
-        run: |
-          sed -i "s/^database_name = \".*\"/database_name = \"${{ secrets.D1_DATABASE_NAME }}\"/" wrangler.toml
-          DB_ID=$(curl -sf \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/d1/database?name=${{ secrets.D1_DATABASE_NAME }}" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            | jq -r '.result[0].uuid')
-          if [ -z "$DB_ID" ] || [ "$DB_ID" = "null" ]; then
-            echo "ERROR: Could not resolve database_id for database_name=${{ secrets.D1_DATABASE_NAME }}" >&2
-            exit 1
-          fi
-          sed -i "s/^database_id = \".*\"/database_id = \"${DB_ID}\"/" wrangler.toml
-          echo "Resolved database_id=${DB_ID}"
+        run: bash scripts/resolve-d1.sh
+        env:
+          D1_DATABASE_NAME: ${{ secrets.D1_DATABASE_NAME }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
