@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB_NAME="${D1_DATABASE_NAME:?D1_DATABASE_NAME is not set}"
+DB_NAME="${D1_DATABASE_NAME:-$(grep '^database_name' wrangler.toml | sed 's/.*= *"\(.*\)"/\1/')}"
+if [ -z "$DB_NAME" ]; then
+  echo "ERROR: D1_DATABASE_NAME is not set and could not be read from wrangler.toml" >&2
+  exit 1
+fi
 ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID is not set}"
 API_TOKEN="${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is not set}"
 
