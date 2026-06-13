@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # wrangler deploy 前に Nuxt SPA を生成する
 [build]
-command = "npm run build:web"
+command = "bash scripts/resolve-d1.sh && npm run build:web"
 
 # ビルド済み Nuxt GUI を配信（`nuxt generate` の出力 web/.output/public）
 [assets]
@@ -22,7 +22,7 @@ binding = "AI"
 [[d1_databases]]
 binding = "DB"
 database_name = "ouroboros"
-database_id = "584f7ef3-a38f-4713-a599-8893bd290d9a"
+database_id = "19d6e650-e21a-4366-b2c9-38ecefc851dc"
 migrations_dir = "packages/core/src/db/migrations"
 
 # R2 — フラット .log テレメトリの保存先
