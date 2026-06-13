@@ -85,8 +85,6 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # スキーマ: packages/core/src/db/migrations
 
-wrangler secret put ADMIN_EMAIL                      # 管理者アカウント（初期化時に SQL へ自動作成）
-wrangler secret put ADMIN_PASSWORD                   # 8 文字以上
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo
@@ -100,11 +98,10 @@ wrangler deploy                                      # または: wrangler dev
 
 ### 管理者アカウント
 
-- **ADMIN_EMAIL / ADMIN_PASSWORD は GUI（Admin ページ）で設定**できます。保存すると
-  即座に SQL へ反映されます。
-- 初期化時（マイグレーション直後）に、アカウントを作成する SQL 処理が実行されます:
-  **ユーザーが SQL 上に存在しない場合は `ADMIN_EMAIL` / `ADMIN_PASSWORD` の値で
-  管理者アカウントを登録**し、既に存在する場合はパスワードハッシュを更新します。
+- 環境変数は不要です。デプロイ後にブラウザでアプリを開くと、**ユーザーが 0 人の
+  初回のみ自動的に登録画面（`/register`）へ誘導**されます。
+- **最初に登録したアカウントが管理者**になり、以降の公開登録は自動的に
+  ロックされます（Admin ページのトグルで再有効化可能）。
 
 ### AI モデル
 
@@ -125,7 +122,7 @@ wrangler deploy                                      # または: wrangler dev
   PR 作成 → 任意の自動マージ（CI ゲート＋AI 安全レビュー）→ エスカレーション Issue。
 - **認証とマルチテナント** — メール/パスワード（WebCrypto PBKDF2）、httpOnly セッション、
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
-- **登録制御** — 公開登録の管理者トグル。管理者アカウントは初期化時に自動作成されます。
+- **登録制御** — 公開登録の管理者トグル。最初に登録したユーザーが管理者になります。
 - **テレメトリ** — 構造化ログをフラット `.log` ファイルとして R2 に永続化。
 - **メールアラート** — 高リスクなスキャンや修正失敗を MailChannels で通知。
 - **非同期オーケストレーション** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。

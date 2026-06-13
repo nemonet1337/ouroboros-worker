@@ -52,8 +52,6 @@ const SECRET_CONFIG_KEYS = ["gitToken"];
  * AI credential is the WORKERS_AI_API_TOKEN secret, managed outside the GUI. */
 const LEGACY_GATEWAY_CONFIG_KEYS = ["anthropicToken", "openaiToken", "geminiToken", "openrouterToken"];
 
-const ADMIN_EMAIL_KEY = "admin_email";
-
 export interface TriggerHealingResult {
   runId: string;
   workflowId?: string;
@@ -167,7 +165,11 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.get("/openapi.json", (c) => c.json(OPENAPI_SPEC));
 
   // ── Auth ─────────────────────────────────────────────────────────────────
-  app.get("/auth/registration", async (c) => c.json({ enabled: await auth.isRegistrationEnabled() }));
+  // firstUser=true means no account exists yet: the GUI redirects to /register
+  // and the next registration bootstraps the admin.
+  app.get("/auth/registration", async (c) =>
+    c.json({ enabled: await auth.isRegistrationEnabled(), firstUser: await auth.isFirstUser() })
+  );
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
@@ -337,7 +339,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({
       ...DEFAULT_SETTINGS,
       ...stored,
-      adminEmail: (await settingsRepo.get(ADMIN_EMAIL_KEY)) ?? "",
       registrationEnabled: await auth.isRegistrationEnabled(),
     });
   });
@@ -347,23 +348,12 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     if (typeof body.registrationEnabled === "boolean") {
       await auth.setRegistrationEnabled(body.registrationEnabled);
     }
-    // Admin credentials are configured from the GUI: saving them immediately
-    // (re)provisions the admin account in SQL via ensureAdminUser. The
-    // password is never stored in settings — only the user row's hash.
-    if (typeof body.adminEmail === "string" && typeof body.adminPassword === "string" && body.adminPassword !== "") {
-      await auth.ensureAdminUser(body.adminEmail, body.adminPassword);
-      await settingsRepo.set(ADMIN_EMAIL_KEY, body.adminEmail.trim().toLowerCase());
-    }
     const raw = await settingsRepo.get(SETTINGS_KEY);
     const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const { registrationEnabled: _omit, adminEmail: _email, adminPassword: _pw, ...rest } = body;
+    const { registrationEnabled: _omit, ...rest } = body;
     const merged = { ...DEFAULT_SETTINGS, ...existing, ...rest };
     await settingsRepo.set(SETTINGS_KEY, JSON.stringify(merged));
-    return c.json({
-      ...merged,
-      adminEmail: (await settingsRepo.get(ADMIN_EMAIL_KEY)) ?? "",
-      registrationEnabled: await auth.isRegistrationEnabled(),
-    });
+    return c.json({ ...merged, registrationEnabled: await auth.isRegistrationEnabled() });
   });
 
   // ── Inspection ─────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
   "variables": [
     {
       "name": "WORKERS_AI_API_TOKEN",
-      "description": "（任意）Workers AI 専用の Cloudflare API トークン。唯一の AI 認証情報。CLOUDFLARE_ACCOUNT_ID と併用すると REST API 経由で推論します（未設定なら AI バインディングを直接使用）。",
+      "description": "（任意）Workers AI 専用の Cloudflare API トークン。CLOUDFLARE_ACCOUNT_ID と併用すると REST API 経由で推論します（未設定なら AI バインディングを直接使用）。",
       "type": "secret",
       "default": ""
     },
@@ -14,16 +14,6 @@
       "description": "（任意）WORKERS_AI_API_TOKEN で REST 経由の推論を行う場合に必要なアカウント ID。",
       "type": "text",
       "default": ""
-    },
-    {
-      "name": "ADMIN_EMAIL",
-      "description": "管理者アカウントのメールアドレス。初期化時にこのアカウントが SQL に自動作成され、GUI の設定画面からも変更できます。",
-      "type": "text"
-    },
-    {
-      "name": "ADMIN_PASSWORD",
-      "description": "管理者アカウントのパスワード（8 文字以上）。ユーザーが SQL 上に存在しない場合、この値で再登録されます。",
-      "type": "secret"
     },
     {
       "name": "GITHUB_TOKEN",
