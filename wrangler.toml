@@ -21,7 +21,7 @@ binding = "AI"
 # D1 (SQL) — users, tokens, sessions, settings, inspections, webhooks, healing_runs
 [[d1_databases]]
 binding = "DB"
-database_name = "ouroboros"
+database_name = "placeholder"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "packages/core/src/db/migrations"
 
