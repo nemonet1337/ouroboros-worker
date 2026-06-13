@@ -22,7 +22,7 @@ binding = "AI"
 [[d1_databases]]
 binding = "DB"
 database_name = "ouroboros"
-database_id = "19d6e650-e21a-4366-b2c9-38ecefc851dc"
+database_id = "fa58b005-a39c-41ea-b029-19736281f6e6"
 migrations_dir = "packages/core/src/db/migrations"
 
 # R2 — フラット .log テレメトリの保存先

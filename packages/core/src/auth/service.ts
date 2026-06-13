@@ -52,9 +52,12 @@ export class AuthService {
     this.settings = new SettingsRepository(db);
   }
 
+  async userCount(): Promise<number> {
+    return this.users.count();
+  }
+
   async isRegistrationEnabled(): Promise<boolean> {
     const value = await this.settings.get(REGISTRATION_KEY);
-    // Default closed by default.
     if (value === undefined) return false;
     return value === "true";
   }
@@ -68,7 +71,9 @@ export class AuthService {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new AuthError("invalid email");
     if (password.length < 8) throw new AuthError("password must be at least 8 characters");
 
-    if (!(await this.isRegistrationEnabled())) {
+    const isFirstUser = (await this.users.count()) === 0;
+
+    if (!isFirstUser && !(await this.isRegistrationEnabled())) {
       throw new AuthError("registration is disabled", 403);
     }
     if (await this.users.findByEmail(normalized)) throw new AuthError("email already registered", 409);
@@ -78,11 +83,17 @@ export class AuthService {
       id: newId(),
       email: normalized,
       password_hash: await hashPassword(password),
-      role: "member",
+      role: isFirstUser ? "admin" : "member",
       created_at: now,
       updated_at: now,
     };
     await this.users.insert(row);
+
+    // Lock registration after bootstrapping the first admin.
+    if (isFirstUser) {
+      await this.settings.set(REGISTRATION_KEY, "false");
+    }
+
     return toAuthedUser(row);
   }
 
