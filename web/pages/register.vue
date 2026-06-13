@@ -28,7 +28,10 @@ async function submit() {
     await register(email.value, password.value)
     await navigateTo('/')
   } catch (e: any) {
-    error.value = e?.data?.error?.message ?? e?.data?.error ?? '登録に失敗しました'
+    error.value = e?.data?.error?.message
+      ?? (typeof e?.data?.error === 'string' ? e.data.error : null)
+      ?? e?.message
+      ?? '登録に失敗しました'
   } finally {
     loading.value = false
   }

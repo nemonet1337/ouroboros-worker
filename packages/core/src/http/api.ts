@@ -116,7 +116,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: "auth_error", message: err.message } }, err.status as 400);
     }
     log.error("unhandled api error", { reason: err.message });
-    return c.json({ error: { code: "internal_error", message: "internal server error" } }, 500);
+    return c.json({ error: { code: "internal_error", message: err.message || "internal server error" } }, 500);
   });
   app.notFound((c) => c.json({ error: { code: "not_found", message: "resource not found" } }, 404));
 
@@ -730,6 +730,6 @@ export function mountApi(root: Hono, deps: ApiDeps): void {
       return c.json({ error: { code: "auth_error", message: err.message } }, err.status as 400);
     }
     deps.logger.child("api").error("unhandled api error", { reason: err.message });
-    return c.json({ error: { code: "internal_error", message: "internal server error" } }, 500);
+    return c.json({ error: { code: "internal_error", message: err.message || "internal server error" } }, 500);
   });
 }
