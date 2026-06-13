@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Resolve D1 database_id from database_name
+        run: |
+          DB_NAME=$(grep 'database_name' wrangler.toml | sed 's/.*= *"\(.*\)"/\1/')
+          DB_ID=$(curl -sf \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/d1/database?name=${DB_NAME}" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            | jq -r '.result[0].uuid')
+          if [ -z "$DB_ID" ] || [ "$DB_ID" = "null" ]; then
+            echo "ERROR: Could not resolve database_id for database_name=${DB_NAME}" >&2
+            exit 1
+          fi
+          sed -i "s/^database_id = \".*\"/database_id = \"${DB_ID}\"/" wrangler.toml
+          echo "Resolved database_id=${DB_ID} for database_name=${DB_NAME}"
+
+      - name: Deploy to Cloudflare Workers
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
