@@ -11,9 +11,11 @@ const registrationEnabled = ref(true)
 const isFirstUser = ref(false)
 
 const { data } = await useAsyncData('registration', () =>
-  api<{ enabled: boolean }>('/auth/registration').catch(() => ({ enabled: true }))
+  api<{ enabled: boolean; firstUser: boolean }>('/auth/registration')
+    .catch(() => ({ enabled: true, firstUser: false }))
 )
 registrationEnabled.value = data.value?.enabled ?? true
+isFirstUser.value = data.value?.firstUser ?? false
 
 async function submit() {
   error.value = ''
@@ -22,7 +24,7 @@ async function submit() {
     await register(email.value, password.value)
     await navigateTo('/')
   } catch (e: any) {
-    error.value = e?.data?.error || 'Registration failed'
+    error.value = e?.data?.error?.message ?? e?.data?.error ?? 'Registration failed'
   } finally {
     loading.value = false
   }
@@ -40,11 +42,19 @@ async function submit() {
       </template>
 
       <UAlert
-        v-if="!registrationEnabled"
+        v-if="isFirstUser"
+        color="primary"
+        variant="soft"
+        title="初回セットアップ"
+        description="最初に登録するこのアカウントが管理者になります。"
+        class="mb-4"
+      />
+      <UAlert
+        v-else-if="!registrationEnabled"
         color="amber"
         variant="soft"
         title="Registration is currently disabled"
-        description="The first account becomes the admin. If an admin already exists, ask them to enable public registration."
+        description="If an admin already exists, ask them to enable public registration."
         class="mb-4"
       />
 

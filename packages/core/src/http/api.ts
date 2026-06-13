@@ -165,7 +165,11 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.get("/openapi.json", (c) => c.json(OPENAPI_SPEC));
 
   // ── Auth ─────────────────────────────────────────────────────────────────
-  app.get("/auth/registration", async (c) => c.json({ enabled: await auth.isRegistrationEnabled() }));
+  // firstUser=true means no account exists yet: the GUI redirects to /register
+  // and the next registration bootstraps the admin.
+  app.get("/auth/registration", async (c) =>
+    c.json({ enabled: await auth.isRegistrationEnabled(), firstUser: await auth.isFirstUser() })
+  );
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };

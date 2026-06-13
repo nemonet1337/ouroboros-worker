@@ -59,6 +59,11 @@ export class AuthService {
     return value === "true";
   }
 
+  /** True while no user exists yet — the next /register call bootstraps the admin. */
+  async isFirstUser(): Promise<boolean> {
+    return (await this.users.count()) === 0;
+  }
+
   async setRegistrationEnabled(enabled: boolean): Promise<void> {
     await this.settings.set(REGISTRATION_KEY, enabled ? "true" : "false");
   }

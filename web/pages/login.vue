@@ -2,12 +2,24 @@
 definePageMeta({ layout: false })
 useHead({ title: 'Sign in — Ouroboros' })
 
-const { login } = useAuth()
+const { login, api } = useAuth()
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const error = ref('')
 const loading = ref(false)
+const registrationEnabled = ref(false)
+
+// 初回（ユーザーが 0 人）は登録画面へ自動遷移して管理者アカウントを作成させる。
+onMounted(async () => {
+  try {
+    const res = await api<{ enabled: boolean; firstUser: boolean }>('/auth/registration')
+    registrationEnabled.value = res.enabled
+    if (res.firstUser) await navigateTo('/register')
+  } catch {
+    // API 未到達時はそのままログインフォームを表示
+  }
+})
 
 async function submit() {
   error.value = ''
@@ -108,8 +120,12 @@ async function submit() {
         </form>
       </div>
 
-      <p class="text-center text-[11px] text-gray-600 mt-5">
-        管理者アカウントは環境変数 <code class="font-mono text-gray-500">ADMIN_EMAIL</code> / <code class="font-mono text-gray-500">ADMIN_PASSWORD</code> で設定します
+      <p v-if="registrationEnabled" class="text-center text-xs text-gray-500 mt-5">
+        アカウントをお持ちでない場合は
+        <NuxtLink to="/register" class="text-indigo-400 hover:text-indigo-300 transition-colors">登録</NuxtLink>
+      </p>
+      <p v-else class="text-center text-[11px] text-gray-600 mt-5">
+        最初に登録されたアカウントが管理者になります
       </p>
     </div>
   </div>

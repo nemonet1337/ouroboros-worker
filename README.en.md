@@ -84,8 +84,6 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from packages/core/src/db/migrations
 
-wrangler secret put ADMIN_EMAIL                      # admin account (auto-created in SQL at init)
-wrangler secret put ADMIN_PASSWORD                   # at least 8 characters
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo
@@ -99,11 +97,10 @@ the daily cron trigger, and the static GUI assets.
 
 ### Admin account
 
-- **ADMIN_EMAIL / ADMIN_PASSWORD are configured from the GUI** (Admin page); saving applies
-  them to SQL immediately.
-- At initialisation (right after migrations) a SQL bootstrap step runs: **if the user does
-  not exist in SQL it is registered using the `ADMIN_EMAIL` / `ADMIN_PASSWORD` values**;
-  if it exists, its password hash is updated.
+- No environment variables needed. After deploying, open the app in a browser: **while no
+  user exists the login page automatically redirects to `/register`**.
+- **The first registered account becomes the admin**, and public registration is locked
+  afterwards (re-enable it from the Admin page toggle).
 
 ### AI models
 
@@ -122,8 +119,8 @@ the daily cron trigger, and the static GUI assets.
   PR creation → optional auto-merge (CI gate + AI safety review) → escalation issues.
 - **Authentication & multi-tenancy** — email/password (WebCrypto PBKDF2), httpOnly sessions,
   and scoped, revocable **API tokens** (`read` / `inspect` / `heal` / `admin`).
-- **Registration control** — admin toggle for public registration; the admin account is
-  bootstrapped automatically at init.
+- **Registration control** — admin toggle for public registration; the first registered
+  user becomes the admin.
 - **Telemetry** — structured logs persisted as flat `.log` files in R2.
 - **Email alerts** — high-risk scans and failed fixes via MailChannels.
 - **Async orchestration** — GUI events via Cloudflare Queues; healing lifecycle via Workflows.
