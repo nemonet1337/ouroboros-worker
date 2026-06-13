@@ -116,7 +116,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: "auth_error", message: err.message } }, err.status as 400);
     }
     log.error("unhandled api error", { reason: err.message });
-    return c.json({ error: { code: "internal_error", message: "internal server error" } }, 500);
+    return c.json({ error: { code: "internal_error", message: err.message || "internal server error" } }, 500);
   });
   app.notFound((c) => c.json({ error: { code: "not_found", message: "resource not found" } }, 404));
 
@@ -168,9 +168,10 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   // ── Auth ─────────────────────────────────────────────────────────────────
   // firstUser=true means no account exists yet: the GUI redirects to /register
   // and the next registration bootstraps the admin.
-  app.get("/auth/registration", async (c) =>
-    c.json({ enabled: await auth.isRegistrationEnabled() })
-  );
+  app.get("/auth/registration", async (c) => {
+    const firstUser = (await auth.userCount()) === 0;
+    return c.json({ enabled: await auth.isRegistrationEnabled(), firstUser });
+  });
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
@@ -729,6 +730,6 @@ export function mountApi(root: Hono, deps: ApiDeps): void {
       return c.json({ error: { code: "auth_error", message: err.message } }, err.status as 400);
     }
     deps.logger.child("api").error("unhandled api error", { reason: err.message });
-    return c.json({ error: { code: "internal_error", message: "internal server error" } }, 500);
+    return c.json({ error: { code: "internal_error", message: err.message || "internal server error" } }, 500);
   });
 }

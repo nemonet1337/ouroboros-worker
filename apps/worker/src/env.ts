@@ -8,7 +8,7 @@ export interface Env {
   GUI_EVENTS: Queue<GuiEvent>;
   AI: Ai;
   HEALING_WORKFLOW: Workflow;
-  RATE_LIMITER: RateLimit;
+  RATE_LIMITER?: RateLimit;
   ASSETS: Fetcher;
 
   // vars
