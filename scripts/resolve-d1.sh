@@ -7,6 +7,13 @@ if [ -z "$DB_NAME" ]; then
   exit 1
 fi
 
+# Allow an explicit D1_DATABASE_ID env var to pin the database without an API lookup.
+if [ -n "${D1_DATABASE_ID:-}" ]; then
+  sed -i "s/^database_id = \".*\"/database_id = \"${D1_DATABASE_ID}\"/" wrangler.toml
+  echo "Using pinned database_id=${D1_DATABASE_ID} from D1_DATABASE_ID env var"
+  exit 0
+fi
+
 if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
   echo "WARNING: CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is not set. Skipping D1 database_id resolution."
   exit 0

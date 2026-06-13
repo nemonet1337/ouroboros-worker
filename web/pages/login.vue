@@ -9,6 +9,7 @@ const showPassword = ref(false)
 const error = ref('')
 const loading = ref(false)
 const registrationEnabled = ref(false)
+const showRegisterFallback = ref(false)
 
 // 初回（ユーザーが 0 人）は登録画面へ自動遷移して管理者アカウントを作成させる。
 onMounted(async () => {
@@ -17,7 +18,8 @@ onMounted(async () => {
     registrationEnabled.value = res.enabled
     if (res.firstUser) await navigateTo('/register')
   } catch {
-    // API 未到達時はそのままログインフォームを表示
+    // API 未到達時（DB 未初期化など）は登録リンクを表示してフォールバック
+    showRegisterFallback.value = true
   }
 })
 
@@ -123,6 +125,10 @@ async function submit() {
       <p v-if="registrationEnabled" class="text-center text-xs text-gray-500 mt-5">
         アカウントをお持ちでない場合は
         <NuxtLink to="/register" class="text-indigo-400 hover:text-indigo-300 transition-colors">登録</NuxtLink>
+      </p>
+      <p v-else-if="showRegisterFallback" class="text-center text-xs text-gray-500 mt-5">
+        初回セットアップ:
+        <NuxtLink to="/register" class="text-indigo-400 hover:text-indigo-300 transition-colors">管理者アカウントを登録</NuxtLink>
       </p>
       <p v-else class="text-center text-[11px] text-gray-600 mt-5">
         最初に登録されたアカウントが管理者になります
