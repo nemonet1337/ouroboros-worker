@@ -8,14 +8,12 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const registrationEnabled = ref(true)
-const isFirstUser = ref(false)
 
 const { data } = await useAsyncData('registration', () =>
-  api<{ enabled: boolean; firstUser: boolean }>('/auth/registration')
-    .catch(() => ({ enabled: true, firstUser: false }))
+  api<{ enabled: boolean }>('/auth/registration')
+    .catch(() => ({ enabled: true }))
 )
 registrationEnabled.value = data.value?.enabled ?? true
-isFirstUser.value = data.value?.firstUser ?? false
 
 async function submit() {
   error.value = ''
@@ -41,16 +39,9 @@ async function submit() {
         <p class="text-sm text-gray-400">Create an account</p>
       </template>
 
+
       <UAlert
-        v-if="isFirstUser"
-        color="primary"
-        variant="soft"
-        title="初回セットアップ"
-        description="最初に登録するこのアカウントが管理者になります。"
-        class="mb-4"
-      />
-      <UAlert
-        v-else-if="!registrationEnabled"
+        v-if="!registrationEnabled"
         color="amber"
         variant="soft"
         title="Registration is currently disabled"

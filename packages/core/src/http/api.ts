@@ -26,6 +26,7 @@ import { OPENAPI_SPEC } from "./openapi";
 import {
   validateBody,
   credentialsSchema,
+  profileUpdateSchema,
   tokenCreateSchema,
   inspectSchema,
   webhookCreateSchema,
@@ -168,7 +169,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   // firstUser=true means no account exists yet: the GUI redirects to /register
   // and the next registration bootstraps the admin.
   app.get("/auth/registration", async (c) =>
-    c.json({ enabled: await auth.isRegistrationEnabled(), firstUser: await auth.isFirstUser() })
+    c.json({ enabled: await auth.isRegistrationEnabled() })
   );
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
@@ -194,6 +195,13 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   app.get("/auth/me", requireAuth(), (c) => c.json({ user: c.get("identity")!.user }));
+
+  app.put("/auth/me", requireAuth(), validateBody(profileUpdateSchema), async (c) => {
+    const body = c.get("body") as { email: string; password?: string };
+    const identity = c.get("identity")!;
+    const user = await auth.updateProfile(identity.user.id, body.email, body.password);
+    return c.json({ user });
+  });
 
   // ── API tokens ─────────────────────────────────────────────────────────────
   app.get("/tokens", requireAuth(), async (c) => {

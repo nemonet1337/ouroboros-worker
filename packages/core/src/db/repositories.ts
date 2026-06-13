@@ -73,6 +73,21 @@ export class UserRepository {
     );
   }
 
+  async updateProfile(id: string, email: string, passwordHash?: string): Promise<void> {
+    const now = Date.now();
+    if (passwordHash) {
+      await this.db.exec(
+        `UPDATE users SET email = ?, password_hash = ?, updated_at = ? WHERE id = ?`,
+        [email, passwordHash, now, id]
+      );
+    } else {
+      await this.db.exec(
+        `UPDATE users SET email = ?, updated_at = ? WHERE id = ?`,
+        [email, now, id]
+      );
+    }
+  }
+
 }
 
 export class SessionRepository {

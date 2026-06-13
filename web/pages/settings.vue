@@ -13,7 +13,7 @@ const navSections = [
   { id: 'danger',       label: 'Danger zone',       icon: 'i-heroicons-exclamation-triangle' },
 ]
 
-const activeSection = ref('weights')
+const activeSection = ref('general')
 
 const weights = reactive({
   security: 25,
@@ -100,6 +100,38 @@ const totalWeight = computed(() => Object.values(weights).reduce((a, b) => a + b
 
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const { api } = useApi()
+const { user } = useAuth()
+
+const email = ref('')
+const password = ref('')
+const profileSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const profileError = ref('')
+
+watch(() => user.value?.email, (newVal) => {
+  if (newVal) email.value = newVal
+}, { immediate: true })
+
+async function saveProfile() {
+  profileSaveStatus.value = 'saving'
+  profileError.value = ''
+  try {
+    const res = await api<{ user: any }>('/auth/me', {
+      method: 'PUT',
+      body: {
+        email: email.value,
+        password: password.value || undefined
+      }
+    })
+    user.value = res.user
+    password.value = ''
+    profileSaveStatus.value = 'saved'
+  } catch (err: any) {
+    profileError.value = err?.data?.error?.message || 'プロファイルの更新に失敗しました'
+    profileSaveStatus.value = 'error'
+  } finally {
+    setTimeout(() => { profileSaveStatus.value = 'idle' }, 2000)
+  }
+}
 
 async function saveSection(section: string, payload: Record<string, unknown>) {
   saveStatus.value = 'saving'
@@ -188,6 +220,35 @@ function scrollTo(id: string) {
 
     <!-- Right: Settings sections -->
     <main class="flex-1 space-y-6 overflow-y-auto pb-6">
+
+      <!-- General Settings -->
+      <section :id="'section-general'">
+        <UCard :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-5' } }">
+          <template #header>
+            <div class="flex items-center gap-2 text-sm font-medium text-gray-200">
+              <UIcon name="i-heroicons-cog-6-tooth" class="w-4 h-4 text-indigo-400" />
+              General Settings
+            </div>
+          </template>
+          <div class="space-y-4">
+            <UFormGroup label="Login ID (Email)">
+              <UInput v-model="email" type="email" required placeholder="admin@example.com" />
+            </UFormGroup>
+            <UFormGroup label="New Password" help="変更する場合のみ入力（8文字以上）">
+              <UInput v-model="password" type="password" placeholder="••••••••" />
+            </UFormGroup>
+            <UAlert v-if="profileError" color="red" variant="soft" :title="profileError" />
+          </div>
+          <div class="flex justify-end mt-4 pt-4 border-t border-white/10">
+            <button
+              class="px-3 py-1.5 text-xs text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
+              @click="saveProfile"
+            >
+              {{ profileSaveStatus === 'saving' ? '…' : profileSaveStatus === 'saved' ? '✓ Saved' : '💾 Save' }}
+            </button>
+          </div>
+        </UCard>
+      </section>
 
       <!-- Score Weights -->
       <section :id="'section-weights'">

@@ -54,14 +54,9 @@ export class AuthService {
 
   async isRegistrationEnabled(): Promise<boolean> {
     const value = await this.settings.get(REGISTRATION_KEY);
-    // Default closed once an admin exists; open while the system is uninitialised.
-    if (value === undefined) return (await this.users.count()) === 0;
+    // Default closed by default.
+    if (value === undefined) return false;
     return value === "true";
-  }
-
-  /** True while no user exists yet — the next /register call bootstraps the admin. */
-  async isFirstUser(): Promise<boolean> {
-    return (await this.users.count()) === 0;
   }
 
   async setRegistrationEnabled(enabled: boolean): Promise<void> {
@@ -73,9 +68,7 @@ export class AuthService {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new AuthError("invalid email");
     if (password.length < 8) throw new AuthError("password must be at least 8 characters");
 
-    const userCount = await this.users.count();
-    const isFirstUser = userCount === 0;
-    if (!isFirstUser && !(await this.isRegistrationEnabled())) {
+    if (!(await this.isRegistrationEnabled())) {
       throw new AuthError("registration is disabled", 403);
     }
     if (await this.users.findByEmail(normalized)) throw new AuthError("email already registered", 409);
@@ -85,13 +78,11 @@ export class AuthService {
       id: newId(),
       email: normalized,
       password_hash: await hashPassword(password),
-      role: isFirstUser ? "admin" : "member",
+      role: "member",
       created_at: now,
       updated_at: now,
     };
     await this.users.insert(row);
-    // First user bootstraps an admin and locks registration closed by default.
-    if (isFirstUser) await this.setRegistrationEnabled(false);
     return toAuthedUser(row);
   }
 
@@ -170,6 +161,28 @@ export class AuthService {
 
   async revokeToken(userId: string, tokenId: string): Promise<void> {
     await this.tokens.revoke(tokenId, userId, Date.now());
+  }
+
+  async updateProfile(userId: string, email: string, password?: string): Promise<AuthedUser> {
+    const normalized = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) throw new AuthError("invalid email");
+
+    const existing = await this.users.findByEmail(normalized);
+    if (existing && existing.id !== userId) {
+      throw new AuthError("email already registered", 409);
+    }
+
+    let passwordHash: string | undefined;
+    if (password) {
+      if (password.length < 8) throw new AuthError("password must be at least 8 characters");
+      passwordHash = await hashPassword(password);
+    }
+
+    await this.users.updateProfile(userId, normalized, passwordHash);
+
+    const updated = await this.users.findById(userId);
+    if (!updated) throw new AuthError("user not found", 404);
+    return toAuthedUser(updated);
   }
 
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   compile,
   credentialsSchema,
+  profileUpdateSchema,
   tokenCreateSchema,
   inspectSchema,
   webhookCreateSchema,
@@ -14,6 +15,14 @@ describe("request validation schemas", () => {
     expect(v({ email: "not-an-email", password: "supersecret" })).toBe(false);
     expect(v({ email: "a@b.io", password: "short" })).toBe(false);
     expect(v({ email: "a@b.io" })).toBe(false);
+  });
+
+  it("profile update requires valid email and optional 8+ char password", () => {
+    const v = compile(profileUpdateSchema);
+    expect(v({ email: "a@b.io" })).toBe(true);
+    expect(v({ email: "a@b.io", password: "supersecret" })).toBe(true);
+    expect(v({ email: "not-an-email" })).toBe(false);
+    expect(v({ email: "a@b.io", password: "short" })).toBe(false);
   });
 
   it("token scopes are restricted to the known set", () => {

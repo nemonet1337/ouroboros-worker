@@ -60,6 +60,16 @@ export const credentialsSchema = {
   },
 } as const;
 
+export const profileUpdateSchema = {
+  type: "object",
+  required: ["email"],
+  additionalProperties: false,
+  properties: {
+    email: { type: "string", format: "email", maxLength: 320 },
+    password: { type: "string", minLength: 8, maxLength: 1024 },
+  },
+} as const;
+
 export const tokenCreateSchema = {
   type: "object",
   required: ["name"],
