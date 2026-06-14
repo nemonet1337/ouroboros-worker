@@ -19,6 +19,20 @@ const gitServiceLabel = computed(() =>
   config.gitService.value === 'github' ? 'GitHub' : 'GitLab'
 )
 
+const modelSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+async function saveModel() {
+  modelSaveStatus.value = 'saving'
+  try {
+    await config.saveConfig()
+    modelSaveStatus.value = 'saved'
+  } catch {
+    modelSaveStatus.value = 'error'
+  } finally {
+    setTimeout(() => { modelSaveStatus.value = 'idle' }, 2000)
+  }
+}
+
 // PR Drawer
 const selectedPr = ref<any>(null)
 
@@ -112,6 +126,15 @@ function onPrSelect(pr: any) {
             </div>
           </template>
           <FormModelSelector />
+          <div class="flex justify-end mt-4 pt-3 border-t border-white/10">
+            <button
+              class="px-3 py-1.5 text-xs text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
+              :disabled="modelSaveStatus === 'saving'"
+              @click="saveModel"
+            >
+              {{ modelSaveStatus === 'saving' ? '…' : modelSaveStatus === 'saved' ? '✓ Saved' : '💾 Save' }}
+            </button>
+          </div>
         </UCard>
 
         <!-- Setup Status -->

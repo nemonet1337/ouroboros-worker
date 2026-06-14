@@ -9,7 +9,6 @@ const navSections = [
   { id: 'thresholds',   label: 'Grade thresholds',  icon: 'i-heroicons-academic-cap' },
   { id: 'schedule',     label: 'Scan schedule',     icon: 'i-heroicons-clock' },
   { id: 'notifications',label: 'Notifications',     icon: 'i-heroicons-bell' },
-  { id: 'apikeys',      label: 'API keys',          icon: 'i-heroicons-key' },
   { id: 'danger',       label: 'Danger zone',       icon: 'i-heroicons-exclamation-triangle' },
 ]
 
@@ -31,6 +30,7 @@ const gradeThresholds = reactive({
 const scheduleMode = ref<'cron' | 'interval' | 'manual'>('cron')
 const cronExpr = ref('0 3 * * *')
 const cronTimezone = ref('Asia/Tokyo')
+const intervalMinutes = ref(60)
 
 const notifications = reactive({
   browserPush: true,
@@ -39,62 +39,6 @@ const notifications = reactive({
   sound: false,
 })
 
-const apiKeys = ref<any[]>([])
-
-async function fetchTokens() {
-  try {
-    const data = await api<{ tokens: any[] }>('/tokens')
-    apiKeys.value = data.tokens.map(t => ({
-      id: t.id,
-      name: t.name,
-      prefix: t.prefix,
-      created: new Date(t.created_at).toLocaleDateString('ja-JP'),
-      lastUsed: t.last_used_at ? new Date(t.last_used_at).toLocaleDateString('ja-JP') : 'Never',
-    }))
-  } catch (err) {
-    console.error('Failed to fetch tokens:', err)
-  }
-}
-
-async function generateToken() {
-  const name = prompt('APIキーの名前を入力してください:')
-  if (!name) return
-  try {
-    const res = await api<any>('/tokens', {
-      method: 'POST',
-      body: { name, scopes: ['read'] }
-    })
-    alert(`生成された API キー (このシークレットは二度と表示されません):\n\n${res.secret}`)
-    await fetchTokens()
-  } catch (err) {
-    alert('API キーの生成に失敗しました')
-  }
-}
-
-async function revokeToken(id: string) {
-  if (!confirm('この API キーを無効化しますか？')) return
-  try {
-    await api(`/tokens/${id}`, { method: 'DELETE' })
-    await fetchTokens()
-  } catch (err) {
-    alert('API キーの削除に失敗しました')
-  }
-}
-
-async function rotateToken(key: any) {
-  if (!confirm(`API キー「${key.name}」をローテーション（新しいキーを生成し、現在のキーを削除）しますか？`)) return
-  try {
-    const res = await api<any>('/tokens', {
-      method: 'POST',
-      body: { name: key.name, scopes: ['read'] }
-    })
-    alert(`新しく生成された API キー:\n\n${res.secret}`)
-    await api(`/tokens/${key.id}`, { method: 'DELETE' })
-    await fetchTokens()
-  } catch (err) {
-    alert('API キーのローテーションに失敗しました')
-  }
-}
 
 const totalWeight = computed(() => Object.values(weights).reduce((a, b) => a + b, 0))
 
@@ -154,7 +98,12 @@ async function saveThresholds() {
 }
 
 async function saveSchedule() {
-  await saveSection('schedule', { mode: scheduleMode.value, cronExpr: cronExpr.value, cronTimezone: cronTimezone.value })
+  await saveSection('schedule', {
+    mode: scheduleMode.value,
+    cronExpr: cronExpr.value,
+    cronTimezone: cronTimezone.value,
+    intervalMinutes: intervalMinutes.value,
+  })
 }
 
 onMounted(async () => {
@@ -166,10 +115,10 @@ onMounted(async () => {
       if (stored.schedule.mode) scheduleMode.value = stored.schedule.mode
       if (stored.schedule.cronExpr) cronExpr.value = stored.schedule.cronExpr
       if (stored.schedule.cronTimezone) cronTimezone.value = stored.schedule.cronTimezone
+      if (stored.schedule.intervalMinutes) intervalMinutes.value = stored.schedule.intervalMinutes
     }
     if (stored.notifications) Object.assign(notifications, stored.notifications)
   }
-  await fetchTokens()
 })
 
 const gradeBars = [
@@ -392,19 +341,7 @@ function scrollTo(id: string) {
                 />
               </div>
             </div>
-            <div class="flex items-center gap-2 text-xs text-gray-500">
-              <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-              Next run: 2026-05-24 03:00 JST
-            </div>
-            <!-- Day pills -->
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']"
-                :key="d"
-                class="px-2.5 py-1 rounded-full text-xs bg-indigo-500/15 border border-indigo-500/30 text-indigo-300"
-              >{{ d }}</span>
-              <span class="px-2.5 py-1 rounded-full text-xs border border-white/10 text-gray-400">at 03:00 ▾</span>
-            </div>
+            <p class="text-xs text-gray-500">cron 式と timezone を設定して保存してください。</p>
           </div>
 
           <div v-else-if="scheduleMode === 'manual'" class="text-sm text-gray-400">
@@ -412,7 +349,12 @@ function scrollTo(id: string) {
           </div>
           <div v-else class="space-y-2">
             <label class="text-xs text-gray-400">Interval (minutes)</label>
-            <input type="number" value="60" class="w-24 bg-gray-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none" />
+            <input
+              v-model.number="intervalMinutes"
+              type="number" min="1" max="10080"
+              class="w-24 bg-gray-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50"
+            />
+            <p class="text-xs text-gray-500">{{ intervalMinutes }} 分ごとにスキャンを実行します。</p>
           </div>
 
           <div class="flex justify-end mt-4">
@@ -458,45 +400,6 @@ function scrollTo(id: string) {
               </button>
             </div>
           </div>
-        </UCard>
-      </section>
-
-      <!-- API Keys -->
-      <section :id="'section-apikeys'">
-        <UCard :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-5' } }">
-          <template #header>
-            <div class="flex items-center gap-2 text-sm font-medium text-gray-200">
-              <UIcon name="i-heroicons-key" class="w-4 h-4 text-yellow-400" />
-              API Keys
-            </div>
-          </template>
-          <div class="space-y-2">
-            <div class="grid grid-cols-5 gap-2 px-2 pb-2 text-[10px] text-gray-500 font-medium uppercase tracking-wider border-b border-white/10">
-              <span>Name</span>
-              <span>Prefix</span>
-              <span>Created</span>
-              <span>Last used</span>
-              <span>Actions</span>
-            </div>
-            <div
-              v-for="key in apiKeys"
-              :key="key.id"
-              class="grid grid-cols-5 gap-2 px-2 py-2.5 rounded-lg hover:bg-white/5 transition-colors items-center"
-            >
-              <span class="text-xs text-gray-200">{{ key.name }}</span>
-              <span class="text-xs text-gray-400 font-mono">{{ key.prefix }}●●●●</span>
-              <span class="text-xs text-gray-500">{{ key.created }}</span>
-              <span class="text-xs text-gray-500">{{ key.lastUsed }}</span>
-              <div class="flex gap-1">
-                <button class="px-2 py-0.5 text-xs border border-white/10 rounded text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors" @click="rotateToken(key)">↻ Rotate</button>
-                <button class="px-2 py-0.5 text-xs border border-red-500/30 rounded text-red-400 hover:bg-red-500/10 transition-colors" @click="revokeToken(key.id)">Revoke</button>
-              </div>
-            </div>
-          </div>
-          <button class="flex items-center gap-1.5 mt-3 text-xs text-indigo-400 hover:text-indigo-300 transition-colors" @click="generateToken">
-            <UIcon name="i-heroicons-plus" class="w-3.5 h-3.5" />
-            Generate key
-          </button>
         </UCard>
       </section>
 

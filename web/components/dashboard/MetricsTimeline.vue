@@ -10,24 +10,45 @@ ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip,
 
 defineProps<{ range?: string }>()
 
-// Stub data — will be replaced with real API data
-const data = {
-  '7d':  { labels: ['5/17', '5/18', '5/19', '5/20', '5/21', '5/22', '5/23'], fixes: [30, 40, 38, 55, 52, 65, 72], prs: [20, 25, 30, 28, 42, 40, 50], risk: [70, 68, 62, 58, 55, 52, 48] },
-  '30d': { labels: ['4/24', '4/27', '4/30', '5/3', '5/6', '5/9', '5/12', '5/15', '5/18', '5/21'], fixes: [10, 18, 25, 30, 38, 45, 55, 60, 68, 72], prs: [5, 12, 18, 20, 28, 32, 40, 44, 48, 50], risk: [85, 80, 76, 72, 68, 64, 60, 56, 52, 48] },
-  '90d': { labels: ['Mar', 'Apr', 'May'], fixes: [15, 45, 72], prs: [8, 30, 50], risk: [90, 68, 48] },
+const { api } = useApi()
+
+interface HistoryEntry {
+  id: string
+  date: string
+  overall: number
+  security: number
+  performance: number
 }
 
-const selectedRange = ref('7d')
-watch(() => selectedRange.value, () => {})
+const allHistory = ref<HistoryEntry[]>([])
+const loading = ref(true)
 
-const currentData = computed(() => data[selectedRange.value as keyof typeof data] ?? data['7d'])
+onMounted(async () => {
+  try {
+    const res = await api<{ history: HistoryEntry[] }>('/metrics')
+    allHistory.value = res.history ?? []
+  } catch {
+    allHistory.value = []
+  } finally {
+    loading.value = false
+  }
+})
+
+const selectedRange = ref('30d')
+
+const filteredHistory = computed(() => {
+  const now = Date.now()
+  const days = selectedRange.value === '7d' ? 7 : selectedRange.value === '30d' ? 30 : 90
+  const cutoff = now - days * 24 * 60 * 60 * 1000
+  return allHistory.value.filter(h => new Date(h.date).getTime() >= cutoff)
+})
 
 const chartData = computed(() => ({
-  labels: currentData.value.labels,
+  labels: filteredHistory.value.map(h => h.date.slice(5)),
   datasets: [
     {
-      label: 'Fixes',
-      data: currentData.value.fixes,
+      label: 'Overall Score',
+      data: filteredHistory.value.map(h => h.overall),
       borderColor: '#818cf8',
       backgroundColor: 'rgba(129,140,248,0.08)',
       tension: 0.35,
@@ -36,18 +57,18 @@ const chartData = computed(() => ({
       pointHoverRadius: 5,
     },
     {
-      label: 'PRs Merged',
-      data: currentData.value.prs,
-      borderColor: '#34d399',
+      label: 'Security',
+      data: filteredHistory.value.map(h => h.security),
+      borderColor: '#f87171',
       backgroundColor: 'transparent',
       tension: 0.35,
       pointRadius: 3,
       borderDash: [4, 3],
     },
     {
-      label: 'Risk Score',
-      data: currentData.value.risk,
-      borderColor: '#fbbf24',
+      label: 'Performance',
+      data: filteredHistory.value.map(h => h.performance),
+      borderColor: '#34d399',
       backgroundColor: 'transparent',
       tension: 0.35,
       pointRadius: 3,
@@ -78,6 +99,7 @@ const chartOptions = {
     },
     y: {
       min: 0,
+      max: 100,
       ticks: { color: '#6b7280', font: { size: 10 } },
       grid: { color: 'rgba(255,255,255,0.06)' },
     },
@@ -99,12 +121,15 @@ const chartOptions = {
           @click="selectedRange = r"
         >{{ r }}</button>
       </div>
-      <button class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors">
-        <UIcon name="i-heroicons-arrow-down-tray" class="w-3.5 h-3.5" />
-        CSV
-      </button>
     </div>
-    <div class="h-44">
+    <div v-if="loading" class="h-44 flex items-center justify-center text-gray-500 text-sm">
+      Loading…
+    </div>
+    <div v-else-if="filteredHistory.length === 0" class="h-44 flex flex-col items-center justify-center text-gray-600 text-sm gap-2">
+      <UIcon name="i-heroicons-chart-bar" class="w-8 h-8 opacity-30" />
+      <span>No inspection data for this period</span>
+    </div>
+    <div v-else class="h-44">
       <Line :data="chartData" :options="chartOptions" />
     </div>
   </div>
