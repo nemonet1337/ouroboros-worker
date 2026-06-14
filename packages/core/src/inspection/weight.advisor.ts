@@ -9,11 +9,17 @@ const MIN_SAMPLES = 3;
 const BLEND_FACTOR = 0.3;
 
 /**
+ * Cloudflare Vectorize requires at least 32 dimensions.
+ * The first 6 values are the normalised category scores; the rest are padding zeros.
+ */
+const VECTOR_DIMS = 32;
+
+/**
  * Learns from past inspection results stored in Vectorize and suggests
  * per-language weight adjustments for future inspections.
  *
- * Storage format: 6-dimensional vector of normalised per-category scores
- * (score / 100), keyed by inspection result ID.
+ * Storage format: 32-dimensional vector (6 normalised scores + 26 zero-padded),
+ * keyed by inspection result ID.
  * Metadata: { language, overall, security, performance, ... (raw 0–100 scores) }
  */
 export class WeightAdvisor {
@@ -26,7 +32,8 @@ export class WeightAdvisor {
   async store(result: InspectionResult): Promise<void> {
     try {
       const { breakdown } = result.scoreCard;
-      const values = CATEGORIES.map((cat) => breakdown[cat].score / 100);
+      const scores = CATEGORIES.map((cat) => breakdown[cat].score / 100);
+      const values = [...scores, ...new Array(VECTOR_DIMS - scores.length).fill(0)];
       const metadata: Record<string, string | number | boolean> = {
         language: result.language ?? "unknown",
         overall: result.scoreCard.overall,
@@ -48,8 +55,8 @@ export class WeightAdvisor {
     defaultWeights: Record<InspectionCategory, number>
   ): Promise<Record<InspectionCategory, number>> {
     try {
-      // Neutral query vector to retrieve a representative sample of past data.
-      const neutralVector = CATEGORIES.map(() => 0.5);
+      // Neutral query vector (32-dim) to retrieve a representative sample of past data.
+      const neutralVector = [...CATEGORIES.map(() => 0.5), ...new Array(VECTOR_DIMS - CATEGORIES.length).fill(0)];
       const matches = await this.vectorize.query(neutralVector, { topK: 20 });
 
       if (matches.length < MIN_SAMPLES) return defaultWeights;

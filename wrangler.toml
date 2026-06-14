@@ -53,11 +53,14 @@ binding = "HEALING_WORKFLOW"
 name = "ouroboros-healing"
 class_name = "HealingWorkflow"
 
-# Vectorize — 過去のインスペクション結果を 6 次元ベクターとして保存し、
-# 次回インスペクション時のスコアリング重み付けに利用する。
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "ouroboros-weight-profiles"
+# Vectorize — 適応的重み付けシステム（オプション機能）
+# 有効化手順:
+#   1. wrangler vectorize create ouroboros-weight-profiles --dimensions=32 --metric=cosine
+#   2. 以下のコメントを外して wrangler deploy
+#
+# [[vectorize]]
+# binding = "VECTORIZE"
+# index_name = "ouroboros-weight-profiles"
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
