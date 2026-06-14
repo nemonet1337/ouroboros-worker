@@ -40,6 +40,7 @@ const SESSION_COOKIE = "ouro_session";
 const API_VERSION = "v1";
 const CONFIG_KEY = "app_config";
 const SETTINGS_KEY = "app_settings";
+const DAILY_INSPECTION_LIMIT = 100;
 
 const DEFAULT_SETTINGS = {
   weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
@@ -71,6 +72,12 @@ export interface ApiDeps {
    * external gateway tokens are rejected and models are discovered from the
    * binding. */
   deployTarget?: DeployTarget;
+  /**
+   * When explicitly set, overrides the DB-persisted registration toggle.
+   * true = open registration; false = closed (first-user bootstrap still allowed).
+   * Unset = fall back to the DB setting managed via the settings API.
+   */
+  registrationEnabled?: boolean;
 }
 
 interface Identity {
@@ -171,11 +178,21 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   // and the next registration bootstraps the admin.
   app.get("/auth/registration", async (c) => {
     const firstUser = (await auth.userCount()) === 0;
-    return c.json({ enabled: await auth.isRegistrationEnabled(), firstUser });
+    const enabled =
+      deps.registrationEnabled !== undefined
+        ? deps.registrationEnabled
+        : await auth.isRegistrationEnabled();
+    return c.json({ enabled, firstUser });
   });
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
+
+    // Env-var override takes precedence over the DB setting (first user always allowed).
+    if (deps.registrationEnabled === false && (await auth.userCount()) > 0) {
+      return c.json({ error: { code: "forbidden", message: "registration is disabled" } }, 403);
+    }
+
     const user = await auth.register(email, password);
     const { sessionId } = await auth.login(email, password);
     setSession(c, sessionId, deps.cookieSecure);
@@ -368,6 +385,24 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   // ── Inspection ─────────────────────────────────────────────────────────────
   app.post("/inspect", requireAuth("inspect"), validateBody(inspectSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+
+    // Per-user rate limit on the inspect endpoint.
+    const { success: rlOk } = await ports.rateLimiter.limit(`inspect:${userId}`);
+    if (!rlOk) {
+      return c.json({ error: { code: "rate_limited", message: "rate limit exceeded" } }, 429);
+    }
+
+    // Daily inspection quota per user.
+    const todayStart = Date.now() - (Date.now() % 86_400_000);
+    const todayCount = await inspections.countSince(userId, todayStart);
+    if (todayCount >= DAILY_INSPECTION_LIMIT) {
+      return c.json(
+        { error: { code: "quota_exceeded", message: `daily inspection limit of ${DAILY_INSPECTION_LIMIT} reached` } },
+        429
+      );
+    }
+
     const req = c.get("body") as InspectionRequest;
     req.id ||= newId();
     req.requestedAt ||= new Date().toISOString();
@@ -384,7 +419,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
     try {
       const result = await engine.inspect(req);
-      const userId = c.get("identity")!.user.id;
       await inspections.insert({
         id: result.id,
         user_id: userId,

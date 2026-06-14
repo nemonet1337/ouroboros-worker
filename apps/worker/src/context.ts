@@ -24,6 +24,7 @@ export interface WorkerContext {
   logger: Logger;
   deployTarget: DeployTarget;
   alertRecipients: string[];
+  registrationEnabled: boolean;
 }
 
 export function buildContext(env: Env): WorkerContext {
@@ -72,5 +73,6 @@ export function buildContext(env: Env): WorkerContext {
     logger,
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    registrationEnabled: env.OURO_REGISTRATION_ENABLED === "true",
   };
 }

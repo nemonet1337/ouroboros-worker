@@ -73,6 +73,8 @@ crons = ["0 2 * * *"]
 
 [vars]
 DEPLOY_TARGET = "cloudflare"
+# "true" で新規登録を開放、"false"（既定）で閉鎖。初回ユーザーは常に登録可能。
+OURO_REGISTRATION_ENABLED = "false"
 # 既定の Workers AI モデル。GUI の設定画面から Workers AI が提供する
 # すべてのモデルに変更可能。
 OURO_WORKERS_AI_MODEL = "minimax/m3"

@@ -11,6 +11,7 @@ import { hashPassword, verifyPassword } from "./password";
 import { generateApiToken, newId, newSessionId, sha256Hex, type Scope } from "./tokens";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+const MAX_SESSIONS_PER_USER = 5;
 const REGISTRATION_KEY = "registration_enabled";
 
 export interface AuthedUser {
@@ -110,7 +111,13 @@ export class AuthService {
       expires_at: now + SESSION_TTL_MS,
       created_at: now,
     });
+    // Prune oldest sessions if user exceeds the per-account session cap.
+    await this.sessions.deleteOldestBeyondLimit(row.id, MAX_SESSIONS_PER_USER);
     return { user: toAuthedUser(row), sessionId };
+  }
+
+  async cleanupExpiredSessions(): Promise<void> {
+    await this.sessions.deleteExpired(Date.now());
   }
 
   async logout(sessionId: string): Promise<void> {

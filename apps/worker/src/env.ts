@@ -19,6 +19,8 @@ export interface Env {
   OURO_ALERT_EMAILS?: string;
   OURO_BASE_BRANCH?: string;
   MAIL_FROM?: string;
+  /** "true" to open registration; anything else (or absent) means closed. Default: false. */
+  OURO_REGISTRATION_ENABLED?: string;
 
   // secrets — the ONLY AI credential is WORKERS_AI_API_TOKEN (a Cloudflare
   // API token scoped to Workers AI). External gateways (Anthropic, OpenAI, …)
