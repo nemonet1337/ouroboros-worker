@@ -3,6 +3,13 @@ main = "apps/worker/src/index.ts"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Workers Observability — console.log/warn/error とリクエストトレースを
+# Cloudflare ダッシュボード（Workers & Pages → ログ）で確認できる。
+# head_sampling_rate = 1 は全リクエストをサンプリング（本番安定後は下げてよい）。
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 # wrangler deploy 前に Nuxt SPA を生成する
 [build]
 command = "bash scripts/resolve-d1.sh && npm run build:web"
