@@ -63,6 +63,12 @@ ${buildAspectGuide()}
 - すべての記述は日本語（コードスニペット除く）
 - 分析完了後は必ず \`submit_inspection\` ツールを呼び出す`;
 
+const DEFAULT_PROJECT_CONTEXT =
+  "汎用コードベース。プロジェクト固有のドメイン知識は不明のため、" +
+  "コードの可読性・保守性・セキュリティ・パフォーマンスを一般的なベストプラクティスに基づいて評価してください。" +
+  "特定のフレームワーク・ライブラリの慣習がある場合はそれを考慮し、" +
+  "将来の拡張・チームでの保守を前提とした観点でレビューしてください。";
+
 export function buildUserPrompt(request: InspectionRequest): string {
   const langGuide = LANGUAGE_GUIDELINES[request.language] ?? "";
   const categories =
@@ -70,9 +76,8 @@ export function buildUserPrompt(request: InspectionRequest): string {
     "security, performance, redundancy, readability, design, correctness";
   const granularity = request.options?.granularity ?? "file";
 
-  const contextSection = request.projectContext
-    ? `\n## プロジェクトコンテキスト\n${request.projectContext}\n`
-    : "";
+  const context = request.projectContext?.trim() || DEFAULT_PROJECT_CONTEXT;
+  const contextSection = `\n## プロジェクトコンテキスト\n${context}\n`;
 
   const granularitySection =
     granularity === "function"
