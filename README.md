@@ -10,8 +10,7 @@ Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull R
 認証・マルチテナントな API トークン・テレメトリログ・メールアラートを備えています。
 
 **Cloudflare Workers 特化** — Workers + D1 + R2 + Queues + Workflows + Workers AI の
-エッジネイティブ構成だけをサポートします。Docker / オンプレミス向けの実装は
-v2.1 で削除されました。
+エッジネイティブ構成だけをサポートします。
 
 > **AI ゲートウェイ:** Ouroboros が接続する LLM は **Cloudflare Workers AI 上の
 > モデルに限定**されます（デフォルト: `minimax/m3`）。利用可能な全モデルは GUI の
@@ -24,23 +23,30 @@ v2.1 で削除されました。
 ## アーキテクチャ
 
 ```
-   ┌──────────────────────────────┐
-   │      packages/core           │  共有ライブラリ
-   │  analyzer · inspection       │
-   │  orchestrator · auth · db    │
-   │  logging · HTTP API (Hono)   │
-   │  ports/  （抽象化レイヤー）   │
-   └───────────────┬──────────────┘
-                   ▼
-   ┌────────────────────────────┐
-   │   apps/worker (Cloudflare)  │
-   │   Workers + Hono            │
-   │   D1 · R2 ログ              │
-   │   MailChannels · Queues     │
-   │   Workers AI (minimax/m3)   │
-   │   Workflows · レート制限    │
-   │   DispatchRunner ──HTTP──▶ 外部 runner（git/CI の重い処理を委譲、任意）
-   └────────────────────────────┘
+src/
+├── adapters/      Cloudflare サービスアダプター（D1, R2, Queues, Workers AI …）
+├── analyzers/     AI 解析エンジン（findings のグルーピング・リスク評価）
+├── auth/          認証・セッション・API トークン管理
+├── config/        設定・言語別ルール（10 言語対応）
+├── db/            D1/SQLite レイヤー（7 テーブル・マイグレーション）
+├── healing/       自己修復オーケストレーター
+├── http/          Hono ベース REST API
+├── inspection/    AI スコアリングエンジン（6 次元・32 観点）
+├── logging/       構造化ロガー（R2 永続化）
+├── notifications/ メールアラート・通知
+├── ports/         アダプターインターフェース（Ports & Adapters パターン）
+├── pr/            PR タイトル・本文生成・重複排除・自動マージ
+├── queues/        Cloudflare Queues ハンドラー
+├── schemas/       JSON スキーマ定義
+├── utils/         暗号化・エスカレーター・修正キャッシュ
+├── vcs/           GitHub 連携（fetch ベース）
+├── webhook/       Webhook ディスパッチ（Slack, Discord, GitHub, Generic）
+├── workflows/     Cloudflare Workflows（永続的な自己修復ライフサイクル）
+├── types.ts       全型定義
+├── context.ts     依存性注入
+├── env.ts         Cloudflare バインディング型
+└── index.ts       Worker エントリーポイント
+web/               Nuxt 3 GUI（静的 SPA としてビルドされ ASSETS で配信）
 ```
 
 | ポート          | 実装（Cloudflare Worker）         |
@@ -60,17 +66,6 @@ v2.1 で削除されました。
 
 ---
 
-## ディレクトリ構成
-
-```
-packages/core/        共有ロジック + ports + db + auth + HTTP API
-apps/worker/          Cloudflare Worker（D1/R2/Queues/Workflows/Workers AI）
-web/                  Nuxt 3 GUI（静的 SPA としてビルドされ、ASSETS で配信）
-wrangler.toml         Cloudflare デプロイ
-```
-
----
-
 ## クイックスタート — Cloudflare
 
 最短経路は README 冒頭の **Deploy to Cloudflare** ボタンです（リポジトリを Fork して
@@ -83,7 +78,7 @@ npm run build:web                                   # GUI → web/.output/public
 wrangler d1 create ouroboros                         # 出力された id を wrangler.toml に貼り付け
 wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
-wrangler d1 migrations apply ouroboros               # スキーマ: packages/core/src/db/migrations
+wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migrations/
 
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
 wrangler secret put GITHUB_TOKEN
@@ -111,9 +106,6 @@ wrangler deploy                                      # または: wrangler dev
 - AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。`CLOUDFLARE_ACCOUNT_ID` と併用
   すると Workers AI REST API 経由で推論し、未設定なら AI バインディングを直接使用します。
 
-> **Deploy ボタンの注意:** D1 / R2 / Queues / Workflows のリソースは初回に作成が必要です
-> （上記 `wrangler` コマンド、または Cloudflare ダッシュボードから）。
-
 ---
 
 ## 主な機能
@@ -137,7 +129,7 @@ wrangler deploy                                      # または: wrangler dev
 ## API（抜粋）
 
 ベースパス: **`/api/v1`**（`/api` は後方互換エイリアスとして維持）。
-詳細リファレンス: **[docs/api.ja.md](./docs/api.ja.md)** · 機械可読: `GET /api/v1/openapi.json`。
+機械可読: `GET /api/v1/openapi.json`。
 
 | メソッド | パス                          | 認証              |
 | ------- | ----------------------------- | ---------------- |
@@ -162,8 +154,8 @@ wrangler deploy                                      # または: wrangler dev
 ## 開発・テスト
 
 ```bash
-npm run typecheck                      # 全ワークスペース
-npm run test                           # core ユニットテスト（vitest）
+npm run typecheck                      # TypeScript 型チェック
+npm run test                           # vitest ユニットテスト（src/__tests__/）
 npm run dev --workspace web            # Nuxt 開発サーバー
 npm run worker:dev                     # wrangler dev
 ```
