@@ -1,4 +1,24 @@
-import { InspectionRequest, Language } from "../types/inspection.types";
+import { InspectionRequest, Language, InspectionCategory } from "../types/inspection.types";
+import { ASPECTS_BY_CATEGORY, ASPECT_DESCRIPTIONS } from "./aspects";
+
+const CATEGORY_LABELS: Record<InspectionCategory, string> = {
+  security: "security（セキュリティ）",
+  performance: "performance（パフォーマンス）",
+  redundancy: "redundancy（冗長性）",
+  readability: "readability（可読性）",
+  design: "design（設計）",
+  correctness: "correctness（正確性）",
+};
+
+/** Build the "32観点" section of the system prompt from the aspect registry. */
+function buildAspectGuide(): string {
+  return (Object.entries(ASPECTS_BY_CATEGORY) as [InspectionCategory, (keyof typeof ASPECT_DESCRIPTIONS)[]][])
+    .map(([cat, aspects]) => {
+      const lines = aspects.map((a) => `   - \`${a}\`: ${ASPECT_DESCRIPTIONS[a]}`).join("\n");
+      return `### ${CATEGORY_LABELS[cat]}\n${lines}`;
+    })
+    .join("\n");
+}
 
 const LANGUAGE_GUIDELINES: Record<Language, string> = {
   typescript:
@@ -20,19 +40,24 @@ const LANGUAGE_GUIDELINES: Record<Language, string> = {
 export const SYSTEM_PROMPT = `あなたは世界最高峰のコードレビューエンジニアです。
 静的解析ツールでは不可能な「コードの本質的な意図・設計の妥当性・セキュリティ上の弱点・パフォーマンスのボトルネック」を深く分析します。
 
-## 評価する6次元
+## 評価する32観点（6カテゴリ × 細分化）
 
-1. **security（セキュリティ）**: インジェクション・認証/認可の不備・機密情報の不適切な扱い・危険なAPI使用・入力検証の欠如
-2. **performance（パフォーマンス）**: 計算量(Big O)・不要なオブジェクト生成・非同期処理の非効率パターン・I/O最適化余地
-3. **redundancy（冗長性）**: コードの重複・デッドコード・過剰実装（オーバーエンジニアリング）・不必要な抽象化
-4. **readability（可読性）**: 認知複雑度・命名の明確さ・コードの読みやすさ・対象言語の最新イディオム活用度
-5. **design（設計）**: 設計パターンの妥当性・単一責任原則・結合度と凝集度
-6. **correctness（正確性）**: ビジネスロジックと実装意図の整合性・エッジケース処理・命名と処理の乖離
+各カテゴリは複数の細かい観点に分解されています。\`scoreBreakdown\` には
+**以下の32観点すべて**について 0〜100 のスコアと一文サマリーを必ず含めてください
+（キー名は \`code\` の英字識別子をそのまま使用）。
+
+${buildAspectGuide()}
+
+## スコアリングの考え方
+- 各観点は独立に 0〜100 で採点する（問題が無ければ高得点）
+- 該当する事象がコード上に存在しない観点は、減点せず高めのスコアを付ける
+- カテゴリ総合や全体スコアはシステム側が重み付けで自動集計するため、観点スコアのみ提出する
 
 ## 厳守事項
 - Linterや静的解析で検知できる問題（インデント・未使用変数等）は指摘しない
 - コンテキストを考慮した根拠を必ず示す
 - before/afterコード例は実際に動作する具体的なコードで示す
+- findings の category は6カテゴリ（security/performance/redundancy/readability/design/correctness）のいずれか
 - scorePenalty: critical→20〜30、high→12〜20、medium→6〜12、low→2〜6、info→0〜2
 - high/criticalには必ず改善案(recommendations)を提示する
 - すべての記述は日本語（コードスニペット除く）

@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WebhookManager } from "../webhook/webhook.manager";
 import { WebhookEndpoint } from "../webhook/types";
-import { InspectionResult } from "../types/inspection.types";
+import { AspectBreakdown, InspectionResult } from "../types/inspection.types";
+import { ASPECTS, ASPECT_CATEGORY } from "../inspection/aspects";
+import { DEFAULT_ASPECT_WEIGHTS } from "../config/inspection.config";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 function makeResult(overall = 75): InspectionResult {
+  const aspectBreakdown = Object.fromEntries(
+    ASPECTS.map((a) => [
+      a,
+      { score: overall, weight: DEFAULT_ASPECT_WEIGHTS[a], summary: "ok", category: ASPECT_CATEGORY[a] },
+    ])
+  ) as AspectBreakdown;
   return {
     id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     requestId: "req-00000000-0000-0000-0000-000000000001",
@@ -23,6 +31,7 @@ function makeResult(overall = 75): InspectionResult {
         design:      { score: overall, weight: 0.15, summary: "ok" },
         correctness: { score: overall, weight: 0.10, summary: "ok" },
       },
+      aspectBreakdown,
     },
     findings: [{ id: "f1", category: "performance", severity: "low", title: "minor issue",
       description: "d", location: { file: "a.ts", startLine: 1, endLine: 1, snippet: "" },

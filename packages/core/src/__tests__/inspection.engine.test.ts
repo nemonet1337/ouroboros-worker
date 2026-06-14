@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InspectionEngine } from "../inspection/inspection.engine";
-import { InspectionRequest } from "../types/inspection.types";
+import { InspectionCategory, InspectionRequest } from "../types/inspection.types";
+import { ASPECTS_BY_CATEGORY } from "../inspection/aspects";
 import type { AiProvider } from "../ports/ai";
 
 // ─── Mock AiProvider ───────────────────────────────────────────────────────────
@@ -11,20 +12,40 @@ function mockProvider(): AiProvider {
   return { name: "mock", complete: mockComplete };
 }
 
+/**
+ * Expand a per-category score map into the 32-aspect scoreBreakdown the engine
+ * now expects: every child aspect inherits its parent category's score.
+ */
+function aspectScores(
+  catScores: Partial<Record<InspectionCategory, number>>,
+  base = 80
+): Record<string, { score: number; summary: string }> {
+  const out: Record<string, { score: number; summary: string }> = {};
+  for (const [cat, aspects] of Object.entries(ASPECTS_BY_CATEGORY) as [
+    InspectionCategory,
+    string[]
+  ][]) {
+    for (const a of aspects) {
+      out[a] = { score: catScores[cat] ?? base, summary: `${cat}: ${catScores[cat] ?? base}` };
+    }
+  }
+  return out;
+}
+
 function defaultOutput(override: Partial<Record<string, unknown>> = {}) {
   return {
     summary: "テストサマリー: 軽微な問題が1件検出されました。",
     files: [
       {
         path: "src/index.ts",
-        scoreBreakdown: {
-          security:    { score: 85, summary: "重大な脆弱性なし" },
-          performance: { score: 75, summary: "軽微なループ問題" },
-          redundancy:  { score: 90, summary: "重複は最小限" },
-          readability: { score: 85, summary: "可読性は高い" },
-          design:      { score: 80, summary: "設計は概ね良好" },
-          correctness: { score: 95, summary: "ロジックは正確" },
-        },
+        scoreBreakdown: aspectScores({
+          security: 85,
+          performance: 75,
+          redundancy: 90,
+          readability: 85,
+          design: 80,
+          correctness: 95,
+        }),
         findings: [
           {
             id: "perf-loop-001",
@@ -172,14 +193,14 @@ describe("InspectionEngine.inspect", () => {
         name: "UserService.getUsersByRole",
         startLine: 5,
         endLine: 20,
-        scoreBreakdown: {
-          security:    { score: 40, summary: "入力検証なし" },
-          performance: { score: 30, summary: "O(n^2) ループ" },
-          redundancy:  { score: 70, summary: "軽微な重複" },
-          readability: { score: 75, summary: "概ね読みやすい" },
-          design:      { score: 80, summary: "責務は明確" },
-          correctness: { score: 85, summary: "ロジックは正確" },
-        },
+        scoreBreakdown: aspectScores({
+          security: 40,
+          performance: 30,
+          redundancy: 70,
+          readability: 75,
+          design: 80,
+          correctness: 85,
+        }),
         findings: [],
         recommendations: [],
       },
@@ -206,14 +227,14 @@ describe("InspectionEngine.inspect", () => {
         name: "lowScore",
         startLine: 1,
         endLine: 10,
-        scoreBreakdown: {
-          security:    { score: 20, summary: "SQLi の疑い" },
-          performance: { score: 30, summary: "非効率" },
-          redundancy:  { score: 50, summary: "重複あり" },
-          readability: { score: 55, summary: "読みにくい" },
-          design:      { score: 60, summary: "結合度高" },
-          correctness: { score: 70, summary: "概ね正確" },
-        },
+        scoreBreakdown: aspectScores({
+          security: 20,
+          performance: 30,
+          redundancy: 50,
+          readability: 55,
+          design: 60,
+          correctness: 70,
+        }),
         findings: [],
         recommendations: [],
       },
@@ -221,14 +242,7 @@ describe("InspectionEngine.inspect", () => {
         name: "highScore",
         startLine: 11,
         endLine: 20,
-        scoreBreakdown: {
-          security:    { score: 95, summary: "問題なし" },
-          performance: { score: 95, summary: "問題なし" },
-          redundancy:  { score: 95, summary: "問題なし" },
-          readability: { score: 95, summary: "問題なし" },
-          design:      { score: 95, summary: "問題なし" },
-          correctness: { score: 95, summary: "問題なし" },
-        },
+        scoreBreakdown: aspectScores({}, 95),
         findings: [],
         recommendations: [],
       },
@@ -260,14 +274,7 @@ describe("InspectionEngine.inspect", () => {
         files: [
           {
             path: "src/clean.ts",
-            scoreBreakdown: {
-              security:    { score: 100, summary: "完璧" },
-              performance: { score: 100, summary: "完璧" },
-              redundancy:  { score: 100, summary: "完璧" },
-              readability: { score: 100, summary: "完璧" },
-              design:      { score: 100, summary: "完璧" },
-              correctness: { score: 100, summary: "完璧" },
-            },
+            scoreBreakdown: aspectScores({}, 100),
             findings: [],
             recommendations: [],
           },

@@ -10,6 +10,7 @@ export interface Env {
   HEALING_WORKFLOW: Workflow;
   RATE_LIMITER?: RateLimit;
   ASSETS: Fetcher;
+  VECTORIZE?: VectorizeIndex;
 
   // vars
   DEPLOY_TARGET?: string;

@@ -1,11 +1,14 @@
 import {
+  AspectBreakdown,
   Grade,
+  InspectionAspect,
   InspectionCategory,
   Score,
   ScoreBreakdown,
   ScoreCard,
 } from "../types/inspection.types";
 import { InspectionConfig } from "../config/inspection.config";
+import { ASPECTS, ASPECTS_BY_CATEGORY, ASPECT_CATEGORY } from "./aspects";
 
 export const CATEGORIES: InspectionCategory[] = [
   "security",
@@ -28,62 +31,110 @@ export function deriveGrade(
   return "F";
 }
 
-/** Build a ScoreCard from the AI's per-dimension breakdown */
+/**
+ * Build a ScoreCard from the AI's per-aspect breakdown.
+ *
+ * - overall      = Σ(aspectScore × aspectWeight)
+ * - category     = Σ_child(aspectScore × aspectWeight) / Σ_child(aspectWeight)
+ *                  (the weight-normalised average of the category's child aspects)
+ * - categoryWt   = Σ_child(aspectWeight)
+ *
+ * The resulting `breakdown` (6 categories) stays consistent with `overall`,
+ * since Σ_cat(categoryScore × categoryWeight) == Σ_aspect(aspectScore × aspectWeight).
+ */
 export function calculateScoreCard(
-  aiBreakdown: Record<InspectionCategory, { score: number; summary: string }>,
-  weights: Record<InspectionCategory, number>,
+  aiAspects: Record<InspectionAspect, { score: number; summary: string }>,
+  aspectWeights: Record<InspectionAspect, number>,
   thresholds: InspectionConfig["scoring"]["gradeThresholds"]
 ): ScoreCard {
-  const breakdown = {} as ScoreBreakdown;
+  const aspectBreakdown = {} as AspectBreakdown;
   let overall = 0;
 
-  for (const cat of CATEGORIES) {
-    const score = clamp(aiBreakdown[cat].score);
-    breakdown[cat] = { score, weight: weights[cat], summary: aiBreakdown[cat].summary };
-    overall += score * weights[cat];
+  for (const aspect of ASPECTS) {
+    const score = clamp(aiAspects[aspect]?.score ?? 0);
+    const weight = aspectWeights[aspect] ?? 0;
+    aspectBreakdown[aspect] = {
+      score,
+      weight,
+      summary: aiAspects[aspect]?.summary ?? "",
+      category: ASPECT_CATEGORY[aspect],
+    };
+    overall += score * weight;
   }
 
+  const breakdown = rollUpCategories(aspectBreakdown, aspectWeights);
   const roundedOverall = Math.round(overall);
   return {
     overall: roundedOverall,
     grade: deriveGrade(roundedOverall, thresholds),
     breakdown,
+    aspectBreakdown,
   };
+}
+
+/** Roll the 32-aspect breakdown up into the 6 parent-category dimensions. */
+function rollUpCategories(
+  aspectBreakdown: AspectBreakdown,
+  aspectWeights: Record<InspectionAspect, number>
+): ScoreBreakdown {
+  const breakdown = {} as ScoreBreakdown;
+
+  for (const cat of CATEGORIES) {
+    const children = ASPECTS_BY_CATEGORY[cat];
+    const catWeight = children.reduce((s, a) => s + (aspectWeights[a] ?? 0), 0);
+    const weightedScore = children.reduce(
+      (s, a) => s + aspectBreakdown[a].score * (aspectWeights[a] ?? 0),
+      0
+    );
+    const score = catWeight > 0 ? weightedScore / catWeight : 0;
+
+    // Surface the worst-scoring child aspect's summary at the category level.
+    const worst = children.reduce((w, a) =>
+      aspectBreakdown[a].score < aspectBreakdown[w].score ? a : w
+    );
+
+    breakdown[cat] = {
+      score: Math.round(score),
+      weight: catWeight,
+      summary: aspectBreakdown[worst].summary,
+    };
+  }
+
+  return breakdown;
 }
 
 /**
  * Average per-file ScoreCards into a single project-level ScoreCard.
- * The summary for each dimension is taken from the worst-scoring file
- * so the most critical issue is surfaced at the top level.
+ * Aspects are averaged across files; the summary for each aspect is taken from
+ * the worst-scoring file so the most critical issue surfaces at the top level.
  */
 export function aggregateScoreCards(
   fileCards: ScoreCard[],
-  weights: Record<InspectionCategory, number>,
+  aspectWeights: Record<InspectionAspect, number>,
   thresholds: InspectionConfig["scoring"]["gradeThresholds"]
 ): ScoreCard {
   if (fileCards.length === 0) {
-    const breakdown = {} as ScoreBreakdown;
-    for (const cat of CATEGORIES) {
-      breakdown[cat] = { score: 100, weight: weights[cat], summary: "対象ファイルなし" };
+    const empty = {} as Record<InspectionAspect, { score: number; summary: string }>;
+    for (const aspect of ASPECTS) {
+      empty[aspect] = { score: 100, summary: "対象ファイルなし" };
     }
-    return { overall: 100, grade: "S", breakdown };
+    return calculateScoreCard(empty, aspectWeights, thresholds);
   }
 
-  const avgBreakdown = {} as Record<InspectionCategory, { score: number; summary: string }>;
-
-  for (const cat of CATEGORIES) {
+  const avgAspects = {} as Record<InspectionAspect, { score: number; summary: string }>;
+  for (const aspect of ASPECTS) {
     const avgScore =
-      fileCards.reduce((sum, c) => sum + c.breakdown[cat].score, 0) / fileCards.length;
+      fileCards.reduce((sum, c) => sum + c.aspectBreakdown[aspect].score, 0) / fileCards.length;
     const worstCard = fileCards.reduce((worst, c) =>
-      c.breakdown[cat].score < worst.breakdown[cat].score ? c : worst
+      c.aspectBreakdown[aspect].score < worst.aspectBreakdown[aspect].score ? c : worst
     );
-    avgBreakdown[cat] = {
+    avgAspects[aspect] = {
       score: Math.round(avgScore),
-      summary: worstCard.breakdown[cat].summary,
+      summary: worstCard.aspectBreakdown[aspect].summary,
     };
   }
 
-  return calculateScoreCard(avgBreakdown, weights, thresholds);
+  return calculateScoreCard(avgAspects, aspectWeights, thresholds);
 }
 
 function clamp(v: number): Score {

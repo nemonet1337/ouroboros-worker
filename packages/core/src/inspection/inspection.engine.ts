@@ -3,6 +3,7 @@ import type { AiProvider } from "../ports/ai";
 import {
   FileResult,
   FunctionResult,
+  InspectionAspect,
   InspectionCategory,
   InspectionFinding,
   InspectionRequest,
@@ -12,11 +13,14 @@ import {
 import {
   InspectionConfig,
   defaultInspectionConfig,
+  deriveCategoryWeights,
 } from "../config/inspection.config";
 import { computeContentHash, preprocessFiles } from "./preprocessor";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.builder";
 import { aggregateScoreCards, calculateScoreCard } from "./score.calculator";
 import { selectRefactorCandidates } from "./refactor.selector";
+import type { WeightAdvisor } from "./weight.advisor";
+import { ASPECTS } from "./aspects";
 
 // ─── Internal AI response types ──────────────────────────────────────────────
 
@@ -47,14 +51,14 @@ interface AIFunctionAnalysis {
   name: string;
   startLine: number;
   endLine: number;
-  scoreBreakdown: Record<InspectionCategory, { score: number; summary: string }>;
+  scoreBreakdown: Record<InspectionAspect, { score: number; summary: string }>;
   findings: AIFinding[];
   recommendations: AIRecommendation[];
 }
 
 interface AIFileAnalysis {
   path: string;
-  scoreBreakdown: Record<InspectionCategory, { score: number; summary: string }>;
+  scoreBreakdown: Record<InspectionAspect, { score: number; summary: string }>;
   findings: AIFinding[];
   recommendations: AIRecommendation[];
   /** Present when function-level granularity was requested */
@@ -77,6 +81,8 @@ const CATEGORY_NAMES = [
   "correctness",
 ];
 
+const ASPECT_NAMES: string[] = ASPECTS;
+
 const scoreDimSchema = {
   type: "object",
   required: ["score", "summary"],
@@ -88,8 +94,8 @@ const scoreDimSchema = {
 
 const scoreBreakdownSchema = {
   type: "object",
-  required: CATEGORY_NAMES,
-  properties: Object.fromEntries(CATEGORY_NAMES.map((c) => [c, scoreDimSchema])),
+  required: ASPECT_NAMES,
+  properties: Object.fromEntries(ASPECT_NAMES.map((a) => [a, scoreDimSchema])),
 };
 
 const findingsSchema = {
@@ -215,7 +221,8 @@ export class InspectionEngine {
 
   constructor(
     private readonly ai: AiProvider,
-    config: Partial<InspectionConfig> = {}
+    config: Partial<InspectionConfig> = {},
+    private readonly weightAdvisor?: WeightAdvisor
   ) {
     this.config = {
       ...defaultInspectionConfig,
@@ -245,15 +252,19 @@ export class InspectionEngine {
     );
     const contentHash = computeContentHash(processedFiles);
 
+    const weights = this.weightAdvisor
+      ? await this.weightAdvisor.suggestWeights(this.config.scoring.weights)
+      : this.config.scoring.weights;
+
     const aiOutput = await this.callAI({ ...request, files: processedFiles });
 
     const fileResults: FileResult[] = aiOutput.files.map((fa) =>
-      this.buildFileResult(fa)
+      this.buildFileResult(fa, weights)
     );
 
     const overallScoreCard = aggregateScoreCards(
       fileResults.map((f) => f.scoreCard),
-      this.config.scoring.weights,
+      weights,
       this.config.scoring.gradeThresholds
     );
 
@@ -277,11 +288,12 @@ export class InspectionEngine {
       {
         overallThreshold: this.config.refactor.overallThreshold,
         dimensionThreshold: this.config.refactor.dimensionThreshold,
-        weights: this.config.scoring.weights,
+        // Refactor selection operates on the 6-category rollup.
+        weights: deriveCategoryWeights(weights),
       }
     );
 
-    return {
+    const result: InspectionResult = {
       id: crypto.randomUUID(),
       requestId: request.id,
       completedAt: new Date().toISOString(),
@@ -296,14 +308,24 @@ export class InspectionEngine {
       aiModel: this.config.ai.model,
       contentHash,
     };
+
+    // Non-blocking: store result in Vectorize for future weight suggestions.
+    if (this.weightAdvisor) {
+      this.weightAdvisor.store(result).catch(() => {});
+    }
+
+    return result;
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
 
-  private buildFileResult(fa: AIFileAnalysis): FileResult {
+  private buildFileResult(
+    fa: AIFileAnalysis,
+    weights: Record<InspectionAspect, number> = this.config.scoring.weights
+  ): FileResult {
     const scoreCard = calculateScoreCard(
       fa.scoreBreakdown,
-      this.config.scoring.weights,
+      weights,
       this.config.scoring.gradeThresholds
     );
 
@@ -320,7 +342,7 @@ export class InspectionEngine {
       },
       scoreCard: calculateScoreCard(
         fn.scoreBreakdown,
-        this.config.scoring.weights,
+        weights,
         this.config.scoring.gradeThresholds
       ),
       findings: this.buildFindings(fa.path, fn.findings, fn.recommendations),

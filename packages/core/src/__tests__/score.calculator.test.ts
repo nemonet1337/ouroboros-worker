@@ -5,26 +5,18 @@ import {
   aggregateScoreCards,
 } from "../inspection/score.calculator";
 import {
-  DEFAULT_WEIGHTS,
+  DEFAULT_ASPECT_WEIGHTS,
   DEFAULT_GRADE_THRESHOLDS,
 } from "../config/inspection.config";
-import { InspectionCategory, ScoreCard } from "../types/inspection.types";
+import { ASPECTS } from "../inspection/aspects";
+import { InspectionAspect } from "../types/inspection.types";
 
 const thresholds = DEFAULT_GRADE_THRESHOLDS;
-const weights = DEFAULT_WEIGHTS;
-
-const CATEGORIES: InspectionCategory[] = [
-  "security",
-  "performance",
-  "redundancy",
-  "readability",
-  "design",
-  "correctness",
-];
+const weights = DEFAULT_ASPECT_WEIGHTS;
 
 function makeBreakdown(score: number, summary = "test") {
-  return Object.fromEntries(CATEGORIES.map((c) => [c, { score, summary }])) as Record<
-    InspectionCategory,
+  return Object.fromEntries(ASPECTS.map((a) => [a, { score, summary }])) as Record<
+    InspectionAspect,
     { score: number; summary: string }
   >;
 }
@@ -45,18 +37,23 @@ describe("deriveGrade", () => {
 });
 
 describe("calculateScoreCard", () => {
-  it("returns overall as weighted average of dimensions", () => {
+  it("returns overall as weighted average of all 32 aspects", () => {
     const breakdown = makeBreakdown(80);
     const card = calculateScoreCard(breakdown, weights, thresholds);
-    // All dims are 80, so overall should also be 80
+    // All aspects are 80, so overall should also be 80
     expect(card.overall).toBe(80);
   });
 
-  it("clamps dimension scores to [0, 100]", () => {
-    const breakdown = makeBreakdown(120); // out of range
-    const card = calculateScoreCard(breakdown, weights, thresholds);
-    for (const cat of CATEGORIES) {
-      expect(card.breakdown[cat].score).toBeLessThanOrEqual(100);
+  it("exposes both the 6-category breakdown and the 32-aspect breakdown", () => {
+    const card = calculateScoreCard(makeBreakdown(80), weights, thresholds);
+    expect(Object.keys(card.breakdown)).toHaveLength(6);
+    expect(Object.keys(card.aspectBreakdown)).toHaveLength(32);
+  });
+
+  it("clamps aspect scores to [0, 100]", () => {
+    const card = calculateScoreCard(makeBreakdown(120), weights, thresholds);
+    for (const a of ASPECTS) {
+      expect(card.aspectBreakdown[a].score).toBeLessThanOrEqual(100);
     }
   });
 
@@ -66,10 +63,17 @@ describe("calculateScoreCard", () => {
     expect(calculateScoreCard(makeBreakdown(38), weights, thresholds).grade).toBe("F");
   });
 
-  it("stores weight from config in each dimension", () => {
+  it("derives category weight as the sum of its child aspect weights", () => {
     const card = calculateScoreCard(makeBreakdown(50), weights, thresholds);
-    expect(card.breakdown.security.weight).toBe(0.25);
-    expect(card.breakdown.correctness.weight).toBe(0.10);
+    expect(card.breakdown.security.weight).toBeCloseTo(0.25, 6);
+    expect(card.breakdown.correctness.weight).toBeCloseTo(0.1, 6);
+  });
+
+  it("tags each aspect with its parent category", () => {
+    const card = calculateScoreCard(makeBreakdown(50), weights, thresholds);
+    expect(card.aspectBreakdown.injection.category).toBe("security");
+    expect(card.aspectBreakdown.algo_complexity.category).toBe("performance");
+    expect(card.aspectBreakdown.type_contract.category).toBe("correctness");
   });
 });
 
@@ -87,12 +91,17 @@ describe("aggregateScoreCards", () => {
     expect(agg.overall).toBe(70);
   });
 
-  it("uses worst-file summary for each dimension", () => {
-    const goodBreakdown = makeBreakdown(90, "良好なデザイン");
-    const badBreakdown = { ...makeBreakdown(90, "良好なデザイン"), design: { score: 30, summary: "SRP違反" } };
+  it("uses worst-file summary for each aspect", () => {
+    const goodBreakdown = makeBreakdown(90, "良好");
+    const badBreakdown = {
+      ...makeBreakdown(90, "良好"),
+      srp_cohesion: { score: 30, summary: "SRP違反" },
+    };
     const goodCard = calculateScoreCard(goodBreakdown, weights, thresholds);
     const badCard = calculateScoreCard(badBreakdown, weights, thresholds);
     const agg = aggregateScoreCards([goodCard, badCard], weights, thresholds);
+    // srp_cohesion is the worst child of design → its summary surfaces at category level too
+    expect(agg.aspectBreakdown.srp_cohesion.summary).toBe("SRP違反");
     expect(agg.breakdown.design.summary).toBe("SRP違反");
   });
 

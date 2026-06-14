@@ -13,6 +13,7 @@ import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { parseScopes, hasScope, newId, type Scope } from "../auth/tokens";
 import { Logger } from "../logging/logger";
 import { InspectionEngine } from "../inspection/inspection.engine";
+import { WeightAdvisor } from "../inspection/weight.advisor";
 import {
   InspectionRepository,
   WebhookRepository,
@@ -379,7 +380,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const model =
       typeof selected === "string" && isWorkersAiModelId(selected) ? selected : DEFAULT_WORKERS_AI_MODEL;
 
-    const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } });
+    const advisor = ports.vectorize ? new WeightAdvisor(ports.vectorize) : undefined;
+    const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
     try {
       const result = await engine.inspect(req);
       const userId = c.get("identity")!.user.id;
