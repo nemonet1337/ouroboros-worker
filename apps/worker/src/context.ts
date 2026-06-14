@@ -15,6 +15,7 @@ import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { MailChannelsMailer } from "./adapters/mailchannels.mailer";
 import { DispatchRunner } from "./adapters/dispatch.runner";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
+import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 
 export interface WorkerContext {
   ports: Ports;
@@ -49,6 +50,7 @@ export function buildContext(env: Env): WorkerContext {
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const runner = new DispatchRunner(env.RUNNER_URL ?? "", env.RUNNER_SHARED_SECRET ?? "");
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
+  const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
 
   const config: HealingConfig = {
     ...defaultHealingConfig,
@@ -60,7 +62,7 @@ export function buildContext(env: Env): WorkerContext {
     },
   };
 
-  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, rateLimiter };
+  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, rateLimiter, vectorize };
   const auth = new AuthService(db);
 
   return {

@@ -17,6 +17,7 @@ import { computeContentHash, preprocessFiles } from "./preprocessor";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.builder";
 import { aggregateScoreCards, calculateScoreCard } from "./score.calculator";
 import { selectRefactorCandidates } from "./refactor.selector";
+import type { WeightAdvisor } from "./weight.advisor";
 
 // ─── Internal AI response types ──────────────────────────────────────────────
 
@@ -215,7 +216,8 @@ export class InspectionEngine {
 
   constructor(
     private readonly ai: AiProvider,
-    config: Partial<InspectionConfig> = {}
+    config: Partial<InspectionConfig> = {},
+    private readonly weightAdvisor?: WeightAdvisor
   ) {
     this.config = {
       ...defaultInspectionConfig,
@@ -245,15 +247,19 @@ export class InspectionEngine {
     );
     const contentHash = computeContentHash(processedFiles);
 
+    const weights = this.weightAdvisor
+      ? await this.weightAdvisor.suggestWeights(this.config.scoring.weights)
+      : this.config.scoring.weights;
+
     const aiOutput = await this.callAI({ ...request, files: processedFiles });
 
     const fileResults: FileResult[] = aiOutput.files.map((fa) =>
-      this.buildFileResult(fa)
+      this.buildFileResult(fa, weights)
     );
 
     const overallScoreCard = aggregateScoreCards(
       fileResults.map((f) => f.scoreCard),
-      this.config.scoring.weights,
+      weights,
       this.config.scoring.gradeThresholds
     );
 
@@ -277,11 +283,11 @@ export class InspectionEngine {
       {
         overallThreshold: this.config.refactor.overallThreshold,
         dimensionThreshold: this.config.refactor.dimensionThreshold,
-        weights: this.config.scoring.weights,
+        weights,
       }
     );
 
-    return {
+    const result: InspectionResult = {
       id: crypto.randomUUID(),
       requestId: request.id,
       completedAt: new Date().toISOString(),
@@ -296,14 +302,24 @@ export class InspectionEngine {
       aiModel: this.config.ai.model,
       contentHash,
     };
+
+    // Non-blocking: store result in Vectorize for future weight suggestions.
+    if (this.weightAdvisor) {
+      this.weightAdvisor.store(result).catch(() => {});
+    }
+
+    return result;
   }
 
   // ─── Private helpers ───────────────────────────────────────────────────────
 
-  private buildFileResult(fa: AIFileAnalysis): FileResult {
+  private buildFileResult(
+    fa: AIFileAnalysis,
+    weights: Record<InspectionCategory, number> = this.config.scoring.weights
+  ): FileResult {
     const scoreCard = calculateScoreCard(
       fa.scoreBreakdown,
-      this.config.scoring.weights,
+      weights,
       this.config.scoring.gradeThresholds
     );
 
@@ -320,7 +336,7 @@ export class InspectionEngine {
       },
       scoreCard: calculateScoreCard(
         fn.scoreBreakdown,
-        this.config.scoring.weights,
+        weights,
         this.config.scoring.gradeThresholds
       ),
       findings: this.buildFindings(fa.path, fn.findings, fn.recommendations),

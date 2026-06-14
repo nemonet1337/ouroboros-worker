@@ -45,6 +45,7 @@ export type { DeployTarget } from "./config/deployment";
 
 // Inspection engine (heuristic scoring) — runtime-agnostic
 export { InspectionEngine } from "./inspection/inspection.engine";
+export { WeightAdvisor } from "./inspection/weight.advisor";
 export { selectRefactorCandidates } from "./inspection/refactor.selector";
 export type { RefactorSelectorConfig } from "./inspection/refactor.selector";
 export type {

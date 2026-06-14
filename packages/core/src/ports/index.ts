@@ -6,6 +6,7 @@ export * from "./queue";
 export * from "./mailer";
 export * from "./runner";
 export * from "./ratelimit";
+export * from "./vectorize";
 
 import type { AiProvider } from "./ai";
 import type { VcsProvider } from "./vcs";
@@ -15,6 +16,7 @@ import type { QueueAdapter } from "./queue";
 import type { Mailer } from "./mailer";
 import type { HealingRunner } from "./runner";
 import type { RateLimiter } from "./ratelimit";
+import type { VectorizePort } from "./vectorize";
 
 /**
  * The full set of platform adapters an Ouroboros deployment wires up.
@@ -30,4 +32,5 @@ export interface Ports {
   mailer: Mailer;
   runner: HealingRunner;
   rateLimiter: RateLimiter;
+  vectorize?: VectorizePort;
 }
