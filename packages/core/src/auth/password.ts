@@ -1,7 +1,8 @@
 // PBKDF2-SHA256 password hashing via WebCrypto. Available in Node 20+ and
 // Cloudflare Workers, so a single implementation serves both deployments.
+// NOTE: Cloudflare Workers caps PBKDF2 iterations at 100,000.
 
-const ITERATIONS = 120_000;
+const ITERATIONS = 100_000;
 const KEY_LEN = 32;
 const SALT_LEN = 16;
 
