@@ -189,10 +189,13 @@ function onPrSelect(pr: any) {
       <main class="flex-1 overflow-y-auto pb-4 space-y-4 min-w-0">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-gray-300">Dashboard</h2>
-          <div class="flex items-center gap-2 text-xs text-gray-500">
-            <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-            Last scan: {{ new Date().toLocaleDateString('ja-JP') }}
-          </div>
+          <NuxtLink
+            to="/inspection"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors"
+          >
+            <UIcon name="i-heroicons-magnifying-glass" class="w-3.5 h-3.5" />
+            インスペクション実行
+          </NuxtLink>
         </div>
 
         <!-- Row 1: Metrics + Code Stats -->

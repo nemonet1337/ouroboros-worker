@@ -28,9 +28,47 @@ const gradeThresholds = reactive({
 })
 
 const scheduleMode = ref<'cron' | 'interval' | 'manual'>('cron')
-const cronExpr = ref('0 3 * * *')
 const cronTimezone = ref('Asia/Tokyo')
 const intervalMinutes = ref(60)
+
+// Cron GUI state
+const DAYS_OF_WEEK = [
+  { label: '月', value: 1 },
+  { label: '火', value: 2 },
+  { label: '水', value: 3 },
+  { label: '木', value: 4 },
+  { label: '金', value: 5 },
+  { label: '土', value: 6 },
+  { label: '日', value: 0 },
+]
+const cronSelectedDays = ref<number[]>([1, 2, 3, 4, 5]) // Mon-Fri default
+const cronHour = ref(3)
+const cronMinute = ref(0)
+
+const cronExpr = computed(() => {
+  if (cronSelectedDays.value.length === 0) return `${cronMinute.value} ${cronHour.value} * * *`
+  const days = [...cronSelectedDays.value].sort((a, b) => a - b).join(',')
+  return `${cronMinute.value} ${cronHour.value} * * ${days}`
+})
+
+function toggleDay(day: number) {
+  const idx = cronSelectedDays.value.indexOf(day)
+  if (idx >= 0) cronSelectedDays.value.splice(idx, 1)
+  else cronSelectedDays.value.push(day)
+}
+
+function parseCronToGui(expr: string) {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return
+  const [minute, hour, , , days] = parts
+  cronMinute.value = Number(minute) || 0
+  cronHour.value = Number(hour) || 0
+  if (days === '*') {
+    cronSelectedDays.value = []
+  } else {
+    cronSelectedDays.value = days.split(',').map(Number).filter(n => !isNaN(n))
+  }
+}
 
 const notifications = reactive({
   browserPush: true,
@@ -113,7 +151,7 @@ onMounted(async () => {
     if (stored.gradeThresholds) Object.assign(gradeThresholds, stored.gradeThresholds)
     if (stored.schedule) {
       if (stored.schedule.mode) scheduleMode.value = stored.schedule.mode
-      if (stored.schedule.cronExpr) cronExpr.value = stored.schedule.cronExpr
+      if (stored.schedule.cronExpr) parseCronToGui(stored.schedule.cronExpr)
       if (stored.schedule.cronTimezone) cronTimezone.value = stored.schedule.cronTimezone
       if (stored.schedule.intervalMinutes) intervalMinutes.value = stored.schedule.intervalMinutes
     }
@@ -324,24 +362,66 @@ function scrollTo(id: string) {
             </button>
           </div>
 
-          <div v-if="scheduleMode === 'cron'" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1.5">
-                <label class="text-xs text-gray-400">Cron expression</label>
-                <input
-                  v-model="cronExpr"
-                  class="w-full bg-gray-800 border border-white/10 rounded-lg px-3 py-2 text-sm font-mono text-gray-200 focus:outline-none focus:border-indigo-500/50"
-                />
+          <div v-if="scheduleMode === 'cron'" class="space-y-5">
+            <!-- Day of week picker -->
+            <div class="space-y-2">
+              <label class="text-xs text-gray-400">実行曜日</label>
+              <div class="flex gap-1.5">
+                <button
+                  v-for="d in DAYS_OF_WEEK"
+                  :key="d.value"
+                  class="w-9 h-9 rounded-lg text-xs font-medium border transition-colors"
+                  :class="cronSelectedDays.includes(d.value)
+                    ? 'bg-indigo-500/25 border-indigo-500/60 text-indigo-300'
+                    : 'border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20'"
+                  @click="toggleDay(d.value)"
+                >{{ d.label }}</button>
+                <button
+                  class="ml-1 px-2 h-9 rounded-lg text-[10px] border border-white/10 text-gray-500 hover:text-gray-300 transition-colors"
+                  @click="cronSelectedDays = cronSelectedDays.length > 0 ? [] : [1,2,3,4,5,6,0]"
+                >{{ cronSelectedDays.length > 0 ? '全解除' : '全選択' }}</button>
               </div>
-              <div class="space-y-1.5">
-                <label class="text-xs text-gray-400">Timezone</label>
-                <input
-                  v-model="cronTimezone"
-                  class="w-full bg-gray-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50"
-                />
+              <p v-if="cronSelectedDays.length === 0" class="text-[11px] text-amber-400">曜日未選択の場合は毎日実行されます</p>
+            </div>
+
+            <!-- Time picker -->
+            <div class="space-y-2">
+              <label class="text-xs text-gray-400">実行時刻</label>
+              <div class="flex items-center gap-2">
+                <div class="space-y-1">
+                  <p class="text-[10px] text-gray-500">時</p>
+                  <select
+                    v-model.number="cronHour"
+                    class="w-16 bg-gray-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50"
+                  >
+                    <option v-for="h in 24" :key="h-1" :value="h-1">{{ String(h-1).padStart(2,'0') }}</option>
+                  </select>
+                </div>
+                <span class="text-gray-500 mt-4">:</span>
+                <div class="space-y-1">
+                  <p class="text-[10px] text-gray-500">分</p>
+                  <select
+                    v-model.number="cronMinute"
+                    class="w-16 bg-gray-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50"
+                  >
+                    <option v-for="m in [0,5,10,15,20,25,30,35,40,45,50,55]" :key="m" :value="m">{{ String(m).padStart(2,'0') }}</option>
+                  </select>
+                </div>
+                <div class="space-y-1 ml-2">
+                  <p class="text-[10px] text-gray-500">Timezone</p>
+                  <input
+                    v-model="cronTimezone"
+                    class="w-32 bg-gray-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
               </div>
             </div>
-            <p class="text-xs text-gray-500">cron 式と timezone を設定して保存してください。</p>
+
+            <!-- Generated cron preview -->
+            <div class="flex items-center gap-2 rounded-lg bg-gray-800/60 border border-white/10 px-3 py-2">
+              <span class="text-[10px] text-gray-500 uppercase tracking-wide">Cron</span>
+              <code class="text-xs font-mono text-indigo-300 flex-1">{{ cronExpr }}</code>
+            </div>
           </div>
 
           <div v-else-if="scheduleMode === 'manual'" class="text-sm text-gray-400">
