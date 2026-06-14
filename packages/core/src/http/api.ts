@@ -40,6 +40,7 @@ const SESSION_COOKIE = "ouro_session";
 const API_VERSION = "v1";
 const CONFIG_KEY = "app_config";
 const SETTINGS_KEY = "app_settings";
+const DAILY_INSPECTION_LIMIT = 100;
 
 const DEFAULT_SETTINGS = {
   weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
@@ -368,6 +369,24 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   // ── Inspection ─────────────────────────────────────────────────────────────
   app.post("/inspect", requireAuth("inspect"), validateBody(inspectSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+
+    // Per-user rate limit on the inspect endpoint.
+    const { success: rlOk } = await ports.rateLimiter.limit(`inspect:${userId}`);
+    if (!rlOk) {
+      return c.json({ error: { code: "rate_limited", message: "rate limit exceeded" } }, 429);
+    }
+
+    // Daily inspection quota per user.
+    const todayStart = Date.now() - (Date.now() % 86_400_000);
+    const todayCount = await inspections.countSince(userId, todayStart);
+    if (todayCount >= DAILY_INSPECTION_LIMIT) {
+      return c.json(
+        { error: { code: "quota_exceeded", message: `daily inspection limit of ${DAILY_INSPECTION_LIMIT} reached` } },
+        429
+      );
+    }
+
     const req = c.get("body") as InspectionRequest;
     req.id ||= newId();
     req.requestedAt ||= new Date().toISOString();
@@ -384,7 +403,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
     try {
       const result = await engine.inspect(req);
-      const userId = c.get("identity")!.user.id;
       await inspections.insert({
         id: result.id,
         user_id: userId,

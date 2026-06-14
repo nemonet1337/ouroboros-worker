@@ -94,6 +94,7 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env);
     const wctx = buildContext(env);
+    await wctx.auth.cleanupExpiredSessions();
     const trigger = makeTriggerHealing(env, wctx);
     await trigger({ trigger: "cron", dryRun: false });
   },

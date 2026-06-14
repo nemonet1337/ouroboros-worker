@@ -112,6 +112,23 @@ export class SessionRepository {
   async deleteExpired(now: number): Promise<void> {
     await this.db.exec(`DELETE FROM sessions WHERE expires_at < ?`, [now]);
   }
+
+  async countByUser(userId: string): Promise<number> {
+    const rows = await this.db.query<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?`,
+      [userId]
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async deleteOldestBeyondLimit(userId: string, maxSessions: number): Promise<void> {
+    await this.db.exec(
+      `DELETE FROM sessions WHERE user_id = ? AND id NOT IN (
+         SELECT id FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?
+       )`,
+      [userId, userId, maxSessions]
+    );
+  }
 }
 
 export class ApiTokenRepository {
@@ -212,6 +229,14 @@ export class InspectionRepository {
       `SELECT * FROM inspections WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
       [userId, limit]
     );
+  }
+
+  async countSince(userId: string, sinceMs: number): Promise<number> {
+    const rows = await this.db.query<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM inspections WHERE user_id = ? AND created_at >= ?`,
+      [userId, sinceMs]
+    );
+    return Number(rows[0]?.n ?? 0);
   }
 }
 
