@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { evaluateThresholds } from "../webhook/threshold.evaluator";
-import { InspectionResult } from "../types/inspection.types";
+import { AspectBreakdown, InspectionCategory, InspectionResult } from "../types/inspection.types";
+import { ASPECTS, ASPECT_CATEGORY } from "../inspection/aspects";
+import { DEFAULT_ASPECT_WEIGHTS } from "../config/inspection.config";
 
 function makeResult(scores: Partial<Record<"overall" | "security" | "performance" | "redundancy" | "readability" | "design" | "correctness", number>> = {}): InspectionResult {
   const s = {
@@ -8,6 +10,13 @@ function makeResult(scores: Partial<Record<"overall" | "security" | "performance
     redundancy: 80, readability: 80, design: 80, correctness: 90,
     ...scores,
   };
+  const catScore = (c: InspectionCategory) => s[c];
+  const aspectBreakdown = Object.fromEntries(
+    ASPECTS.map((a) => {
+      const cat = ASPECT_CATEGORY[a];
+      return [a, { score: catScore(cat), weight: DEFAULT_ASPECT_WEIGHTS[a], summary: "ok", category: cat }];
+    })
+  ) as AspectBreakdown;
   return {
     id: "test-id",
     requestId: "req-id",
@@ -25,6 +34,7 @@ function makeResult(scores: Partial<Record<"overall" | "security" | "performance
         design:      { score: s.design,      weight: 0.15, summary: "ok" },
         correctness: { score: s.correctness, weight: 0.10, summary: "ok" },
       },
+      aspectBreakdown,
     },
     findings: [],
     recommendations: [],

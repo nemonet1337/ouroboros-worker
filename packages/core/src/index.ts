@@ -38,7 +38,12 @@ export type { HealingCycleOptions, HealingCycleResult } from "./healing/orchestr
 
 export { defaultHealingConfig } from "./config/healing.config";
 export type { HealingConfig } from "./config/healing.config";
-export { defaultInspectionConfig } from "./config/inspection.config";
+export {
+  defaultInspectionConfig,
+  DEFAULT_WEIGHTS,
+  DEFAULT_ASPECT_WEIGHTS,
+  deriveCategoryWeights,
+} from "./config/inspection.config";
 export type { InspectionConfig } from "./config/inspection.config";
 export { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "./config/deployment";
 export type { DeployTarget } from "./config/deployment";
@@ -48,10 +53,18 @@ export { InspectionEngine } from "./inspection/inspection.engine";
 export { WeightAdvisor } from "./inspection/weight.advisor";
 export { selectRefactorCandidates } from "./inspection/refactor.selector";
 export type { RefactorSelectorConfig } from "./inspection/refactor.selector";
+export {
+  ASPECTS,
+  ASPECTS_BY_CATEGORY,
+  ASPECT_CATEGORY,
+  ASPECT_LABELS,
+  ASPECT_DESCRIPTIONS,
+} from "./inspection/aspects";
 export type {
   InspectionRequest,
   InspectionResult,
   InspectionCategory,
+  InspectionAspect,
   InspectionFinding,
   InspectionOptions,
   FileResult,
@@ -61,6 +74,9 @@ export type {
   RefactorPriority,
   ScoreCard,
   ScoreBreakdown,
+  ScoreDimension,
+  AspectBreakdown,
+  AspectDimension,
   ScoreThresholds,
   Grade,
 } from "./types/inspection.types";

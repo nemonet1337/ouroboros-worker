@@ -3,6 +3,7 @@ import type { AiProvider } from "../ports/ai";
 import {
   FileResult,
   FunctionResult,
+  InspectionAspect,
   InspectionCategory,
   InspectionFinding,
   InspectionRequest,
@@ -12,12 +13,14 @@ import {
 import {
   InspectionConfig,
   defaultInspectionConfig,
+  deriveCategoryWeights,
 } from "../config/inspection.config";
 import { computeContentHash, preprocessFiles } from "./preprocessor";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.builder";
 import { aggregateScoreCards, calculateScoreCard } from "./score.calculator";
 import { selectRefactorCandidates } from "./refactor.selector";
 import type { WeightAdvisor } from "./weight.advisor";
+import { ASPECTS } from "./aspects";
 
 // ─── Internal AI response types ──────────────────────────────────────────────
 
@@ -48,14 +51,14 @@ interface AIFunctionAnalysis {
   name: string;
   startLine: number;
   endLine: number;
-  scoreBreakdown: Record<InspectionCategory, { score: number; summary: string }>;
+  scoreBreakdown: Record<InspectionAspect, { score: number; summary: string }>;
   findings: AIFinding[];
   recommendations: AIRecommendation[];
 }
 
 interface AIFileAnalysis {
   path: string;
-  scoreBreakdown: Record<InspectionCategory, { score: number; summary: string }>;
+  scoreBreakdown: Record<InspectionAspect, { score: number; summary: string }>;
   findings: AIFinding[];
   recommendations: AIRecommendation[];
   /** Present when function-level granularity was requested */
@@ -78,6 +81,8 @@ const CATEGORY_NAMES = [
   "correctness",
 ];
 
+const ASPECT_NAMES: string[] = ASPECTS;
+
 const scoreDimSchema = {
   type: "object",
   required: ["score", "summary"],
@@ -89,8 +94,8 @@ const scoreDimSchema = {
 
 const scoreBreakdownSchema = {
   type: "object",
-  required: CATEGORY_NAMES,
-  properties: Object.fromEntries(CATEGORY_NAMES.map((c) => [c, scoreDimSchema])),
+  required: ASPECT_NAMES,
+  properties: Object.fromEntries(ASPECT_NAMES.map((a) => [a, scoreDimSchema])),
 };
 
 const findingsSchema = {
@@ -283,7 +288,8 @@ export class InspectionEngine {
       {
         overallThreshold: this.config.refactor.overallThreshold,
         dimensionThreshold: this.config.refactor.dimensionThreshold,
-        weights,
+        // Refactor selection operates on the 6-category rollup.
+        weights: deriveCategoryWeights(weights),
       }
     );
 
@@ -315,7 +321,7 @@ export class InspectionEngine {
 
   private buildFileResult(
     fa: AIFileAnalysis,
-    weights: Record<InspectionCategory, number> = this.config.scoring.weights
+    weights: Record<InspectionAspect, number> = this.config.scoring.weights
   ): FileResult {
     const scoreCard = calculateScoreCard(
       fa.scoreBreakdown,

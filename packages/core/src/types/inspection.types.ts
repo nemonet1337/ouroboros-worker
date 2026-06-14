@@ -82,6 +82,51 @@ export type InspectionCategory =
   | "design"
   | "correctness";
 
+/**
+ * The 32 fine-grained aspects, each rolling up into exactly one parent
+ * InspectionCategory. See inspection/aspects.ts for the category mapping,
+ * labels and descriptions.
+ */
+export type InspectionAspect =
+  // security (6)
+  | "injection"
+  | "authn_authz"
+  | "secrets"
+  | "input_validation"
+  | "deps_supply_chain"
+  | "crypto_transport"
+  // performance (5)
+  | "algo_complexity"
+  | "memory_alloc"
+  | "async_concurrency"
+  | "io_network"
+  | "caching"
+  // redundancy (5)
+  | "duplication"
+  | "dead_code"
+  | "over_engineering"
+  | "redundant_compute"
+  | "dep_bloat"
+  // readability (5)
+  | "naming"
+  | "cognitive_complexity"
+  | "comments_docs"
+  | "formatting_consistency"
+  | "idiomatic_usage"
+  // design (6)
+  | "srp_cohesion"
+  | "coupling"
+  | "abstraction_interface"
+  | "error_handling"
+  | "modularity_extensibility"
+  | "pattern_fit"
+  // correctness (5)
+  | "logic_intent"
+  | "edge_cases"
+  | "null_boundary"
+  | "concurrency_correctness"
+  | "type_contract";
+
 export interface ScoreDimension {
   /** 0–100 */
   score: Score;
@@ -93,11 +138,21 @@ export interface ScoreDimension {
 
 export type ScoreBreakdown = Record<InspectionCategory, ScoreDimension>;
 
+/** A single aspect's score, its weight, and its parent category. */
+export interface AspectDimension extends ScoreDimension {
+  category: InspectionCategory;
+}
+
+export type AspectBreakdown = Record<InspectionAspect, AspectDimension>;
+
 export interface ScoreCard {
-  /** Weighted sum of all dimension scores, 0–100 */
+  /** Weighted sum of all aspect scores, 0–100 */
   overall: Score;
   grade: Grade;
+  /** Parent-category rollup (6 dimensions) — derived from aspectBreakdown */
   breakdown: ScoreBreakdown;
+  /** Fine-grained per-aspect breakdown (32 dimensions) */
+  aspectBreakdown: AspectBreakdown;
 }
 
 // ─── Findings ────────────────────────────────────────────────────────────────

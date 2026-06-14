@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { selectRefactorCandidates } from "../inspection/refactor.selector";
 import { DEFAULT_WEIGHTS, defaultInspectionConfig } from "../config/inspection.config";
 import {
+  AspectBreakdown,
   FileResult,
   FunctionResult,
   InspectionCategory,
@@ -9,6 +10,8 @@ import {
   ScoreCard,
 } from "../types/inspection.types";
 import { CATEGORIES } from "../inspection/score.calculator";
+import { ASPECTS, ASPECT_CATEGORY } from "../inspection/aspects";
+import { DEFAULT_ASPECT_WEIGHTS } from "../config/inspection.config";
 
 const cfg = {
   overallThreshold: defaultInspectionConfig.refactor.overallThreshold,
@@ -20,10 +23,17 @@ function makeScoreCard(scores: Partial<Record<InspectionCategory, number>> = {},
   const breakdown = Object.fromEntries(
     CATEGORIES.map((c) => [c, { score: scores[c] ?? base, weight: DEFAULT_WEIGHTS[c], summary: "ok" }])
   ) as ScoreCard["breakdown"];
+  // Each aspect inherits its parent category's score for these selector tests.
+  const aspectBreakdown = Object.fromEntries(
+    ASPECTS.map((a) => {
+      const cat = ASPECT_CATEGORY[a];
+      return [a, { score: scores[cat] ?? base, weight: DEFAULT_ASPECT_WEIGHTS[a], summary: "ok", category: cat }];
+    })
+  ) as AspectBreakdown;
   const overall = Math.round(
     CATEGORIES.reduce((sum, c) => sum + breakdown[c].score * DEFAULT_WEIGHTS[c], 0)
   );
-  return { overall, grade: overall >= 85 ? "A" : overall >= 70 ? "B" : "C", breakdown };
+  return { overall, grade: overall >= 85 ? "A" : overall >= 70 ? "B" : "C", breakdown, aspectBreakdown };
 }
 
 function makeFinding(severity: InspectionFinding["severity"], file = "a.ts"): InspectionFinding {
