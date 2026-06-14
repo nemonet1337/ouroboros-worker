@@ -72,6 +72,12 @@ export interface ApiDeps {
    * external gateway tokens are rejected and models are discovered from the
    * binding. */
   deployTarget?: DeployTarget;
+  /**
+   * When explicitly set, overrides the DB-persisted registration toggle.
+   * true = open registration; false = closed (first-user bootstrap still allowed).
+   * Unset = fall back to the DB setting managed via the settings API.
+   */
+  registrationEnabled?: boolean;
 }
 
 interface Identity {
@@ -172,11 +178,21 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   // and the next registration bootstraps the admin.
   app.get("/auth/registration", async (c) => {
     const firstUser = (await auth.userCount()) === 0;
-    return c.json({ enabled: await auth.isRegistrationEnabled(), firstUser });
+    const enabled =
+      deps.registrationEnabled !== undefined
+        ? deps.registrationEnabled
+        : await auth.isRegistrationEnabled();
+    return c.json({ enabled, firstUser });
   });
 
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
+
+    // Env-var override takes precedence over the DB setting (first user always allowed).
+    if (deps.registrationEnabled === false && (await auth.userCount()) > 0) {
+      return c.json({ error: { code: "forbidden", message: "registration is disabled" } }, 403);
+    }
+
     const user = await auth.register(email, password);
     const { sessionId } = await auth.login(email, password);
     setSession(c, sessionId, deps.cookieSecure);
