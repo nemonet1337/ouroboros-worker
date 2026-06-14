@@ -19,6 +19,20 @@ const gitServiceLabel = computed(() =>
   config.gitService.value === 'github' ? 'GitHub' : 'GitLab'
 )
 
+const modelSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+async function saveModel() {
+  modelSaveStatus.value = 'saving'
+  try {
+    await config.saveConfig()
+    modelSaveStatus.value = 'saved'
+  } catch {
+    modelSaveStatus.value = 'error'
+  } finally {
+    setTimeout(() => { modelSaveStatus.value = 'idle' }, 2000)
+  }
+}
+
 // PR Drawer
 const selectedPr = ref<any>(null)
 
@@ -112,6 +126,15 @@ function onPrSelect(pr: any) {
             </div>
           </template>
           <FormModelSelector />
+          <div class="flex justify-end mt-4 pt-3 border-t border-white/10">
+            <button
+              class="px-3 py-1.5 text-xs text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
+              :disabled="modelSaveStatus === 'saving'"
+              @click="saveModel"
+            >
+              {{ modelSaveStatus === 'saving' ? '…' : modelSaveStatus === 'saved' ? '✓ Saved' : '💾 Save' }}
+            </button>
+          </div>
         </UCard>
 
         <!-- Setup Status -->
@@ -166,10 +189,13 @@ function onPrSelect(pr: any) {
       <main class="flex-1 overflow-y-auto pb-4 space-y-4 min-w-0">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-gray-300">Dashboard</h2>
-          <div class="flex items-center gap-2 text-xs text-gray-500">
-            <UIcon name="i-heroicons-clock" class="w-3.5 h-3.5" />
-            Last scan: {{ new Date().toLocaleDateString('ja-JP') }}
-          </div>
+          <NuxtLink
+            to="/inspection"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs text-white transition-colors"
+          >
+            <UIcon name="i-heroicons-magnifying-glass" class="w-3.5 h-3.5" />
+            インスペクション実行
+          </NuxtLink>
         </div>
 
         <!-- Row 1: Metrics + Code Stats -->

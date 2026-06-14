@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  compile,
   credentialsSchema,
   profileUpdateSchema,
   tokenCreateSchema,
@@ -8,40 +7,37 @@ import {
   webhookCreateSchema,
 } from "../http/validation";
 
+const ok = (v: ReturnType<typeof credentialsSchema>) => v.ok;
+
 describe("request validation schemas", () => {
   it("credentials require valid email and 8+ char password", () => {
-    const v = compile(credentialsSchema);
-    expect(v({ email: "a@b.io", password: "supersecret" })).toBe(true);
-    expect(v({ email: "not-an-email", password: "supersecret" })).toBe(false);
-    expect(v({ email: "a@b.io", password: "short" })).toBe(false);
-    expect(v({ email: "a@b.io" })).toBe(false);
+    expect(ok(credentialsSchema({ email: "a@b.io", password: "supersecret" }))).toBe(true);
+    expect(ok(credentialsSchema({ email: "not-an-email", password: "supersecret" }))).toBe(false);
+    expect(ok(credentialsSchema({ email: "a@b.io", password: "short" }))).toBe(false);
+    expect(ok(credentialsSchema({ email: "a@b.io" }))).toBe(false);
   });
 
   it("profile update requires valid email and optional 8+ char password", () => {
-    const v = compile(profileUpdateSchema);
-    expect(v({ email: "a@b.io" })).toBe(true);
-    expect(v({ email: "a@b.io", password: "supersecret" })).toBe(true);
-    expect(v({ email: "not-an-email" })).toBe(false);
-    expect(v({ email: "a@b.io", password: "short" })).toBe(false);
+    expect(ok(profileUpdateSchema({ email: "a@b.io" }))).toBe(true);
+    expect(ok(profileUpdateSchema({ email: "a@b.io", password: "supersecret" }))).toBe(true);
+    expect(ok(profileUpdateSchema({ email: "not-an-email" }))).toBe(false);
+    expect(ok(profileUpdateSchema({ email: "a@b.io", password: "short" }))).toBe(false);
   });
 
   it("token scopes are restricted to the known set", () => {
-    const v = compile(tokenCreateSchema);
-    expect(v({ name: "ci", scopes: ["read", "heal"] })).toBe(true);
-    expect(v({ name: "ci", scopes: ["superuser"] })).toBe(false);
-    expect(v({ scopes: ["read"] })).toBe(false); // name required
+    expect(ok(tokenCreateSchema({ name: "ci", scopes: ["read", "heal"] }))).toBe(true);
+    expect(ok(tokenCreateSchema({ name: "ci", scopes: ["superuser"] }))).toBe(false);
+    expect(ok(tokenCreateSchema({ scopes: ["read"] }))).toBe(false); // name required
   });
 
   it("inspect requires at least one file with path+content", () => {
-    const v = compile(inspectSchema);
-    expect(v({ language: "typescript", files: [{ path: "a.ts", content: "x" }] })).toBe(true);
-    expect(v({ files: [] })).toBe(false);
-    expect(v({ files: [{ path: "a.ts" }] })).toBe(false);
+    expect(ok(inspectSchema({ language: "typescript", files: [{ path: "a.ts", content: "x" }] }))).toBe(true);
+    expect(ok(inspectSchema({ files: [] }))).toBe(false);
+    expect(ok(inspectSchema({ files: [{ path: "a.ts" }] }))).toBe(false);
   });
 
-  it("webhook create requires a uri-format url", () => {
-    const v = compile(webhookCreateSchema);
-    expect(v({ url: "https://hooks.example.com/x", type: "slack" })).toBe(true);
-    expect(v({ type: "slack" })).toBe(false);
+  it("webhook create requires a http/https url", () => {
+    expect(ok(webhookCreateSchema({ url: "https://hooks.example.com/x", type: "slack" }))).toBe(true);
+    expect(ok(webhookCreateSchema({ type: "slack" }))).toBe(false);
   });
 });

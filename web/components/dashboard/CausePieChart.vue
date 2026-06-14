@@ -13,6 +13,8 @@ ChartJS.register(ArcElement, Tooltip, Legend)
 
 const { causeData } = useDashboard()
 
+const hasData = computed(() => causeData.value.security > 0 || causeData.value.performance > 0)
+
 const chartData = computed<ChartData<'doughnut'>>(() => ({
   labels: ['Security', 'Performance'],
   datasets: [
@@ -52,14 +54,14 @@ const chartOptions = computed<ChartOptions<'doughnut'>>(() => ({
 
 <template>
   <div class="flex flex-col items-center gap-4">
-    <div class="relative w-40 h-40">
-      <Doughnut :data="chartData" :options="chartOptions" />
-      <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span class="text-2xl font-bold text-red-400">{{ causeData.security }}%</span>
-        <span class="text-xs text-gray-500">Security</span>
-      </div>
+    <div v-if="!hasData" class="flex flex-col items-center justify-center h-40 gap-2 text-gray-600">
+      <UIcon name="i-heroicons-chart-pie" class="w-8 h-8 opacity-30" />
+      <span class="text-sm">修復データなし</span>
     </div>
-    <div class="grid grid-cols-2 gap-3 w-full">
+    <div v-else class="w-40 h-40">
+      <Doughnut :data="chartData" :options="chartOptions" />
+    </div>
+    <div v-if="hasData" class="grid grid-cols-2 gap-3 w-full">
       <div class="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
         <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
         <div>

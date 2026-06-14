@@ -604,20 +604,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       }
     }
 
-    // Default fallbacks for styling demo if no real history exists yet
-    if (prHistory.length === 0) {
-      prHistory.push(
-        { number: 42, title: "fix(deps): update lodash 4.17.15 → 4.17.21", status: "merged", date: "2026-05-20", branch: "fix/lodash-prototype-pollution", cause: "security" },
-        { number: 41, title: "fix(security): patch XSS in template renderer", status: "merged", date: "2026-05-18", branch: "fix/xss-template-injection", cause: "security" },
-        { number: 40, title: "perf: optimize database query with connection pool", status: "open", date: "2026-05-17", branch: "perf/db-connection-pool", cause: "performance" }
-      );
-    }
-    if (dependencyChanges.length === 0) {
-      dependencyChanges.push(
-        { name: "lodash", before: "4.17.15", after: "4.17.21", type: "patch", severity: "critical" },
-        { name: "express", before: "4.18.2", after: "4.21.0", type: "minor", severity: "medium" }
-      );
-    }
 
     let securityCount = 0;
     let performanceCount = 0;
@@ -631,7 +617,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const causeData = totalCause > 0 ? {
       security: Math.round((securityCount / totalCause) * 100),
       performance: Math.round((performanceCount / totalCause) * 100),
-    } : { security: 67, performance: 33 };
+    } : { security: 0, performance: 0 };
 
     let linesScanned = 0;
     for (const row of recentInspections) {
@@ -642,8 +628,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         }
       } catch {}
     }
-    if (linesScanned === 0) linesScanned = 1250;
-
     const codeStats = {
       additions: prHistory.length * 35,
       deletions: prHistory.length * 12,

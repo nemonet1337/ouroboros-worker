@@ -44,8 +44,8 @@ export function useDashboard() {
   })
 
   const causeData = ref({
-    security: 67,
-    performance: 33,
+    security: 0,
+    performance: 0,
   })
 
   const prHistory = ref<PrEntry[]>([])
