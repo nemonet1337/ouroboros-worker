@@ -23,6 +23,7 @@ export interface WorkerContext {
   deployTarget: DeployTarget;
   alertRecipients: string[];
   registrationEnabled: boolean;
+  githubTokenSet: boolean;
 }
 
 export function buildContext(env: Env): WorkerContext {
@@ -72,5 +73,6 @@ export function buildContext(env: Env): WorkerContext {
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     registrationEnabled: env.OURO_REGISTRATION_ENABLED === "true",
+    githubTokenSet: !!(env.GITHUB_TOKEN),
   };
 }

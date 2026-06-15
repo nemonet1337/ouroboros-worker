@@ -22,7 +22,6 @@ import {
 } from "../db/repositories";
 import type { InspectionRequest } from "../types";
 import { validateWebhookUrl } from "../webhook/url.guard";
-import { encrypt, decrypt } from "../utils/crypto";
 import { OPENAPI_SPEC } from "./openapi";
 import {
   validateBody,
@@ -48,8 +47,6 @@ const DEFAULT_SETTINGS = {
   schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo" },
   notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
 };
-
-const SECRET_CONFIG_KEYS = ["gitToken"];
 
 /** Legacy external-gateway config keys — purged on every read/write. The only
  * AI credential is the WORKERS_AI_API_TOKEN secret, managed outside the GUI. */
@@ -78,6 +75,8 @@ export interface ApiDeps {
    * Unset = fall back to the DB setting managed via the settings API.
    */
   registrationEnabled?: boolean;
+  /** Whether GITHUB_TOKEN is set as a CF Secret. Used by GET /config for read-only display. */
+  githubTokenSet?: boolean;
 }
 
 interface Identity {
@@ -93,13 +92,6 @@ function clientIp(c: Context): string {
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown"
   );
-}
-
-/** Mask a secret value, keeping only the last 4 characters. */
-function maskSecret(value: unknown): string {
-  if (typeof value !== "string" || value.length === 0) return "";
-  if (value.length <= 4) return "••••";
-  return `••••${value.slice(-4)}`;
 }
 
 /**
@@ -244,103 +236,29 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // ── App config (git/AI providers/languages) ───────────────────────────────
+  // ── App config (languages; git + AI credentials come from CF Secrets) ──────
   app.get("/config", requireAuth(), async (c) => {
     const raw = await settingsRepo.get(CONFIG_KEY);
     const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const decrypted: Record<string, unknown> = { ...cfg };
-    for (const k of SECRET_CONFIG_KEYS) {
-      if (typeof decrypted[k] === "string" && decrypted[k] !== "") {
-        decrypted[k] = await decrypt(decrypted[k] as string);
-      }
-    }
-    const masked: Record<string, unknown> = { ...decrypted };
-    for (const k of SECRET_CONFIG_KEYS) {
-      if (decrypted[k]) masked[k] = maskSecret(decrypted[k]);
-    }
-    // External gateways do not exist — never surface legacy tokens.
-    for (const k of LEGACY_GATEWAY_CONFIG_KEYS) delete masked[k];
-    masked.selectedAiService = "workers-ai";
-    masked.selectedModelValue ||= DEFAULT_WORKERS_AI_MODEL;
-    return c.json(masked);
+    // Git credentials are managed via CF Secrets — never expose stored copies.
+    for (const k of ["gitToken", "gitPackage", "gitService", ...LEGACY_GATEWAY_CONFIG_KEYS]) delete cfg[k];
+    const { owner, repo } = deps.config.vcs;
+    return c.json({
+      ...cfg,
+      gitRepository: owner && repo ? `${owner}/${repo}` : "",
+      gitTokenSet: deps.githubTokenSet ?? false,
+    });
   });
 
   app.put("/config", requireAdmin, validateBody(configSchema), async (c) => {
     const incoming = c.get("body") as Record<string, unknown>;
-
-    // The Workers AI binding is the only AI gateway: external gateway tokens /
-    // services are rejected, and the selected model must be one the binding
-    // actually serves.
-    const offendingTokens = LEGACY_GATEWAY_CONFIG_KEYS.filter((k) => {
-      const v = incoming[k];
-      return typeof v === "string" && v !== "" && !v.startsWith("••••");
-    });
-    const service = incoming.selectedAiService;
-    const offendingService = typeof service === "string" && service !== "" && service !== "workers-ai";
-    if (offendingTokens.length > 0 || offendingService) {
-      return c.json(
-        {
-          error: {
-            code: "external_gateway_rejected",
-            message: "this deployment only accepts the Cloudflare Workers AI gateway",
-            details: offendingTokens,
-          },
-        },
-        400
-      );
-    }
-    const model = incoming.selectedModelValue;
-    if (typeof model === "string" && model !== "") {
-      if (!isWorkersAiModelId(model)) {
-        return c.json(
-          {
-            error: {
-              code: "external_gateway_rejected",
-              message: `"${model}" is not a Workers AI model id`,
-            },
-          },
-          400
-        );
-      }
-      const detected = await ports.ai.listModels?.().catch(() => undefined);
-      if (detected?.length && !detected.some((m) => m.value === model)) {
-        return c.json(
-          {
-            error: {
-              code: "unknown_model",
-              message: `"${model}" is not served by Workers AI on this account`,
-            },
-          },
-          400
-        );
-      }
-    }
-
     const raw = await settingsRepo.get(CONFIG_KEY);
-    const existingEncrypted = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const existing: Record<string, unknown> = { ...existingEncrypted };
-    for (const k of SECRET_CONFIG_KEYS) {
-      if (typeof existing[k] === "string" && existing[k] !== "") {
-        existing[k] = await decrypt(existing[k] as string);
-      }
-    }
-    const merged: Record<string, unknown> = { ...existing, ...incoming };
-    // Preserve stored secrets when the client submits an empty or masked placeholder.
-    for (const k of SECRET_CONFIG_KEYS) {
-      const v = incoming[k];
-      if (typeof v !== "string" || v === "" || v.startsWith("••••")) {
-        merged[k] = existing[k] ?? "";
-      }
-    }
-    // Purge any external gateway state (including tokens stored before the
-    // Cloudflare-only migration) and pin the service.
-    for (const k of LEGACY_GATEWAY_CONFIG_KEYS) delete merged[k];
-    merged.selectedAiService = "workers-ai";
-    const toSave: Record<string, unknown> = { ...merged };
-    for (const k of SECRET_CONFIG_KEYS) {
-      if (typeof toSave[k] === "string" && toSave[k] !== "") {
-        toSave[k] = await encrypt(toSave[k] as string);
-      }
+    const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    // Git credentials are managed via CF Secrets — never store in DB.
+    for (const k of ["gitToken", "gitPackage", "gitService", ...LEGACY_GATEWAY_CONFIG_KEYS]) delete existing[k];
+    const toSave: Record<string, unknown> = { ...existing };
+    if (Array.isArray(incoming.selectedLanguages)) {
+      toSave.selectedLanguages = incoming.selectedLanguages;
     }
     await settingsRepo.set(CONFIG_KEY, JSON.stringify(toSave));
     return c.json({ ok: true });

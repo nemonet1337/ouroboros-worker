@@ -1,46 +1,27 @@
 <script setup lang="ts">
 const config = useConfig()
-const showToken = ref(false)
 </script>
 
 <template>
   <div class="space-y-4">
-    <UFormGroup label="Git Service" name="gitService">
-      <USelect
-        v-model="config.gitService.value"
-        :options="config.gitServiceOptions"
-        option-attribute="label"
-        value-attribute="value"
-        placeholder="Select a Git service"
-      />
-    </UFormGroup>
+    <div class="space-y-1">
+      <p class="text-xs font-medium text-gray-400">Repository</p>
+      <p class="text-xs font-mono text-gray-200 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        {{ config.gitRepository.value || 'Not configured' }}
+      </p>
+    </div>
 
-    <UFormGroup label="Repository (owner/repo)" name="gitPackage">
-      <UInput
-        v-model="config.gitPackage.value"
-        placeholder="e.g. acme-corp/my-service"
-        icon="i-heroicons-code-bracket"
-      />
-    </UFormGroup>
+    <div class="space-y-1">
+      <p class="text-xs font-medium text-gray-400">GitHub Token</p>
+      <p class="text-xs font-mono px-3 py-2 rounded-lg border" :class="config.gitTokenSet.value ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-gray-500 bg-white/5 border-white/10'">
+        {{ config.gitTokenSet.value ? '●●●●●●●● (set)' : 'Not configured' }}
+      </p>
+    </div>
 
-    <UFormGroup label="Git Access Token" name="gitToken">
-      <UInput
-        v-model="config.gitToken.value"
-        :type="showToken ? 'text' : 'password'"
-        placeholder="ghp_xxxxxxxxxxxx"
-        icon="i-heroicons-key"
-        :ui="{ icon: { trailing: { pointer: '' } } }"
-      >
-        <template #trailing>
-          <UButton
-            :icon="showToken ? 'i-heroicons-eye-slash' : 'i-heroicons-eye'"
-            color="gray"
-            variant="link"
-            :padded="false"
-            @click="showToken = !showToken"
-          />
-        </template>
-      </UInput>
-    </UFormGroup>
+    <p class="text-[11px] text-gray-500 leading-relaxed">
+      Managed via Cloudflare Secrets.<br>
+      Use <code class="font-mono text-gray-400">wrangler secret put GITHUB_TOKEN</code> and
+      <code class="font-mono text-gray-400">GITHUB_REPOSITORY</code> to configure.
+    </p>
   </div>
 </template>
