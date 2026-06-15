@@ -47,6 +47,19 @@ export interface CheckStatus {
   completed: number;
 }
 
+export interface VcsRepo {
+  fullName: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  description: string | null;
+  defaultBranch: string;
+}
+
+export interface VcsBranch {
+  name: string;
+}
+
 /**
  * Abstraction over a version-control hosting provider (GitHub today;
  * GitLab/Gitea can be added later). API-only operations — local git
@@ -63,4 +76,8 @@ export interface VcsProvider {
   createIssue(opts: CreateIssueOptions): Promise<number>;
   listIssues(labels: string[], state?: "open" | "closed" | "all"): Promise<VcsIssue[]>;
   updateIssue(number: number, patch: { state?: "open" | "closed"; body?: string }): Promise<void>;
+  /** List repositories accessible with the configured token. */
+  listRepos?(): Promise<VcsRepo[]>;
+  /** List branches for a given owner/repo pair. */
+  listBranches?(owner: string, repo: string): Promise<VcsBranch[]>;
 }

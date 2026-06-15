@@ -4,6 +4,8 @@ import type {
   VcsOpenPR,
   VcsPRFile,
   VcsIssue,
+  VcsRepo,
+  VcsBranch,
   CreatePROptions,
   CreateIssueOptions,
   CheckStatus,
@@ -27,23 +29,36 @@ export class GitHubProvider implements VcsProvider {
     this.base = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}`;
   }
 
+  private ghHeaders(hasBody = false): Record<string, string> {
+    return {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${this.cfg.token}`,
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "ouroboros-self-healing",
+      ...(hasBody ? { "content-type": "application/json" } : {}),
+    };
+  }
+
   private async api<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.base}${path}`, {
       ...init,
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${this.cfg.token}`,
-        "x-github-api-version": "2022-11-28",
-        "user-agent": "ouroboros-self-healing",
-        ...(init?.body ? { "content-type": "application/json" } : {}),
-        ...init?.headers,
-      },
+      headers: { ...this.ghHeaders(!!init?.body), ...init?.headers },
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       throw new Error(`GitHub API ${init?.method ?? "GET"} ${path} -> ${res.status}: ${(await res.text()).slice(0, 300)}`);
     }
     return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  }
+
+  /** GitHub API call not scoped to a specific repo (e.g. /user/repos, /repos/:o/:r/branches). */
+  private async apiRoot<T>(path: string): Promise<T> {
+    const res = await fetch(`https://api.github.com${path}`, {
+      headers: this.ghHeaders(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`GitHub API ${path} -> ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return res.json() as T;
   }
 
   async createPR(opts: CreatePROptions): Promise<VcsPullRequest> {
@@ -150,5 +165,43 @@ export class GitHubProvider implements VcsProvider {
 
   async updateIssue(number: number, patch: { state?: "open" | "closed"; body?: string }): Promise<void> {
     await this.api(`/issues/${number}`, { method: "PATCH", body: JSON.stringify(patch) });
+  }
+
+  async listRepos(): Promise<VcsRepo[]> {
+    type GhRepo = {
+      full_name: string; name: string; owner: { login: string };
+      private: boolean; description: string | null; default_branch: string;
+    };
+    const results: VcsRepo[] = [];
+    for (let page = 1; ; page++) {
+      const batch = await this.apiRoot<GhRepo[]>(
+        `/user/repos?type=all&sort=updated&per_page=50&page=${page}`
+      );
+      for (const r of batch) {
+        results.push({
+          fullName: r.full_name,
+          name: r.name,
+          owner: r.owner.login,
+          private: r.private,
+          description: r.description,
+          defaultBranch: r.default_branch,
+        });
+      }
+      if (batch.length < 50) break;
+    }
+    return results;
+  }
+
+  async listBranches(owner: string, repo: string): Promise<VcsBranch[]> {
+    type GhBranch = { name: string };
+    const results: VcsBranch[] = [];
+    for (let page = 1; ; page++) {
+      const batch = await this.apiRoot<GhBranch[]>(
+        `/repos/${owner}/${repo}/branches?per_page=100&page=${page}`
+      );
+      for (const b of batch) results.push({ name: b.name });
+      if (batch.length < 100) break;
+    }
+    return results;
   }
 }
