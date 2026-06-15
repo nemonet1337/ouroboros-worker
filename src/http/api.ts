@@ -260,6 +260,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     if (Array.isArray(incoming.selectedLanguages)) {
       toSave.selectedLanguages = incoming.selectedLanguages;
     }
+    if (typeof incoming.selectedModelValue === "string" && isWorkersAiModelId(incoming.selectedModelValue)) {
+      toSave.selectedModelValue = incoming.selectedModelValue;
+    }
     await settingsRepo.set(CONFIG_KEY, JSON.stringify(toSave));
     return c.json({ ok: true });
   });

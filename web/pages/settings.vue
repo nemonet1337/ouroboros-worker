@@ -5,6 +5,7 @@ useHead({ title: 'Settings — Ouroboros' })
 
 const navSections = [
   { id: 'general',      label: 'General',          icon: 'i-heroicons-cog-6-tooth' },
+  { id: 'aimodel',      label: 'AI Model',          icon: 'i-heroicons-cpu-chip' },
   { id: 'weights',      label: 'Score weights',     icon: 'i-heroicons-chart-bar' },
   { id: 'thresholds',   label: 'Grade thresholds',  icon: 'i-heroicons-academic-cap' },
   { id: 'schedule',     label: 'Scan schedule',     icon: 'i-heroicons-clock' },
@@ -31,7 +32,6 @@ const scheduleMode = ref<'cron' | 'interval' | 'manual'>('cron')
 const cronTimezone = ref('Asia/Tokyo')
 const intervalMinutes = ref(60)
 
-// Cron GUI state
 const DAYS_OF_WEEK = [
   { label: '月', value: 1 },
   { label: '火', value: 2 },
@@ -41,7 +41,7 @@ const DAYS_OF_WEEK = [
   { label: '土', value: 6 },
   { label: '日', value: 0 },
 ]
-const cronSelectedDays = ref<number[]>([1, 2, 3, 4, 5]) // Mon-Fri default
+const cronSelectedDays = ref<number[]>([1, 2, 3, 4, 5])
 const cronHour = ref(3)
 const cronMinute = ref(0)
 
@@ -77,7 +77,6 @@ const notifications = reactive({
   sound: false,
 })
 
-
 const totalWeight = computed(() => Object.values(weights).reduce((a, b) => a + b, 0))
 
 const saveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -88,6 +87,12 @@ const email = ref('')
 const password = ref('')
 const profileSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const profileError = ref('')
+
+// AI Model state
+const availableModels = ref<{ value: string; label: string; task?: string }[]>([])
+const selectedModel = ref('')
+const modelsLoading = ref(false)
+const modelSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
 watch(() => user.value?.email, (newVal) => {
   if (newVal) email.value = newVal
@@ -144,7 +149,21 @@ async function saveSchedule() {
   })
 }
 
+async function saveModel() {
+  if (!selectedModel.value) return
+  modelSaveStatus.value = 'saving'
+  try {
+    await api('/config', { method: 'PUT', body: { selectedModelValue: selectedModel.value } })
+    modelSaveStatus.value = 'saved'
+  } catch {
+    modelSaveStatus.value = 'error'
+  } finally {
+    setTimeout(() => { modelSaveStatus.value = 'idle' }, 2000)
+  }
+}
+
 onMounted(async () => {
+  // Load general settings
   const stored = await api<Record<string, any>>('/settings').catch(() => null)
   if (stored) {
     if (stored.weights) Object.assign(weights, stored.weights)
@@ -156,6 +175,23 @@ onMounted(async () => {
       if (stored.schedule.intervalMinutes) intervalMinutes.value = stored.schedule.intervalMinutes
     }
     if (stored.notifications) Object.assign(notifications, stored.notifications)
+  }
+
+  // Load AI models and current selection
+  modelsLoading.value = true
+  try {
+    const [modelsRes, configRes] = await Promise.all([
+      api<{ models: { value: string; label: string; task?: string }[] }>('/models').catch(() => null),
+      api<Record<string, any>>('/config').catch(() => null),
+    ])
+    if (modelsRes?.models) availableModels.value = modelsRes.models
+    if (configRes?.selectedModelValue) {
+      selectedModel.value = configRes.selectedModelValue
+    } else if (availableModels.value.length > 0) {
+      selectedModel.value = availableModels.value[0].value
+    }
+  } finally {
+    modelsLoading.value = false
   }
 })
 
@@ -185,11 +221,29 @@ function scrollTo(id: string) {
 </script>
 
 <template>
-  <div class="flex-1 max-w-screen-xl mx-auto w-full px-4 py-6 flex gap-6 overflow-hidden">
+  <div class="flex-1 flex flex-col md:flex-row overflow-hidden max-w-screen-xl mx-auto w-full px-4 py-4 md:py-6 gap-0 md:gap-6">
 
-    <!-- Left: Section nav -->
-    <aside class="w-52 flex-shrink-0">
-      <div class="sticky top-24 space-y-0.5">
+    <!-- Section nav: horizontal scrollable on mobile, vertical sidebar on md+ -->
+    <aside class="md:w-52 md:flex-shrink-0">
+
+      <!-- Mobile: horizontal scroll tabs -->
+      <div class="flex md:hidden gap-1 overflow-x-auto pb-2 mb-3 -mx-4 px-4 scrollbar-hide">
+        <button
+          v-for="s in navSections"
+          :key="s.id"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-colors border flex-shrink-0"
+          :class="activeSection === s.id
+            ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+            : 'text-gray-400 hover:text-gray-200 hover:bg-white/5 border-white/10'"
+          @click="scrollTo(s.id)"
+        >
+          <UIcon :name="s.icon" class="w-3.5 h-3.5 flex-shrink-0" />
+          {{ s.label }}
+        </button>
+      </div>
+
+      <!-- Desktop: vertical nav -->
+      <div class="hidden md:block sticky top-24 space-y-0.5">
         <button
           v-for="s in navSections"
           :key="s.id"
@@ -205,8 +259,8 @@ function scrollTo(id: string) {
       </div>
     </aside>
 
-    <!-- Right: Settings sections -->
-    <main class="flex-1 space-y-6 overflow-y-auto pb-6">
+    <!-- Settings sections -->
+    <main class="flex-1 space-y-5 overflow-y-auto pb-6 min-w-0">
 
       <!-- General Settings -->
       <section :id="'section-general'">
@@ -237,6 +291,77 @@ function scrollTo(id: string) {
         </UCard>
       </section>
 
+      <!-- AI Model -->
+      <section :id="'section-aimodel'">
+        <UCard :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-5' } }">
+          <template #header>
+            <div class="flex items-center gap-2 text-sm font-medium text-gray-200">
+              <UIcon name="i-heroicons-cpu-chip" class="w-4 h-4 text-violet-400" />
+              AI Model (Workers AI)
+            </div>
+          </template>
+
+          <p class="text-xs text-gray-500 mb-4">
+            Cloudflare Workers AI のモデルを選択します。<br>
+            デフォルト: <code class="text-violet-300 bg-white/5 px-1 rounded">moonshotai/kimi-k2</code>
+          </p>
+
+          <div v-if="modelsLoading" class="flex items-center gap-2 text-xs text-gray-500 py-4">
+            <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 animate-spin" />
+            モデル一覧を読み込み中…
+          </div>
+
+          <div v-else-if="availableModels.length === 0" class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-300">
+            Workers AI バインディングに接続できないため、モデル一覧を取得できませんでした。
+            デプロイ済み環境でお試しください。
+          </div>
+
+          <div v-else class="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <button
+              v-for="m in availableModels"
+              :key="m.value"
+              class="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left"
+              :class="selectedModel === m.value
+                ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+                : 'border-white/10 text-gray-300 hover:bg-white/5 hover:border-white/20'"
+              @click="selectedModel = m.value"
+            >
+              <UIcon
+                :name="selectedModel === m.value ? 'i-heroicons-check-circle' : 'i-heroicons-cpu-chip'"
+                class="w-4 h-4 flex-shrink-0 mt-0.5"
+                :class="selectedModel === m.value ? 'text-indigo-400' : 'text-gray-600'"
+              />
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-medium truncate">{{ m.label || m.value }}</p>
+                <p class="text-[10px] text-gray-500 truncate font-mono">{{ m.value }}</p>
+                <p v-if="m.task" class="text-[10px] text-gray-600 mt-0.5">{{ m.task }}</p>
+              </div>
+            </button>
+          </div>
+
+          <!-- Manual input fallback -->
+          <div class="mt-4 space-y-1.5">
+            <label class="text-xs text-gray-400">モデル ID を直接入力（例: moonshotai/kimi-k2）</label>
+            <input
+              v-model="selectedModel"
+              type="text"
+              placeholder="vendor/model または @cf/vendor/model"
+              class="w-full bg-gray-800 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-indigo-500/50 placeholder-gray-600"
+            />
+          </div>
+
+          <div class="flex justify-end mt-4 pt-4 border-t border-white/10">
+            <button
+              class="px-3 py-1.5 text-xs text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!selectedModel"
+              @click="saveModel"
+            >
+              {{ modelSaveStatus === 'saving' ? '…' : modelSaveStatus === 'saved' ? '✓ Saved' : '💾 Save' }}
+            </button>
+          </div>
+        </UCard>
+      </section>
+
       <!-- Score Weights -->
       <section :id="'section-weights'">
         <UCard :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-5' } }">
@@ -253,19 +378,19 @@ function scrollTo(id: string) {
               :key="dim"
               class="flex items-center gap-3"
             >
-              <span class="w-32 text-sm text-gray-300 capitalize">{{ dim }}</span>
-              <div class="flex-1 h-2 rounded-full bg-gray-800 overflow-hidden">
+              <span class="w-28 text-sm text-gray-300 capitalize flex-shrink-0">{{ dim }}</span>
+              <div class="flex-1 h-2 rounded-full bg-gray-800 overflow-hidden min-w-0">
                 <div
                   class="h-full rounded-full transition-all"
                   :class="dimensionColor[dim]"
                   :style="{ width: `${val * 4}%` }"
                 />
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-shrink-0">
                 <input
                   v-model.number="weights[dim]"
                   type="number" min="0" max="100" step="5"
-                  class="w-16 bg-gray-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-center font-mono text-gray-200 focus:outline-none focus:border-indigo-500/50"
+                  class="w-14 bg-gray-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-center font-mono text-gray-200 focus:outline-none focus:border-indigo-500/50"
                 />
                 <span class="text-xs text-gray-500">%</span>
               </div>
@@ -347,7 +472,7 @@ function scrollTo(id: string) {
               Scan Schedule
             </div>
           </template>
-          <div class="flex gap-2 mb-4">
+          <div class="flex gap-2 mb-4 flex-wrap">
             <button
               v-for="m in (['cron', 'interval', 'manual'] as const)"
               :key="m"
@@ -363,10 +488,9 @@ function scrollTo(id: string) {
           </div>
 
           <div v-if="scheduleMode === 'cron'" class="space-y-5">
-            <!-- Day of week picker -->
             <div class="space-y-2">
               <label class="text-xs text-gray-400">実行曜日</label>
-              <div class="flex gap-1.5">
+              <div class="flex gap-1.5 flex-wrap">
                 <button
                   v-for="d in DAYS_OF_WEEK"
                   :key="d.value"
@@ -384,10 +508,9 @@ function scrollTo(id: string) {
               <p v-if="cronSelectedDays.length === 0" class="text-[11px] text-amber-400">曜日未選択の場合は毎日実行されます</p>
             </div>
 
-            <!-- Time picker -->
             <div class="space-y-2">
               <label class="text-xs text-gray-400">実行時刻</label>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <div class="space-y-1">
                   <p class="text-[10px] text-gray-500">時</p>
                   <select
@@ -407,7 +530,7 @@ function scrollTo(id: string) {
                     <option v-for="m in [0,5,10,15,20,25,30,35,40,45,50,55]" :key="m" :value="m">{{ String(m).padStart(2,'0') }}</option>
                   </select>
                 </div>
-                <div class="space-y-1 ml-2">
+                <div class="space-y-1">
                   <p class="text-[10px] text-gray-500">Timezone</p>
                   <input
                     v-model="cronTimezone"
@@ -417,7 +540,6 @@ function scrollTo(id: string) {
               </div>
             </div>
 
-            <!-- Generated cron preview -->
             <div class="flex items-center gap-2 rounded-lg bg-gray-800/60 border border-white/10 px-3 py-2">
               <span class="text-[10px] text-gray-500 uppercase tracking-wide">Cron</span>
               <code class="text-xs font-mono text-indigo-300 flex-1">{{ cronExpr }}</code>
@@ -463,11 +585,11 @@ function scrollTo(id: string) {
                 ['sound', 'Sound on completion'],
               ]"
               :key="key"
-              class="flex items-center justify-between"
+              class="flex items-center justify-between gap-4"
             >
               <span class="text-sm text-gray-300">{{ label }}</span>
               <button
-                class="relative w-11 h-6 rounded-full border transition-colors"
+                class="relative w-11 h-6 rounded-full border transition-colors flex-shrink-0"
                 :class="notifications[key as keyof typeof notifications]
                   ? 'bg-indigo-500/40 border-indigo-500/70'
                   : 'bg-gray-700 border-gray-600'"
@@ -498,10 +620,10 @@ function scrollTo(id: string) {
                 { label: 'Disconnect Git provider', btn: 'Disconnect' },
               ]"
               :key="action.label"
-              class="flex items-center justify-between py-2 border-b border-red-500/10 last:border-0"
+              class="flex items-center justify-between gap-3 py-2 border-b border-red-500/10 last:border-0"
             >
               <span class="text-sm text-gray-300">{{ action.label }}</span>
-              <button class="px-3 py-1.5 text-xs text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors">
+              <button class="px-3 py-1.5 text-xs text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition-colors flex-shrink-0">
                 {{ action.btn }}
               </button>
             </div>

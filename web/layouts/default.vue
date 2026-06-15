@@ -21,6 +21,7 @@ const nav = computed(() => {
 
 const searchOpen = ref(false)
 const userMenuOpen = ref(false)
+const mobileNavOpen = ref(false)
 const searchQuery = ref('')
 
 const configUser = computed(() => ({
@@ -32,13 +33,18 @@ function toggleTheme() {
   colorMode.preference = colorMode.preference === 'dark' ? 'light' : 'dark'
 }
 
+watch(() => route.path, () => { mobileNavOpen.value = false })
+
 onMounted(() => {
   const handler = (e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault()
       searchOpen.value = true
     }
-    if (e.key === 'Escape') searchOpen.value = false
+    if (e.key === 'Escape') {
+      searchOpen.value = false
+      mobileNavOpen.value = false
+    }
   }
   document.addEventListener('keydown', handler)
   onUnmounted(() => document.removeEventListener('keydown', handler))
@@ -65,8 +71,8 @@ onMounted(() => {
 
           <div class="hidden sm:block w-px h-6 bg-white/10 flex-shrink-0" />
 
-          <!-- Navigation -->
-          <nav class="flex items-center gap-0.5">
+          <!-- Navigation (desktop) -->
+          <nav class="hidden sm:flex items-center gap-0.5">
             <NuxtLink
               v-for="item in nav"
               :key="item.to"
@@ -116,7 +122,7 @@ onMounted(() => {
           </button>
 
           <!-- User avatar -->
-          <div class="relative">
+          <div class="relative hidden sm:block">
             <button
               class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white hover:opacity-90 transition-opacity"
               @click="userMenuOpen = !userMenuOpen"
@@ -154,12 +160,84 @@ onMounted(() => {
               </div>
             </div>
           </div>
+
+          <!-- Mobile hamburger -->
+          <button
+            class="sm:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/8 transition-colors"
+            @click="mobileNavOpen = true"
+          >
+            <UIcon name="i-heroicons-bars-3" class="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>
 
     <!-- Page content -->
     <slot />
+
+    <!-- Mobile nav drawer -->
+    <Teleport to="body">
+      <div v-if="mobileNavOpen" class="sm:hidden fixed inset-0 z-[90] flex">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="mobileNavOpen = false" />
+        <div class="relative w-72 max-w-[85vw] bg-gray-900 border-r border-white/10 flex flex-col h-full overflow-y-auto">
+          <!-- Drawer header -->
+          <div class="flex items-center justify-between px-4 py-4 border-b border-white/10">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <UIcon name="i-heroicons-arrow-path" class="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p class="text-sm font-bold">Ouroboros</p>
+                <p class="text-[10px] text-gray-500">Self-Healing System</p>
+              </div>
+            </div>
+            <button
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-200 hover:bg-white/8 transition-colors"
+              @click="mobileNavOpen = false"
+            >
+              <UIcon name="i-heroicons-x-mark" class="w-4 h-4" />
+            </button>
+          </div>
+
+          <!-- Nav links -->
+          <nav class="flex-1 px-3 py-3 space-y-0.5">
+            <NuxtLink
+              v-for="item in nav"
+              :key="item.to"
+              :to="item.to"
+              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              :class="route.path === item.to
+                ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                : 'text-gray-300 hover:text-gray-100 hover:bg-white/5 border border-transparent'"
+            >
+              <UIcon :name="item.icon" class="w-4 h-4 flex-shrink-0" />
+              {{ item.label }}
+            </NuxtLink>
+          </nav>
+
+          <!-- User info + actions -->
+          <div class="px-3 py-3 border-t border-white/10 space-y-1">
+            <div class="flex items-center gap-3 px-3 py-2 mb-1">
+              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                {{ configUser.name.charAt(0).toUpperCase() }}
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-100 truncate">{{ configUser.name }}</p>
+                <p class="text-xs text-gray-500 truncate">{{ configUser.email }}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+              @click="mobileNavOpen = false; logout()"
+            >
+              <UIcon name="i-heroicons-arrow-right-on-rectangle" class="w-3.5 h-3.5" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Global Search Modal -->
     <Teleport to="body">
