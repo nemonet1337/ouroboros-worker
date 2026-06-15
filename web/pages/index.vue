@@ -7,31 +7,11 @@ const config = useConfig()
 onMounted(() => { config.loadConfig() })
 
 const formSections = [
-  { id: 'git',    title: 'Git',             icon: 'i-heroicons-code-bracket-square' },
-  { id: 'lang',   title: 'Languages',       icon: 'i-heroicons-language' },
-  { id: 'tokens', title: 'LLM API Tokens',  icon: 'i-heroicons-key' },
-  { id: 'model',  title: 'AI Model',        icon: 'i-heroicons-cpu-chip' },
+  { id: 'git',  title: 'Git',       icon: 'i-heroicons-code-bracket-square' },
+  { id: 'lang', title: 'Languages', icon: 'i-heroicons-language' },
 ]
 
 const activeSection = ref('git')
-
-const gitServiceLabel = computed(() =>
-  config.gitService.value === 'github' ? 'GitHub' : 'GitLab'
-)
-
-const modelSaveStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
-
-async function saveModel() {
-  modelSaveStatus.value = 'saving'
-  try {
-    await config.saveConfig()
-    modelSaveStatus.value = 'saved'
-  } catch {
-    modelSaveStatus.value = 'error'
-  } finally {
-    setTimeout(() => { modelSaveStatus.value = 'idle' }, 2000)
-  }
-}
 
 // PR Drawer
 const selectedPr = ref<any>(null)
@@ -49,7 +29,6 @@ function onPrSelect(pr: any) {
       <aside class="w-72 xl:w-80 flex-shrink-0 flex flex-col gap-3 overflow-y-auto pb-4">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-gray-300">Configuration</h2>
-          <UBadge :label="gitServiceLabel" color="gray" variant="outline" size="xs" />
         </div>
 
         <!-- Section nav pills -->
@@ -98,70 +77,25 @@ function onPrSelect(pr: any) {
           <FormLanguageSelector />
         </UCard>
 
-        <!-- API Tokens -->
-        <UCard
-          v-show="activeSection === 'tokens'"
-          class="flex-shrink-0"
-          :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-4' } }"
-        >
-          <template #header>
-            <div class="flex items-center gap-2 text-sm font-medium text-gray-200">
-              <UIcon name="i-heroicons-key" class="w-4 h-4 text-indigo-400" />
-              LLM API Tokens
-            </div>
-          </template>
-          <FormApiTokens />
-        </UCard>
-
-        <!-- AI Model -->
-        <UCard
-          v-show="activeSection === 'model'"
-          class="flex-shrink-0"
-          :ui="{ base: 'bg-gray-900 border border-white/10', header: { base: 'border-b border-white/10 py-3' }, body: { padding: 'p-4' } }"
-        >
-          <template #header>
-            <div class="flex items-center gap-2 text-sm font-medium text-gray-200">
-              <UIcon name="i-heroicons-cpu-chip" class="w-4 h-4 text-indigo-400" />
-              AI Model Selection
-            </div>
-          </template>
-          <FormModelSelector />
-          <div class="flex justify-end mt-4 pt-3 border-t border-white/10">
-            <button
-              class="px-3 py-1.5 text-xs text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
-              :disabled="modelSaveStatus === 'saving'"
-              @click="saveModel"
-            >
-              {{ modelSaveStatus === 'saving' ? '…' : modelSaveStatus === 'saved' ? '✓ Saved' : '💾 Save' }}
-            </button>
-          </div>
-        </UCard>
-
         <!-- Setup Status -->
         <div class="rounded-xl border border-white/10 bg-gray-900 p-4 space-y-2">
           <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Setup Status</p>
           <div class="space-y-2.5">
             <div class="flex items-center justify-between text-xs">
               <span class="text-gray-400">Repository</span>
-              <span :class="config.gitPackage.value ? 'text-emerald-400 font-mono' : 'text-gray-600'">
-                {{ config.gitPackage.value || 'Not set' }}
+              <span :class="config.gitRepository.value ? 'text-emerald-400 font-mono' : 'text-gray-600'">
+                {{ config.gitRepository.value || 'Not set' }}
               </span>
             </div>
             <div class="flex items-center justify-between text-xs">
               <span class="text-gray-400">Git Token</span>
-              <span :class="config.gitToken.value ? 'text-emerald-400 font-mono' : 'text-gray-600'">
-                {{ config.gitToken.value ? '●●●●●●' : 'Not set' }}
+              <span :class="config.gitTokenSet.value ? 'text-emerald-400' : 'text-gray-600'">
+                {{ config.gitTokenSet.value ? '●●●●●●' : 'Not set' }}
               </span>
             </div>
             <div class="flex items-center justify-between text-xs">
               <span class="text-gray-400">Languages</span>
               <span class="text-gray-300">{{ config.selectedLanguages.value.length }} selected</span>
-            </div>
-            <div class="flex items-center justify-between text-xs">
-              <span class="text-gray-400">AI Model</span>
-              <span :class="config.selectedModel.value ? 'text-emerald-400' : 'text-gray-600'">
-                {{ config.selectedModel.value?.label || 'Not set' }}
-              </span>
             </div>
           </div>
           <!-- Scan schedule -->

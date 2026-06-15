@@ -11,7 +11,7 @@ requests automatically — with authentication, multi-tenant API tokens, telemet
 and email alerting.
 
 It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues + Workflows +
-Workers AI). The Docker / on-premises implementations were removed in v2.1.
+Workers AI).
 
 > **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
 > (default model: `minimax/m3`). Every model Workers AI serves is selectable from the GUI
@@ -24,23 +24,30 @@ Workers AI). The Docker / on-premises implementations were removed in v2.1.
 ## Architecture
 
 ```
-   ┌──────────────────────────────┐
-   │      packages/core           │  shared library
-   │  analyzer · inspection       │
-   │  orchestrator · auth · db    │
-   │  logging · HTTP API (Hono)   │
-   │  ports/  (the abstraction)   │
-   └───────────────┬──────────────┘
-                   ▼
-   ┌────────────────────────────┐
-   │   apps/worker (Cloudflare)  │
-   │   Workers + Hono            │
-   │   D1 · R2 logs              │
-   │   MailChannels · Queues     │
-   │   Workers AI (minimax/m3)   │
-   │   Workflows · Rate Limiting │
-   │   DispatchRunner ──HTTP──▶ external runner (optional heavy git/CI work)
-   └────────────────────────────┘
+src/
+├── adapters/      Cloudflare service adapters (D1, R2, Queues, Workers AI …)
+├── analyzers/     AI analysis engine (finding grouping, risk scoring)
+├── auth/          Authentication, sessions, API token management
+├── config/        Settings and per-language rules (10 languages)
+├── db/            D1/SQLite layer (7 tables, migrations)
+├── healing/       Self-healing orchestrator
+├── http/          Hono-based REST API
+├── inspection/    AI scoring engine (6 dimensions, 32 aspects)
+├── logging/       Structured logger (R2-persisted)
+├── notifications/ Email alerts and notifications
+├── ports/         Adapter interfaces (Ports & Adapters pattern)
+├── pr/            PR body/title generation, dedup, auto-merge
+├── queues/        Cloudflare Queues handler
+├── schemas/       JSON schema definitions
+├── utils/         Crypto, escalator, fix cache
+├── vcs/           GitHub integration (fetch-based)
+├── webhook/       Webhook dispatch (Slack, Discord, GitHub, Generic)
+├── workflows/     Cloudflare Workflows (durable healing lifecycle)
+├── types.ts       All type definitions
+├── context.ts     Dependency injection
+├── env.ts         Cloudflare bindings type
+└── index.ts       Worker entry point
+web/               Nuxt 3 GUI (built as a static SPA, served via ASSETS)
 ```
 
 | Port           | Implementation (Cloudflare Worker)      |
@@ -60,17 +67,6 @@ while a **Cloudflare Workflow** drives the durable scan → analyze → fix → 
 
 ---
 
-## Repository layout
-
-```
-packages/core/        shared logic + ports + db + auth + http API
-apps/worker/          Cloudflare Worker (D1/R2/Queues/Workflows/Workers AI)
-web/                  Nuxt 3 GUI (built to a static SPA, served via ASSETS)
-wrangler.toml         Cloudflare deployment
-```
-
----
-
 ## Quick start — Cloudflare
 
 The fastest path is the **Deploy to Cloudflare** button above. Manual setup:
@@ -82,7 +78,7 @@ npm run build:web                                   # GUI → web/.output/public
 wrangler d1 create ouroboros                         # paste the id into wrangler.toml
 wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
-wrangler d1 migrations apply ouroboros               # schema from packages/core/src/db/migrations
+wrangler d1 migrations apply ouroboros               # schema from src/db/migrations/
 
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
@@ -135,7 +131,7 @@ the daily cron trigger, and the static GUI assets.
 ## API (selected)
 
 Base path: **`/api/v1`** (`/api` is kept as a backward-compatible alias).
-Full reference: **[docs/api.ja.md](./docs/api.ja.md)** · machine-readable: `GET /api/v1/openapi.json`.
+Machine-readable: `GET /api/v1/openapi.json`.
 
 | Method | Path                          | Auth            |
 | ------ | ----------------------------- | --------------- |
@@ -160,8 +156,8 @@ Tokens are sent as `Authorization: Bearer ouro_…`. Errors use a unified
 ## Development & testing
 
 ```bash
-npm run typecheck                      # all workspaces
-npm run test                           # core unit tests (vitest)
+npm run typecheck                      # TypeScript type check
+npm run test                           # vitest unit tests (src/__tests__/)
 npm run dev --workspace web            # Nuxt dev server
 npm run worker:dev                     # wrangler dev
 ```

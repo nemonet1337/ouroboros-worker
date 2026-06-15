@@ -1,5 +1,5 @@
 name = "ouroboros-worker"
-main = "apps/worker/src/index.ts"
+main = "src/index.ts"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
@@ -30,7 +30,7 @@ binding = "AI"
 binding = "DB"
 database_name = "ouroboros"
 database_id = "fa58b005-a39c-41ea-b029-19736281f6e6"
-migrations_dir = "packages/core/src/db/migrations"
+migrations_dir = "src/db/migrations"
 
 # R2 — フラット .log テレメトリの保存先
 [[r2_buckets]]
