@@ -260,8 +260,41 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     if (Array.isArray(incoming.selectedLanguages)) {
       toSave.selectedLanguages = incoming.selectedLanguages;
     }
+    if (typeof incoming.selectedModelValue === "string" && isWorkersAiModelId(incoming.selectedModelValue)) {
+      toSave.selectedModelValue = incoming.selectedModelValue;
+    }
+    if (typeof incoming.selectedRepository === "string" && /^[\w.-]+\/[\w.-]+$/.test(incoming.selectedRepository)) {
+      toSave.selectedRepository = incoming.selectedRepository;
+    }
+    if (typeof incoming.selectedBranch === "string" && incoming.selectedBranch.length > 0 && incoming.selectedBranch.length <= 255) {
+      toSave.selectedBranch = incoming.selectedBranch;
+    }
     await settingsRepo.set(CONFIG_KEY, JSON.stringify(toSave));
     return c.json({ ok: true });
+  });
+
+  // ── GitHub repo / branch browser ───────────────────────────────────────────
+  app.get("/github/repos", requireAuth(), async (c) => {
+    if (!ports.vcs.listRepos) return c.json({ repos: [] });
+    try {
+      const repos = await ports.vcs.listRepos();
+      return c.json({ repos });
+    } catch (err) {
+      return c.json({ error: { code: "github_error", message: (err as Error).message } }, 502);
+    }
+  });
+
+  app.get("/github/branches", requireAuth(), async (c) => {
+    const repo = c.req.query("repo") ?? "";
+    const [owner, name] = repo.split("/");
+    if (!owner || !name) return c.json({ branches: [] });
+    if (!ports.vcs.listBranches) return c.json({ branches: [] });
+    try {
+      const branches = await ports.vcs.listBranches(owner, name);
+      return c.json({ branches });
+    } catch (err) {
+      return c.json({ error: { code: "github_error", message: (err as Error).message } }, 502);
+    }
   });
 
   // ── AI models — every model served by the Workers AI binding ──────────────
