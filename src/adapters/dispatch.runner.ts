@@ -1,12 +1,20 @@
-import type { HealingRunner, RunFixOptions, RunnerFixResult, RunnerScanResult } from "../ports";
+import type {
+  HealingRunner,
+  RunFixOptions,
+  RunnerFixResult,
+  RunnerScanResult,
+  CodeRunner,
+  CodeInitOptions,
+  CodeInitResult,
+  CodeReadResult,
+  CodeSearchResult,
+  CodeWriteResult,
+  CodeDiffResult,
+  CodeCommitResult,
+} from "../ports";
 import type { AllFindings } from "../types";
 
-/**
- * Edge healing runner: the Worker cannot run git/compilers, so the heavy work
- * (scan, patch+validate+commit+push) is dispatched over HTTP to a self-hosted
- * LocalRunner exposed at RUNNER_URL/internal/*, authenticated by a shared secret.
- */
-export class DispatchRunner implements HealingRunner {
+export class DispatchRunner implements HealingRunner, CodeRunner {
   readonly kind = "dispatch" as const;
 
   constructor(
@@ -27,6 +35,8 @@ export class DispatchRunner implements HealingRunner {
     return (await res.json()) as T;
   }
 
+  // ── HealingRunner ──────────────────────────────────────────────────────
+
   async scan(): Promise<RunnerScanResult> {
     if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for edge healing");
     const findings = await this.post<AllFindings>("/internal/scan", {});
@@ -39,5 +49,52 @@ export class DispatchRunner implements HealingRunner {
       group: opts.group,
       dryRun: opts.dryRun,
     });
+  }
+
+  // ── CodeRunner ─────────────────────────────────────────────────────────
+
+  async init(opts: CodeInitOptions): Promise<CodeInitResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeInitResult>("/internal/code/init", opts);
+  }
+
+  async status(opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<{ branch: string; changedFiles: string[] }>("/internal/code/status", opts);
+  }
+
+  async read(opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeReadResult>("/internal/code/read", opts);
+  }
+
+  async search(opts: { sessionId: string; query: string; type: "grep" | "glob" }): Promise<CodeSearchResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeSearchResult>("/internal/code/search", opts);
+  }
+
+  async write(opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeWriteResult>("/internal/code/write", opts);
+  }
+
+  async deleteFiles(opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<{ success: boolean }>("/internal/code/delete", opts);
+  }
+
+  async diff(opts: { sessionId: string }): Promise<CodeDiffResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeDiffResult>("/internal/code/diff", opts);
+  }
+
+  async commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeCommitResult>("/internal/code/commit", opts);
+  }
+
+  async push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<{ success: boolean }>("/internal/code/push", opts);
   }
 }
