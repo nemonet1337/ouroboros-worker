@@ -203,6 +203,7 @@ export interface InspectionRow {
   user_id: string;
   target: string | null;
   result: string;
+  status: string;
   created_at: number;
 }
 
@@ -211,8 +212,8 @@ export class InspectionRepository {
 
   async insert(row: InspectionRow): Promise<void> {
     await this.db.exec(
-      `INSERT INTO inspections (id, user_id, target, result, created_at) VALUES (?, ?, ?, ?, ?)`,
-      [row.id, row.user_id, row.target, row.result, row.created_at]
+      `INSERT INTO inspections (id, user_id, target, result, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [row.id, row.user_id, row.target, row.result, row.status ?? "completed", row.created_at]
     );
   }
 
@@ -237,6 +238,13 @@ export class InspectionRepository {
       [userId, sinceMs]
     );
     return Number(rows[0]?.n ?? 0);
+  }
+
+  async updateStatus(id: string, userId: string, status: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE inspections SET status = ? WHERE id = ? AND user_id = ?`,
+      [status, id, userId]
+    );
   }
 }
 
@@ -306,6 +314,86 @@ export class HealingRunRepository {
     return this.db.query<HealingRunRow>(
       `SELECT * FROM healing_runs ORDER BY created_at DESC LIMIT ?`,
       [limit]
+    );
+  }
+}
+
+// ─── Code Mode: CodeSession Repository ─────────────────────────────────────
+
+export interface CodeSessionRow {
+  id: string;
+  user_id: string;
+  repo_url: string;
+  branch: string;
+  base_branch: string;
+  title: string;
+  instruction: string;
+  status: string;
+  generated_patches: string | null;
+  applied_branch: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export class CodeSessionRepository {
+  constructor(private readonly db: DbAdapter) {}
+
+  async create(row: CodeSessionRow): Promise<void> {
+    await this.db.exec(
+      `INSERT INTO code_sessions
+        (id, user_id, repo_url, branch, base_branch, title, instruction, status,
+         generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.id, row.user_id, row.repo_url, row.branch, row.base_branch,
+        row.title, row.instruction, row.status, row.generated_patches,
+        row.applied_branch, row.pr_number, row.pr_url, row.created_at, row.updated_at,
+      ]
+    );
+  }
+
+  async get(id: string, userId: string): Promise<CodeSessionRow | undefined> {
+    const rows = await this.db.query<CodeSessionRow>(
+      `SELECT * FROM code_sessions WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    return rows[0];
+  }
+
+  async listByUser(userId: string, limit = 30): Promise<CodeSessionRow[]> {
+    return this.db.query<CodeSessionRow>(
+      `SELECT * FROM code_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+      [userId, limit]
+    );
+  }
+
+  async updateStatus(id: string, userId: string, status: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      [status, Date.now(), id, userId]
+    );
+  }
+
+  async setPatches(id: string, userId: string, patches: unknown[]): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET generated_patches = ?, status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      [JSON.stringify(patches), "generated", Date.now(), id, userId]
+    );
+  }
+
+  async setApplied(id: string, userId: string, branch: string, prNumber: number, prUrl: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET status = ?, applied_branch = ?, pr_number = ?, pr_url = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["applied", branch, prNumber, prUrl, Date.now(), id, userId]
+    );
+  }
+
+  async dismiss(id: string, userId: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["dismissed", Date.now(), id, userId]
     );
   }
 }
