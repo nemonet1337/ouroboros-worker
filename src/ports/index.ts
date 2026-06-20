@@ -14,7 +14,7 @@ import type { DbAdapter } from "./db";
 import type { LogStore } from "./logstore";
 import type { QueueAdapter } from "./queue";
 import type { Mailer } from "./mailer";
-import type { HealingRunner } from "./runner";
+import type { HealingRunner, CodeRunner } from "./runner";
 import type { RateLimiter } from "./ratelimit";
 import type { VectorizePort } from "./vectorize";
 
@@ -31,6 +31,7 @@ export interface Ports {
   queue: QueueAdapter;
   mailer: Mailer;
   runner: HealingRunner;
+  codeRunner: CodeRunner;
   rateLimiter: RateLimiter;
   vectorize?: VectorizePort;
 }

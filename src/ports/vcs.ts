@@ -60,6 +60,11 @@ export interface VcsBranch {
   name: string;
 }
 
+export interface FileTreeEntry {
+  path: string;
+  type: "blob" | "tree";
+}
+
 /**
  * Abstraction over a version-control hosting provider (GitHub today;
  * GitLab/Gitea can be added later). API-only operations — local git
@@ -80,4 +85,8 @@ export interface VcsProvider {
   listRepos?(): Promise<VcsRepo[]>;
   /** List branches for a given owner/repo pair. */
   listBranches?(owner: string, repo: string): Promise<VcsBranch[]>;
+  /** Get file tree for repository indexing (Phase 5.6). */
+  getFileTree?(owner: string, repo: string, branch: string): Promise<FileTreeEntry[]>;
+  /** Get file content (Phase 5.6). */
+  getFileContent?(owner: string, repo: string, path: string, branch: string): Promise<string>;
 }

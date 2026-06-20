@@ -548,3 +548,32 @@ export interface WebhookDeliveryResult {
   attemptCount: number;
   deliveredAt: string;
 }
+
+// ─── Code Session types ─────────────────────────────────────────────────────────
+
+export type CodeSessionStatus =
+  | "initializing"
+  | "ready"
+  | "generating"
+  | "generated"
+  | "applying"
+  | "applied"
+  | "failed"
+  | "dismissed";
+
+export interface CodeSessionRow {
+  id: string;
+  user_id: string;
+  repo_url: string;
+  branch: string;
+  base_branch: string;
+  title: string;
+  instruction: string;
+  status: CodeSessionStatus;
+  generated_patches: string | null;
+  applied_branch: string | null;
+  pr_number: number | null;
+  pr_url: string | null;
+  created_at: number;
+  updated_at: number;
+}
