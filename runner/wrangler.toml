@@ -1,0 +1,23 @@
+name = "ouroboros-runner"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Runner Worker bindings
+[[d1_databases]]
+binding = "DB"
+database_name = "ouroboros"
+database_id = "fa58b005-a39c-41ea-b029-19736281f6e6"
+
+# GitHub token for API access (git operations, PR creation)
+[[secrets_store_secrets]]
+binding = "GITHUB_TOKEN_SECRET"
+store_id = "ouroboros-secrets"
+secret_name = "github-token"
+
+# Rate limiting
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 50, period = 60 }
