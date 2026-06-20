@@ -10,15 +10,6 @@ compatibility_flags = ["nodejs_compat"]
 enabled = true
 head_sampling_rate = 1
 
-# wrangler deploy 前に Nuxt SPA を生成する
-[build]
-command = "bash scripts/resolve-d1.sh && npm run build:web"
-
-# ビルド済み Nuxt GUI を配信（`nuxt generate` の出力 web/.output/public）
-[assets]
-directory = "./web/.output/public"
-binding = "ASSETS"
-
 # Workers AI — Cloudflare デプロイで唯一許可される AI ゲートウェイ。
 # 外部ゲートウェイ（Anthropic API など）はこのターゲットでは一切使用されない。
 # 利用可能なモデルは GET /api/v1/models（env.AI.models()）で動的に検出される。
@@ -72,16 +63,8 @@ simple = { limit = 100, period = 60 }
 crons = ["0 2 * * *"]
 
 [vars]
-DEPLOY_TARGET = "cloudflare"
-# "true" で新規登録を開放、"false"（既定）で閉鎖。初回ユーザーは常に登録可能。
 OURO_REGISTRATION_ENABLED = "false"
-# 既定の Workers AI モデル。GUI の設定画面から Workers AI が提供する
-# すべてのモデルに変更可能。
-OURO_WORKERS_AI_MODEL = "minimax/m3"
-OURO_BASE_BRANCH = "main"
 MAIL_FROM = "ouroboros@nemonet.work"
-# RUNNER_URL は、git/コンパイラを使う重い処理を委譲する外部 runner (/internal/*) を指す
-RUNNER_URL = "ouroboros.nemonet.work"
 
 # シークレット（`wrangler secret put <NAME>` で設定）:
 #   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用の Cloudflare API トークン。

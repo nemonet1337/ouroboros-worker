@@ -3,13 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "web"
-  ],
   "scripts": {
-    "typecheck": "tsc --noEmit && npm run typecheck --workspace web --if-present",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:web": "npm run generate --workspace web",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
   },
