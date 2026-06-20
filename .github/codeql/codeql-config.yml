@@ -1,5 +1,0 @@
-name: Self-Healing CodeQL Config
-queries:
-  - uses: security-and-quality
-paths-ignore:
-  - node_modules

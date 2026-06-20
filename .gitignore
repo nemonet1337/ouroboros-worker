@@ -236,3 +236,7 @@ web/dist
 *.db-wal
 /data/
 /logs/
+
+# Kilo Code
+.kilo/
+.kilocode/
