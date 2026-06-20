@@ -19,10 +19,14 @@ import {
   WebhookRepository,
   HealingRunRepository,
   SettingsRepository,
+  CodeSessionRepository,
 } from "../db/repositories";
 import type { InspectionRequest } from "../types";
 import { validateWebhookUrl } from "../webhook/url.guard";
 import { OPENAPI_SPEC } from "./openapi";
+import { CodeSessionManager } from "../code/session.manager";
+import { CodeAgent } from "../code/agent";
+import { ProposalManager } from "../refactor/proposal.manager";
 import {
   validateBody,
   credentialsSchema,
@@ -33,6 +37,8 @@ import {
   webhookPatchSchema,
   settingsSchema,
   configSchema,
+  codeSessionCreateSchema,
+  codeSessionActionSchema,
 } from "./validation";
 
 const SESSION_COOKIE = "ouro_session";
@@ -109,6 +115,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const webhooks = new WebhookRepository(ports.db);
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
+  const codeSessions = new CodeSessionRepository(ports.db);
+  const codeAgentInstance = new CodeAgent({ ai: ports.ai, runner: ports.codeRunner });
+  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, codeAgentInstance);
 
   // ── Unified error handling ─────────────────────────────────────────────────
   app.onError((err, c) => {
@@ -260,41 +269,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     if (Array.isArray(incoming.selectedLanguages)) {
       toSave.selectedLanguages = incoming.selectedLanguages;
     }
-    if (typeof incoming.selectedModelValue === "string" && isWorkersAiModelId(incoming.selectedModelValue)) {
-      toSave.selectedModelValue = incoming.selectedModelValue;
-    }
-    if (typeof incoming.selectedRepository === "string" && /^[\w.-]+\/[\w.-]+$/.test(incoming.selectedRepository)) {
-      toSave.selectedRepository = incoming.selectedRepository;
-    }
-    if (typeof incoming.selectedBranch === "string" && incoming.selectedBranch.length > 0 && incoming.selectedBranch.length <= 255) {
-      toSave.selectedBranch = incoming.selectedBranch;
-    }
     await settingsRepo.set(CONFIG_KEY, JSON.stringify(toSave));
     return c.json({ ok: true });
-  });
-
-  // ── GitHub repo / branch browser ───────────────────────────────────────────
-  app.get("/github/repos", requireAuth(), async (c) => {
-    if (!ports.vcs.listRepos) return c.json({ repos: [] });
-    try {
-      const repos = await ports.vcs.listRepos();
-      return c.json({ repos });
-    } catch (err) {
-      return c.json({ error: { code: "github_error", message: (err as Error).message } }, 502);
-    }
-  });
-
-  app.get("/github/branches", requireAuth(), async (c) => {
-    const repo = c.req.query("repo") ?? "";
-    const [owner, name] = repo.split("/");
-    if (!owner || !name) return c.json({ branches: [] });
-    if (!ports.vcs.listBranches) return c.json({ branches: [] });
-    try {
-      const branches = await ports.vcs.listBranches(owner, name);
-      return c.json({ branches });
-    } catch (err) {
-      return c.json({ error: { code: "github_error", message: (err as Error).message } }, 502);
-    }
   });
 
   // ── AI models — every model served by the Workers AI binding ──────────────
@@ -375,6 +351,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         user_id: userId,
         target: req.language ?? null,
         result: JSON.stringify(result),
+        status: "completed",
         created_at: Date.now(),
       });
       await log.info("inspection complete", { id: result.id, grade: result.scoreCard.grade });
@@ -636,6 +613,83 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       causeData,
       codeStats
     });
+  });
+
+  // ── Code Mode ──────────────────────────────────────────────────────────────
+  app.get("/code/sessions", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const rows = await codeSessions.listByUser(userId);
+    return c.json({ sessions: rows });
+  });
+
+  app.get("/code/sessions/:id", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const row = await codeSessions.get(c.req.param("id")!, userId);
+    if (!row) return c.json({ error: { code: "not_found", message: "session not found" } }, 404);
+    return c.json({ session: row });
+  });
+
+  app.post("/code/sessions", requireAuth("inspect"), validateBody(codeSessionCreateSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const body = c.get("body") as { repoUrl: string; branch?: string; baseBranch?: string; title: string; instruction: string };
+    const id = await codeManager.create({
+      userId,
+      repoUrl: body.repoUrl,
+      branch: body.branch ?? "main",
+      baseBranch: body.baseBranch ?? "main",
+      title: body.title,
+      instruction: body.instruction,
+    });
+    return c.json({ id }, 201);
+  });
+
+  app.post("/code/sessions/:id/generate", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    await codeManager.generate(c.req.param("id")!, userId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/code/sessions/:id/apply", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const result = await codeManager.apply(c.req.param("id")!, userId, ports.vcs);
+    return c.json(result);
+  });
+
+  app.delete("/code/sessions/:id", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    await codeManager.dismiss(c.req.param("id")!, userId);
+    return c.json({ ok: true });
+  });
+
+  // ── Refactor Mode ───────────────────────────────────────────────────────
+  app.get("/refactor/proposals", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const rows = (await ports.db.query<{ status: string; created_at: number }>(
+      `SELECT id, status, created_at as created_at FROM inspections WHERE user_id = ? AND status IN ('proposed', 'applied', 'dismissed') ORDER BY created_at DESC`,
+      [userId]
+    )) as { id: string; status: string; created_at: number }[];
+    return c.json({ proposals: rows });
+  });
+
+  app.post("/refactor/:inspectionId/propose", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    await manager.generateProposal(c.req.param("inspectionId")!, userId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/refactor/proposals/:inspectionId/apply", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner);
+    return c.json(result);
+  });
+
+  app.post("/refactor/proposals/:inspectionId/dismiss", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    await manager.dismissProposal(c.req.param("inspectionId")!, userId);
+    return c.json({ ok: true });
   });
 
   return app;

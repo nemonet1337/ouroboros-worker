@@ -129,3 +129,27 @@ export const configSchema: Validator<Record<string, unknown>> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   return { ok: true, value: body };
 };
+
+export const codeSessionCreateSchema: Validator<{
+  repoUrl: string;
+  branch?: string;
+  baseBranch?: string;
+  title: string;
+  instruction: string;
+}> = (body) => {
+  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
+  const errors: string[] = [];
+  if (typeof body.repoUrl !== "string" || body.repoUrl.length === 0)
+    errors.push("repoUrl must be a non-empty string");
+  if (typeof body.title !== "string" || body.title.length === 0)
+    errors.push("title must be a non-empty string");
+  if (typeof body.instruction !== "string" || body.instruction.length === 0)
+    errors.push("instruction must be a non-empty string");
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, value: body as { repoUrl: string; branch?: string; baseBranch?: string; title: string; instruction: string } };
+};
+
+export const codeSessionActionSchema: Validator<Record<string, unknown>> = (body) => {
+  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
+  return { ok: true, value: body };
+};
