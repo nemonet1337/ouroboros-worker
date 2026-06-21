@@ -405,7 +405,9 @@ export class CodeSessionRepository {
       `UPDATE code_sessions SET status = ?, applied_branch = ?, pr_number = ?, pr_url = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       ["applied", branch, prNumber, prUrl, Date.now(), id, userId]
     );
-  }  async dismiss(id: string, userId: string): Promise<void> {
+  }
+
+  async dismiss(id: string, userId: string): Promise<void> {
     await this.db.exec(
       `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       ["dismissed", Date.now(), id, userId]
