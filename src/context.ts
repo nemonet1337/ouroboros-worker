@@ -4,8 +4,8 @@ import { Logger } from "./logging/logger";
 import { defaultHealingConfig } from "./config/healing.config";
 import type { Ports } from "./ports";
 import type { HealingConfig } from "./config/healing.config";
-import type { DeployTarget } from "./config/deployment";
-import type { Env } from "./env";
+import { DEFAULT_WORKERS_AI_MODEL, type DeployTarget } from "./config/deployment";
+import type { Env, VersionMetadata } from "./env";
 import { D1Adapter } from "./adapters/d1.adapter";
 import { R2LogStore } from "./adapters/r2.logstore";
 import { CfQueueAdapter } from "./adapters/cf.queue";
@@ -30,24 +30,33 @@ export interface WorkerContext {
   githubTokenSet: boolean;
   flags?: FlagService;
   analytics?: AiUsageTracker;
+  versionMetadata?: VersionMetadata;
 }
 
-export function buildContext(env: Env): WorkerContext {
+export async function buildContext(env: Env): Promise<WorkerContext> {
   const db = new D1Adapter(env.DB);
   const logs = new R2LogStore(env.LOGS);
   const logger = new Logger(logs, { file: "ouroboros.log", minLevel: "info" });
 
   // Workers AI is the sole AI gateway — no external fallback, by design. The
   // only AI credential is the WORKERS_AI_API_TOKEN secret (REST path).
+  const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET
+    ? await env.WORKERS_AI_TOKEN_SECRET.get()
+    : env.WORKERS_AI_API_TOKEN;
+
   const ai = new WorkersAiProvider(env.AI, {
-    model: "minimax/m3",
-    apiToken: env.WORKERS_AI_API_TOKEN,
+    model: DEFAULT_WORKERS_AI_MODEL,
+    apiToken: workersAiApiToken,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
   });
 
+  const githubToken = env.GITHUB_TOKEN_SECRET
+    ? await env.GITHUB_TOKEN_SECRET.get()
+    : env.GITHUB_TOKEN;
+
   const [owner, repo] = (env.GITHUB_REPOSITORY ?? "/").split("/");
   const vcs = new GitHubProvider({
-    token: env.GITHUB_TOKEN ?? "",
+    token: githubToken ?? "",
     owner: env.GITHUB_REPOSITORY_OWNER || owner || "",
     repo: repo || "",
   });
@@ -91,8 +100,9 @@ export function buildContext(env: Env): WorkerContext {
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     registrationEnabled: env.OURO_REGISTRATION_ENABLED === "true",
-    githubTokenSet: !!(env.GITHUB_TOKEN),
+    githubTokenSet: !!githubToken,
     flags,
     analytics,
+    versionMetadata: env.CF_VERSION_METADATA,
   };
 }

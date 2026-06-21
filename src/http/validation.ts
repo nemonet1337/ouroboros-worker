@@ -4,6 +4,7 @@
  * Each validator is a plain TypeScript function — no AJV, no JSON Schema.
  */
 import type { Context, Next } from "hono";
+import { isWorkersAiModelId } from "../config/deployment";
 
 export class ValidationError extends Error {
   constructor(message: string, readonly details: string[]) {
@@ -152,4 +153,13 @@ export const codeSessionCreateSchema: Validator<{
 export const codeSessionActionSchema: Validator<Record<string, unknown>> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   return { ok: true, value: body };
+};
+
+export const modelSchema: Validator<{ model: string | null }> = (body) => {
+  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
+  if (body.model !== null && typeof body.model !== "string")
+    return { ok: false, errors: ["model must be a string or null"] };
+  if (typeof body.model === "string" && !isWorkersAiModelId(body.model))
+    return { ok: false, errors: [`"${body.model}" is not a valid Workers AI model id`] };
+  return { ok: true, value: body as { model: string | null } };
 };

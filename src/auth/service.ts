@@ -9,6 +9,7 @@ import {
 } from "../db/repositories";
 import { hashPassword, verifyPassword } from "./password";
 import { generateApiToken, newId, newSessionId, sha256Hex, type Scope } from "./tokens";
+import { isWorkersAiModelId } from "../config/deployment";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MAX_SESSIONS_PER_USER = 5;
@@ -18,6 +19,7 @@ export interface AuthedUser {
   id: string;
   email: string;
   role: "admin" | "member";
+  model: string | null;
 }
 
 export interface TokenIdentity extends AuthedUser {
@@ -32,7 +34,7 @@ export class AuthError extends Error {
 }
 
 function toAuthedUser(row: UserRow): AuthedUser {
-  return { id: row.id, email: row.email, role: row.role === "admin" ? "admin" : "member" };
+  return { id: row.id, email: row.email, role: row.role === "admin" ? "admin" : "member", model: row.model ?? null };
 }
 
 /**
@@ -85,6 +87,7 @@ export class AuthService {
       email: normalized,
       password_hash: await hashPassword(password),
       role: isFirstUser ? "admin" : "member",
+      model: null,
       created_at: now,
       updated_at: now,
     };
@@ -201,6 +204,17 @@ export class AuthService {
     const updated = await this.users.findById(userId);
     if (!updated) throw new AuthError("user not found", 404);
     return toAuthedUser(updated);
+  }
+
+  async getModel(userId: string): Promise<string | null> {
+    return this.users.getModel(userId);
+  }
+
+  async setModel(userId: string, model: string | null): Promise<void> {
+    if (model !== null && !isWorkersAiModelId(model)) {
+      throw new AuthError(`"${model}" is not a valid Workers AI model id`);
+    }
+    await this.users.setModel(userId, model);
   }
 
 }

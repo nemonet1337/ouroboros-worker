@@ -8,7 +8,7 @@ import { runMigrations } from "./db";
 import { HealingRunRepository } from "./db/repositories";
 import type { GuiEvent } from "./ports/queue";
 import type { Env } from "./env";
-import { buildContext } from "./context";
+import { buildContext, type WorkerContext } from "./context";
 import { handleGuiEvents } from "./queues/gui-events";
 
 type EnvWithIdentity = { Variables: { identity?: { user: { role?: string }; scopes?: string } } };
@@ -16,7 +16,7 @@ type EnvWithIdentity = { Variables: { identity?: { user: { role?: string }; scop
 export { HealingWorkflow } from "./workflows/healing";
 
 let migrated = false;
-let cachedApp: ReturnType<typeof buildApp> | undefined;
+let cachedApp: Awaited<ReturnType<typeof buildApp>> | undefined;
 
 async function ensureMigrated(env: Env): Promise<void> {
   if (migrated) return;
@@ -25,7 +25,7 @@ async function ensureMigrated(env: Env): Promise<void> {
   migrated = true;
 }
 
-function makeTriggerHealing(env: Env, ctx: ReturnType<typeof buildContext>) {
+function makeTriggerHealing(env: Env, ctx: WorkerContext) {
   const runs = new HealingRunRepository(ctx.ports.db);
   return async (opts: { trigger: string; userId?: string; dryRun: boolean }) => {
     const runId = crypto.randomUUID();
@@ -37,6 +37,7 @@ function makeTriggerHealing(env: Env, ctx: ReturnType<typeof buildContext>) {
       trigger: opts.trigger,
       workflow_id: null,
       summary: null,
+      tag: env.CF_VERSION_METADATA?.tag ?? null,
       created_at: now,
       updated_at: now,
     });
@@ -68,8 +69,8 @@ function isUiRoute(pathname: string): boolean {
   );
 }
 
-function buildApp(env: Env): Hono {
-  const ctx = buildContext(env);
+async function buildApp(env: Env): Promise<Hono> {
+  const ctx = await buildContext(env);
   const triggerHealing = makeTriggerHealing(env, ctx);
   const app = new Hono();
 
@@ -217,6 +218,11 @@ function buildApp(env: Env): Hono {
                   <div class="flex-1">
                     <a href="/" class="btn btn-ghost text-xl font-bold tracking-tight">Ouroboros</a>
                   </div>
+                  <div class="flex-none px-2">
+                    <span class="text-xs opacity-75 font-mono">
+                      {env.CF_VERSION_METADATA ? `tag: ${env.CF_VERSION_METADATA.tag}` : "v2.0.0"}
+                    </span>
+                  </div>
                 </div>
                 <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
                   <div class="alert alert-info">Ouroboros UI</div>
@@ -236,7 +242,7 @@ function buildApp(env: Env): Hono {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      cachedApp ??= buildApp(env);
+      cachedApp ??= await buildApp(env);
       return await cachedApp.fetch(request, env, ctx);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -250,7 +256,7 @@ export default {
   },
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env);
-    const wctx = buildContext(env);
+    const wctx = await buildContext(env);
     await wctx.auth.cleanupExpiredSessions();
     const trigger = makeTriggerHealing(env, wctx);
     await trigger({ trigger: "cron", dryRun: false });

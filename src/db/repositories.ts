@@ -5,6 +5,7 @@ export interface UserRow {
   email: string;
   password_hash: string;
   role: string;
+  model: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -36,6 +37,7 @@ export interface HealingRunRow {
   trigger: string;
   workflow_id: string | null;
   summary: string | null;
+  tag: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -60,9 +62,9 @@ export class UserRepository {
 
   async insert(row: UserRow): Promise<void> {
     await this.db.exec(
-      `INSERT INTO users (id, email, password_hash, role, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [row.id, row.email, row.password_hash, row.role, row.created_at, row.updated_at]
+      `INSERT INTO users (id, email, password_hash, role, model, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.email, row.password_hash, row.role, row.model ?? null, row.created_at, row.updated_at]
     );
   }
 
@@ -86,6 +88,21 @@ export class UserRepository {
         [email, now, id]
       );
     }
+  }
+
+  async setModel(id: string, model: string | null): Promise<void> {
+    await this.db.exec(
+      `UPDATE users SET model = ?, updated_at = ? WHERE id = ?`,
+      [model, Date.now(), id]
+    );
+  }
+
+  async getModel(id: string): Promise<string | null> {
+    const rows = await this.db.query<{ model: string | null }>(
+      `SELECT model FROM users WHERE id = ?`,
+      [id]
+    );
+    return rows[0]?.model ?? null;
   }
 
 }
@@ -293,9 +310,9 @@ export class HealingRunRepository {
 
   async create(row: HealingRunRow): Promise<void> {
     await this.db.exec(
-      `INSERT INTO healing_runs (id, user_id, status, trigger, workflow_id, summary, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.user_id, row.status, row.trigger, row.workflow_id, row.summary, row.created_at, row.updated_at]
+      `INSERT INTO healing_runs (id, user_id, status, trigger, workflow_id, summary, tag, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.user_id, row.status, row.trigger, row.workflow_id, row.summary, row.tag, row.created_at, row.updated_at]
     );
   }
 
@@ -394,6 +411,48 @@ export class CodeSessionRepository {
     await this.db.exec(
       `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       ["dismissed", Date.now(), id, userId]
+    );
+  }
+}
+
+// ─── Refactor Mode: Refactor Repository ──────────────────────────────────────
+
+export interface RefactorProposalRow {
+  id: string;
+  status: string;
+  created_at: number;
+  result: string;
+}
+
+export class RefactorRepository {
+  constructor(private readonly db: DbAdapter) {}
+
+  async listProposals(userId: string): Promise<RefactorProposalRow[]> {
+    return this.db.query<RefactorProposalRow>(
+      `SELECT id, status, created_at, result FROM inspections WHERE user_id = ? AND status IN ('proposed', 'applied', 'dismissed') ORDER BY created_at DESC`,
+      [userId]
+    );
+  }
+
+  async getProposal(id: string, userId: string): Promise<RefactorProposalRow | undefined> {
+    const rows = await this.db.query<RefactorProposalRow>(
+      `SELECT id, status, created_at, result FROM inspections WHERE id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    return rows[0];
+  }
+
+  async updateStatus(id: string, userId: string, status: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE inspections SET status = ? WHERE id = ? AND user_id = ?`,
+      [status, id, userId]
+    );
+  }
+
+  async updateResult(id: string, userId: string, result: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE inspections SET result = ? WHERE id = ? AND user_id = ?`,
+      [result, id, userId]
     );
   }
 }

@@ -7,7 +7,7 @@ import { buildContext } from "../context";
  * a durable Workflow instance; other events are processed inline.
  */
 export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): Promise<void> {
-  const ctx = buildContext(env);
+  const ctx = await buildContext(env);
   const log = ctx.logger.child("queue");
 
   for (const message of batch.messages) {
