@@ -216,17 +216,43 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: "forbidden", message: "registration is disabled" } }, 403);
     }
 
-    const user = await auth.register(email, password);
-    const { sessionId } = await auth.login(email, password);
-    setSession(c, sessionId, deps.cookieSecure);
-    return c.json({ user }, 201);
+    try {
+      const user = await auth.register(email, password);
+      const { sessionId } = await auth.login(email, password);
+      setSession(c, sessionId, deps.cookieSecure);
+      if (c.req.header("HX-Request")) {
+        return c.html('<script>window.location="/"</script>');
+      }
+      return c.json({ user }, 201);
+    } catch (err) {
+      if (c.req.header("HX-Request") && err instanceof AuthError) {
+        return c.html(
+          `<div class="alert alert-error"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+        );
+      }
+      throw err;
+    }
   });
 
   app.post("/auth/login", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
-    const { user, sessionId } = await auth.login(email, password);
-    setSession(c, sessionId, deps.cookieSecure);
-    return c.json({ user });
+
+    try {
+      const { user, sessionId } = await auth.login(email, password);
+      setSession(c, sessionId, deps.cookieSecure);
+      if (c.req.header("HX-Request")) {
+        const next = c.req.query("next") || "/";
+        return c.html(`<script>window.location=${JSON.stringify(next)}</script>`);
+      }
+      return c.json({ user });
+    } catch (err) {
+      if (c.req.header("HX-Request") && err instanceof AuthError) {
+        return c.html(
+          `<div class="alert alert-error"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+        );
+      }
+      throw err;
+    }
   });
 
   app.post("/auth/logout", async (c) => {

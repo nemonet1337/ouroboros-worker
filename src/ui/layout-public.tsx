@@ -2,9 +2,18 @@ import type { FC, PropsWithChildren } from "hono/jsx";
 
 export interface LayoutPublicProps {
   title?: string;
+  wide?: boolean;
 }
 
-export const LayoutPublic: FC<PropsWithChildren<LayoutPublicProps>> = ({ title = "Ouroboros", children }) => {
+export const LayoutPublic: FC<PropsWithChildren<LayoutPublicProps>> = ({
+  title = "Ouroboros",
+  wide = false,
+  children,
+}) => {
+  const mainClass = wide
+    ? "flex-1 w-full"
+    : "flex-1 p-4 md:p-6 max-w-md mx-auto w-full";
+
   return (
     <html lang="ja" data-theme="night">
       <head>
@@ -23,7 +32,7 @@ export const LayoutPublic: FC<PropsWithChildren<LayoutPublicProps>> = ({ title =
         <style>{`body { font-family: system-ui, -apple-system, sans-serif; }`}</style>
       </head>
       <body class="min-h-screen bg-base-300">
-        <main class="flex-1 p-4 md:p-6 max-w-md mx-auto w-full">
+        <main class={mainClass}>
           {children}
         </main>
         <script dangerouslySetInnerHTML={{ __html: `lucide.createIcons();` }} />

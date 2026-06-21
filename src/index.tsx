@@ -83,18 +83,27 @@ async function buildApp(env: Env): Promise<Hono> {
   const requireAuthMiddleware = async (c: Context<EnvWithIdentity>, next: Next) => {
     const sid = c.req.header("cookie")?.match(/ouro_session=([^;]+)/)?.[1];
     if (!sid) {
-      return c.redirect("/login", 302);
+      const next_ = c.req.path !== "/login"
+        ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
+        : "";
+      const redirect = next_ ? `/login?next=${encodeURIComponent(next_)}` : "/login";
+      return c.redirect(redirect, 302);
     }
     const user = await ctx.auth.resolveSession(sid);
     if (!user) {
-      return c.redirect("/login", 302);
+      const next_ = c.req.path !== "/login"
+        ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
+        : "";
+      const redirect = next_ ? `/login?next=${encodeURIComponent(next_)}` : "/login";
+      return c.redirect(redirect, 302);
     }
     c.set("identity", { user, scopes: "admin" });
     await next();
   };
 
   app.get("/login", (c) => {
-    return c.html(LoginPage);
+    const next_ = c.req.query("next") || undefined;
+    return c.html(<LoginPage next={next_} />);
   });
 
   app.get("/register", (c) => {
