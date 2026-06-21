@@ -117,4 +117,28 @@ export const MIGRATIONS: Migration[] = [
       `ALTER TABLE inspections ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'`,
     ],
   },
+  {
+    id: "0005_add_user_model",
+    statements: [
+      `ALTER TABLE users ADD COLUMN model TEXT`,
+    ],
+  },
+  {
+    id: "0006_add_tag_to_healing_runs",
+    statements: [
+      `ALTER TABLE healing_runs ADD COLUMN tag TEXT`,
+    ],
+  },
+  {
+    id: "0007_create_code_session_cache",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS code_session_cache (
+        session_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (session_id, key)
+      )`,
+    ],
+  },
 ];

@@ -5,7 +5,6 @@ import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
 import {
   DEFAULT_WORKERS_AI_MODEL,
-  isWorkersAiModelId,
   type DeployTarget,
 } from "../config/deployment";
 import { defaultInspectionConfig } from "../config/inspection.config";
@@ -27,6 +26,8 @@ import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { CodeAgent } from "../code/agent";
 import { ProposalManager } from "../refactor/proposal.manager";
+import { FlagService, FLAGS } from "../flags/flag.service";
+import type { VersionMetadata } from "../env";
 import {
   validateBody,
   credentialsSchema,
@@ -39,6 +40,7 @@ import {
   configSchema,
   codeSessionCreateSchema,
   codeSessionActionSchema,
+  modelSchema,
 } from "./validation";
 
 const SESSION_COOKIE = "ouro_session";
@@ -83,6 +85,8 @@ export interface ApiDeps {
   registrationEnabled?: boolean;
   /** Whether GITHUB_TOKEN is set as a CF Secret. Used by GET /config for read-only display. */
   githubTokenSet?: boolean;
+  flags?: FlagService;
+  versionMetadata?: VersionMetadata;
 }
 
 interface Identity {
@@ -141,7 +145,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const bearer = c.req.header("authorization");
     if (bearer?.startsWith("Bearer ")) {
       const id = await auth.resolveToken(bearer.slice(7).trim());
-      if (id) c.set("identity", { user: { id: id.id, email: id.email, role: id.role }, scopes: id.scopes });
+      if (id) c.set("identity", { user: { id: id.id, email: id.email, role: id.role, model: id.model }, scopes: id.scopes });
     } else {
       const sid = getCookie(c, SESSION_COOKIE);
       if (sid) {
@@ -167,10 +171,28 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     await next();
   };
 
+  const requireFlag = (flagName: string, defaultValue: boolean) => {
+    return async (c: Context, next: Next) => {
+      if (deps.flags) {
+        const enabled = await deps.flags.get(flagName, defaultValue);
+        if (!enabled) {
+          return c.json({ error: { code: "forbidden", message: `Feature ${flagName} is disabled` } }, 403);
+        }
+      }
+      await next();
+    };
+  };
+
   // ── Meta ─────────────────────────────────────────────────────────────────
   app.get("/health", (c) => c.json({ ok: true, db: ports.db.dialect }));
   app.get("/version", (c) =>
-    c.json({ name: "ouroboros", version: "2.0.0", apiVersion: API_VERSION, deployTarget })
+    c.json({
+      name: "ouroboros",
+      version: "2.0.0",
+      apiVersion: API_VERSION,
+      deployTarget,
+      versionMetadata: deps.versionMetadata || null,
+    })
   );
   app.get("/openapi.json", (c) => c.json(OPENAPI_SPEC));
 
@@ -310,6 +332,23 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ...merged, registrationEnabled: await auth.isRegistrationEnabled() });
   });
 
+  app.get("/settings/model", requireAuth(), async (c) => {
+    const user = c.get("identity")!.user;
+    const model = await auth.getModel(user.id);
+    return c.json({
+      model: model,
+      effectiveModel: model ?? DEFAULT_WORKERS_AI_MODEL,
+      isDefault: model === null,
+    });
+  });
+
+  app.put("/settings/model", requireAuth(), validateBody(modelSchema), async (c) => {
+    const user = c.get("identity")!.user;
+    const { model } = c.get("body") as { model: string | null };
+    await auth.setModel(user.id, model);
+    return c.json({ ok: true });
+  });
+
   // ── Inspection ─────────────────────────────────────────────────────────────
   app.post("/inspect", requireAuth("inspect"), validateBody(inspectSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
@@ -334,13 +373,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     req.id ||= newId();
     req.requestedAt ||= new Date().toISOString();
 
-    const rawConfig = await settingsRepo.get(CONFIG_KEY);
-    const cfg = rawConfig ? (JSON.parse(rawConfig) as Record<string, unknown>) : {};
-    // Workers AI binding only — external gateways are never consulted,
-    // regardless of what tokens may exist in stored config.
-    const selected = cfg.selectedModelValue;
-    const model =
-      typeof selected === "string" && isWorkersAiModelId(selected) ? selected : DEFAULT_WORKERS_AI_MODEL;
+    const userModel = await auth.getModel(userId);
+    const model = userModel ?? DEFAULT_WORKERS_AI_MODEL;
 
     const advisor = ports.vectorize ? new WeightAdvisor(ports.vectorize) : undefined;
     const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
@@ -616,20 +650,20 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   // ── Code Mode ──────────────────────────────────────────────────────────────
-  app.get("/code/sessions", requireAuth(), async (c) => {
+  app.get("/code/sessions", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
     const userId = c.get("identity")!.user.id;
     const rows = await codeSessions.listByUser(userId);
     return c.json({ sessions: rows });
   });
 
-  app.get("/code/sessions/:id", requireAuth(), async (c) => {
+  app.get("/code/sessions/:id", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
     const userId = c.get("identity")!.user.id;
     const row = await codeSessions.get(c.req.param("id")!, userId);
     if (!row) return c.json({ error: { code: "not_found", message: "session not found" } }, 404);
     return c.json({ session: row });
   });
 
-  app.post("/code/sessions", requireAuth("inspect"), validateBody(codeSessionCreateSchema), async (c) => {
+  app.post("/code/sessions", requireAuth("inspect"), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionCreateSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     const body = c.get("body") as { repoUrl: string; branch?: string; baseBranch?: string; title: string; instruction: string };
     const id = await codeManager.create({
@@ -643,26 +677,26 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ id }, 201);
   });
 
-  app.post("/code/sessions/:id/generate", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+  app.post("/code/sessions/:id/generate", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     await codeManager.generate(c.req.param("id")!, userId);
     return c.json({ ok: true });
   });
 
-  app.post("/code/sessions/:id/apply", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+  app.post("/code/sessions/:id/apply", requireAuth(), requireFlag(FLAGS.CODE_FIX_COMPLETE, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     const result = await codeManager.apply(c.req.param("id")!, userId, ports.vcs);
     return c.json(result);
   });
 
-  app.delete("/code/sessions/:id", requireAuth(), validateBody(codeSessionActionSchema), async (c) => {
+  app.delete("/code/sessions/:id", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     await codeManager.dismiss(c.req.param("id")!, userId);
     return c.json({ ok: true });
   });
 
   // ── Refactor Mode ───────────────────────────────────────────────────────
-  app.get("/refactor/proposals", requireAuth(), async (c) => {
+  app.get("/refactor/proposals", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
     const rows = (await ports.db.query<{ status: string; created_at: number }>(
       `SELECT id, status, created_at as created_at FROM inspections WHERE user_id = ? AND status IN ('proposed', 'applied', 'dismissed') ORDER BY created_at DESC`,
@@ -671,23 +705,26 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ proposals: rows });
   });
 
-  app.post("/refactor/:inspectionId/propose", requireAuth(), async (c) => {
+  app.post("/refactor/:inspectionId/propose", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
     await manager.generateProposal(c.req.param("inspectionId")!, userId);
     return c.json({ ok: true });
   });
 
-  app.post("/refactor/proposals/:inspectionId/apply", requireAuth(), async (c) => {
+  app.post("/refactor/proposals/:inspectionId/apply", requireAuth(), requireFlag(FLAGS.REFACTOR_APPLIED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
     const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner);
     return c.json(result);
   });
 
-  app.post("/refactor/proposals/:inspectionId/dismiss", requireAuth(), async (c) => {
+  app.post("/refactor/proposals/:inspectionId/dismiss", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs);
+    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
     await manager.dismissProposal(c.req.param("inspectionId")!, userId);
     return c.json({ ok: true });
   });

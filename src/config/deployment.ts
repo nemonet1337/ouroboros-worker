@@ -8,7 +8,7 @@
 export type DeployTarget = "cloudflare";
 
 /** Default Workers AI model used for every AI task unless overridden in the GUI. */
-export const DEFAULT_WORKERS_AI_MODEL = "moonshotai/kimi-k2";
+export const DEFAULT_WORKERS_AI_MODEL = "minimax/m3";
 
 /**
  * Workers AI model ids are namespaced — either with an explicit catalog prefix

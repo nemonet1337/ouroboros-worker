@@ -100,9 +100,11 @@ the daily cron trigger, and the static GUI assets.
 
 ### AI models
 
-- The default model is **`minimax/m3`** (`OURO_WORKERS_AI_MODEL` in `wrangler.toml`).
+- The default model is **`minimax/m3`**.
 - `GET /api/v1/models` discovers every model from your account's Workers AI catalog, and
   **all of them are selectable from the GUI settings screen**.
+- Each user can set their personal model preference via `GET/PUT /api/v1/settings/model`;
+  the personal setting takes precedence during inspection (falls back to `minimax/m3` if unset).
 - The only AI credential is **`WORKERS_AI_API_TOKEN`**. Combined with
   `CLOUDFLARE_ACCOUNT_ID` it routes inference through the Workers AI REST API; without it
   the in-Worker AI binding is used directly.
@@ -141,7 +143,8 @@ Machine-readable: `GET /api/v1/openapi.json`.
 | GET/POST/DELETE | `/api/v1/tokens`     | session/token   |
 | GET/PUT | `/api/v1/config`             | admin (PUT)     |
 | GET/PUT | `/api/v1/settings`           | admin (PUT)     |
-| GET    | `/api/v1/models`              | session/token   |
+| GET/PUT | `/api/v1/settings/model`     | session/token   |
+| GET     | `/api/v1/models`              | session/token   |
 | POST   | `/api/v1/inspect`             | scope `inspect` |
 | POST   | `/api/v1/healing`            | scope `heal`    |
 | GET    | `/api/v1/metrics`             | session/token   |

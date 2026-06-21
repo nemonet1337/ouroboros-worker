@@ -100,9 +100,11 @@ wrangler deploy                                      # または: wrangler dev
 
 ### AI モデル
 
-- デフォルトモデルは **`minimax/m3`**（`wrangler.toml` の `OURO_WORKERS_AI_MODEL`）。
+- デフォルトモデルは **`minimax/m3`**。
 - `GET /api/v1/models` がアカウントの Workers AI から全モデルを動的に検出し、
   **GUI の設定画面で Workers AI が提供するすべてのモデルを選択**できます。
+- 各ユーザーは `GET/PUT /api/v1/settings/model` で個人のモデル設定を保存でき、
+  インスペクション時には個人設定が優先されます（未設定時はデフォルトの `minimax/m3`）。
 - AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。`CLOUDFLARE_ACCOUNT_ID` と併用
   すると Workers AI REST API 経由で推論し、未設定なら AI バインディングを直接使用します。
 
@@ -139,6 +141,7 @@ wrangler deploy                                      # または: wrangler dev
 | GET/POST/DELETE | `/api/v1/tokens`     | セッション/トークン |
 | GET/PUT | `/api/v1/config`             | admin（PUT）      |
 | GET/PUT | `/api/v1/settings`           | admin（PUT）      |
+| GET/PUT | `/api/v1/settings/model`     | セッション/トークン |
 | GET     | `/api/v1/models`              | セッション/トークン |
 | POST    | `/api/v1/inspect`             | scope `inspect`  |
 | POST    | `/api/v1/healing`            | scope `heal`     |

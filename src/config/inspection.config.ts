@@ -1,5 +1,6 @@
 import { InspectionAspect, InspectionCategory } from "../types";
 import { ASPECTS_BY_CATEGORY } from "../inspection/aspects";
+import { DEFAULT_WORKERS_AI_MODEL } from "./deployment";
 
 export interface InspectionConfig {
   ai: {
@@ -109,7 +110,7 @@ export function deriveCategoryWeights(
 
 export const defaultInspectionConfig: InspectionConfig = {
   ai: {
-    model: "minimax/m3",
+    model: DEFAULT_WORKERS_AI_MODEL,
     maxTokens: 8192,
     maxRetries: 2,
   },
