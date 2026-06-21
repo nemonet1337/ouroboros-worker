@@ -1,9 +1,14 @@
 import type { FC } from "hono/jsx";
+import type { AuthedUser } from "../../auth/service";
 import { Layout } from "../layout";
 
-export const CodeNewPage: FC = () => {
+interface CodeNewPageProps {
+  user?: AuthedUser;
+}
+
+export const CodeNewPage: FC<CodeNewPageProps> = ({ user }) => {
   return (
-    <Layout>
+    <Layout user={user}>
       <h1 class="text-3xl font-bold mb-6">Create Code Session</h1>
       <div class="card bg-base-100 shadow-lg">
         <div class="card-body">

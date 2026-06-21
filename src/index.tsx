@@ -10,8 +10,22 @@ import type { GuiEvent } from "./ports/queue";
 import type { Env } from "./env";
 import { buildContext, type WorkerContext } from "./context";
 import { handleGuiEvents } from "./queues/gui-events";
+import { HomePage } from "./ui/pages/home";
+import { LoginPage } from "./ui/pages/login";
+import { RegisterPage } from "./ui/pages/register";
+import { CodePage } from "./ui/pages/code";
+import { CodeNewPage } from "./ui/pages/code-new";
+import { CodeSessionPage } from "./ui/pages/code-session";
+import { RefactorPage } from "./ui/pages/refactor";
+import { HealingPage } from "./ui/pages/healing";
+import { InspectionPage } from "./ui/pages/inspection";
+import { WebhooksPage } from "./ui/pages/webhooks";
+import { TokensPage } from "./ui/pages/tokens";
+import { SettingsPage } from "./ui/pages/settings";
+import { AdminPage } from "./ui/pages/admin";
+import type { AuthedUser } from "./auth/service";
 
-type EnvWithIdentity = { Variables: { identity?: { user: { role?: string }; scopes?: string } } };
+type EnvWithIdentity = { Variables: { identity?: { user: AuthedUser; scopes?: string } } };
 
 export { HealingWorkflow } from "./workflows/healing";
 
@@ -53,21 +67,6 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
   };
 }
 
-function isUiRoute(pathname: string): boolean {
-  return (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/register") ||
-    pathname.startsWith("/") ||
-    pathname.startsWith("/healing") ||
-    pathname.startsWith("/inspection") ||
-    pathname.startsWith("/code") ||
-    pathname.startsWith("/refactor") ||
-    pathname.startsWith("/webhooks") ||
-    pathname.startsWith("/tokens") ||
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/admin")
-  );
-}
 
 async function buildApp(env: Env): Promise<Hono> {
   const ctx = await buildContext(env);
@@ -95,146 +94,73 @@ async function buildApp(env: Env): Promise<Hono> {
   };
 
   app.get("/login", (c) => {
-    const url = new URL(c.req.url);
-    const next_ = url.searchParams.get("next") || "/";
-    return c.html(
-      <html lang="ja" data-theme="night">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Login - Ouroboros</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.0-beta.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-          <script src="https://unpkg.com/htmx.org@2.0.8"></script>
-        </head>
-        <body class="min-h-screen bg-base-300 flex items-center justify-center p-4">
-          <div class="card bg-base-100 shadow-xl w-full max-w-sm">
-            <div class="card-body">
-              <h2 class="card-title justify-center text-2xl mb-4">Login</h2>
-              <form hx-post="/api/v1/auth/login" hx-target="this" hx-swap="outerHTML">
-                <div class="form-control mb-4">
-                  <label class="label" for="email"><span class="label-text">Email</span></label>
-                  <input type="email" name="email" id="email" placeholder="you@example.com" class="input input-bordered w-full" required />
-                </div>
-                <div class="form-control mb-6">
-                  <label class="label" for="password"><span class="label-text">Password</span></label>
-                  <input type="password" name="password" id="password" placeholder="••••••••" class="input input-bordered w-full" required />
-                </div>
-                <input type="hidden" name="next" value={next_} />
-                <div class="form-control" hidden>
-                  <button type="submit" class="btn btn-primary w-full">Login</button>
-                </div>
-              </form>
-              <div class="text-center text-sm">
-                <a href="/register">Create an account</a>
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    );
+    return c.html(LoginPage);
   });
 
-  app.get("/register", async (c) => {
-    const enabled = c.req.header("cookie")?.match(/ouro_session=([^;]+)/)
-      ? true
-      : false;
-    const url = new URL(c.req.url);
-    return c.html(
-      <html lang="ja" data-theme="night">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Register - Ouroboros</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.0-beta.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-          <script src="https://unpkg.com/htmx.org@2.0.8"></script>
-        </head>
-        <body class="min-h-screen bg-base-300 flex items-center justify-center p-4">
-          <div class="card bg-base-100 shadow-xl w-full max-w-sm">
-            <div class="card-body">
-              <h2 class="card-title justify-center text-2xl mb-4">Register</h2>
-              <form hx-post="/api/v1/auth/register" hx-target="this" hx-swap="outerHTML">
-                <div class="form-control mb-4">
-                  <label class="label" for="email"><span class="label-text">Email</span></label>
-                  <input type="email" name="email" id="email" placeholder="you@example.com" class="input input-bordered w-full" required />
-                </div>
-                <div class="form-control mb-6">
-                  <label class="label" for="password"><span class="label-text">Password</span></label>
-                  <input type="password" name="password" id="password" placeholder="••••••••" class="input input-bordered w-full" minlength={8} required />
-                </div>
-                <div class="form-control" hidden>
-                  <button type="submit" class="btn btn-primary w-full">Register</button>
-                </div>
-              </form>
-              <div class="text-center text-sm">
-                <a href="/login">Already have an account? Login</a>
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    );
+  app.get("/register", (c) => {
+    return c.html(<RegisterPage />);
   });
 
-  app.get("/healing", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Healing</h1></body></html>));
-  app.get("/inspection", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Inspection</h1></body></html>));
-  app.get("/code", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Code Mode</h1></body></html>));
-  app.get("/refactor", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Refactor</h1></body></html>));
-  app.get("/webhooks", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Webhooks</h1></body></html>));
-  app.get("/tokens", requireAuthMiddleware, async (c) => c.html(<html><body><h1>API Tokens</h1></body></html>));
-  app.get("/settings", requireAuthMiddleware, async (c) => c.html(<html><body><h1>Settings</h1></body></html>));
-  app.get("/admin", requireAuthMiddleware, async (c) => {
+  app.get("/", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<HomePage user={identity?.user} />);
+  });
+
+  app.get("/healing", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<HealingPage user={identity?.user} />);
+  });
+
+  app.get("/inspection", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<InspectionPage user={identity?.user} />);
+  });
+
+  app.get("/code", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<CodePage user={identity?.user} />);
+  });
+
+  app.get("/code/new", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<CodeNewPage user={identity?.user} />);
+  });
+
+  app.get("/code/sessions/:id", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    const sessionId = c.req.param("id")!;
+    return c.html(<CodeSessionPage sessionId={sessionId} user={identity?.user} />);
+  });
+
+  app.get("/refactor", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<RefactorPage user={identity?.user} />);
+  });
+
+  app.get("/webhooks", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<WebhooksPage user={identity?.user} />);
+  });
+
+  app.get("/tokens", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<TokensPage user={identity?.user} />);
+  });
+
+  app.get("/settings", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<SettingsPage user={identity?.user} />);
+  });
+
+  app.get("/admin", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
     if (identity?.user.role !== "admin") {
       return c.redirect("/", 302);
     }
-    return c.html(<html><body><h1>Admin</h1></body></html>);
+    return c.html(<AdminPage user={identity?.user} />);
   });
 
-  app.get("/*", async (c) => {
-    const pathname = new URL(c.req.url).pathname;
-    if (isUiRoute(pathname)) {
-      const url = new URL(c.req.url);
-      url.pathname = "/";
-      const userHeader = c.req.header("x-identity");
-      return c.html(
-        <html lang="ja" data-theme="night">
-          <head>
-            <meta charset="UTF-8" />
-            <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <title>Ouroboros</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-            <link href="https://cdn.jsdelivr.net/npm/daisyui@5.0.0-beta.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-            <script src="https://unpkg.com/htmx.org@2.0.8"></script>
-            <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-            <script src="https://unpkg.com/lucide@latest"></script>
-          </head>
-          <body class="min-h-screen bg-base-300">
-            <div class="drawer lg:drawer-open">
-              <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
-              <div class="drawer-content flex flex-col">
-                <div class="navbar bg-primary text-primary-content px-4">
-                  <div class="flex-1">
-                    <a href="/" class="btn btn-ghost text-xl font-bold tracking-tight">Ouroboros</a>
-                  </div>
-                  <div class="flex-none px-2">
-                    <span class="text-xs opacity-75 font-mono">
-                      {env.CF_VERSION_METADATA ? `tag: ${env.CF_VERSION_METADATA.tag}` : "v2.0.0"}
-                    </span>
-                  </div>
-                </div>
-                <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
-                  <div class="alert alert-info">Ouroboros UI</div>
-                </main>
-              </div>
-            </div>
-          </body>
-        </html>
-      );
-    }
-    return c.notFound();
-  });
+  app.get("/*", (c) => c.notFound());
 
   return app;
 }
