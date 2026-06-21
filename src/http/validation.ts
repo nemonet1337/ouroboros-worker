@@ -20,7 +20,13 @@ export function validateBody<T>(validator: Validator<T>) {
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ error: { code: "invalid_json", message: "request body must be valid JSON" } }, 400);
+      // htmx forms submit as application/x-www-form-urlencoded, not JSON.
+      // Fall back to parseBody so login/register work over htmx.
+      try {
+        body = await c.req.parseBody();
+      } catch {
+        return c.json({ error: { code: "invalid_body", message: "request body must be valid JSON or form data" } }, 400);
+      }
     }
     const result = validator(body);
     if (!result.ok) {

@@ -221,7 +221,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       const { sessionId } = await auth.login(email, password);
       setSession(c, sessionId, deps.cookieSecure);
       if (c.req.header("HX-Request")) {
-        return c.html('<script>window.location="/"</script>');
+        c.header("HX-Redirect", "/");
+        return c.body(null);
       }
       return c.json({ user }, 201);
     } catch (err) {
@@ -242,7 +243,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       setSession(c, sessionId, deps.cookieSecure);
       if (c.req.header("HX-Request")) {
         const next = c.req.query("next") || "/";
-        return c.html(`<script>window.location=${JSON.stringify(next)}</script>`);
+        c.header("HX-Redirect", next);
+        return c.body(null);
       }
       return c.json({ user });
     } catch (err) {
