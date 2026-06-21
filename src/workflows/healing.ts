@@ -26,7 +26,7 @@ const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low", "info"]
  */
 export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
   async run(event: WorkflowEvent<HealingParams>, step: WorkflowStep): Promise<void> {
-    const ctx = buildContext(this.env);
+    const ctx = await buildContext(this.env);
     const runs = new HealingRunRepository(ctx.ports.db);
     const { runId, dryRun } = event.payload;
     const log = ctx.logger.child("workflow");
