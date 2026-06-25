@@ -138,4 +138,68 @@ export const components = `
 ::-webkit-scrollbar-thumb:hover {
   background: var(--sidebar-active-border);
 }
+
+/* ブランドパネルのテーマ別定義（視認性の確保） */
+.brand-panel {
+  transition: background var(--transition-normal), color var(--transition-normal);
+}
+
+[data-theme="night"] .brand-panel {
+  background: linear-gradient(135deg, #090d16 0%, #111424 50%, #030408 100%) !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="winter"] .brand-panel {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #bae6fd 100%) !important;
+  color: #0f172a !important;
+}
+
+.brand-title {
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+[data-theme="night"] .brand-title {
+  background-image: linear-gradient(to right, #ffffff 0%, #cbd5e1 100%) !important;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-theme="winter"] .brand-title {
+  background-image: linear-gradient(to right, #0f172a 0%, #1e293b 100%) !important;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-text {
+  transition: color var(--transition-normal);
+}
+
+[data-theme="night"] .brand-text {
+  color: #94a3b8 !important;
+}
+
+[data-theme="winter"] .brand-text {
+  color: #334155 !important;
+}
+
+.brand-icon-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+}
+
+[data-theme="winter"] .brand-icon-box {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.brand-badge {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  color: inherit;
+}
+
+[data-theme="winter"] .brand-badge {
+  background: rgba(0, 0, 0, 0.04);
+}
 `;
+

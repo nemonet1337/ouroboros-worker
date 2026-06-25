@@ -6,40 +6,41 @@ export const RegisterPage: FC = () => {
     <LayoutPublic title="アカウント作成" wide>
       <div class="flex flex-col lg:flex-row min-h-screen">
         {/* 左パネル: ブランディングと装飾 */}
-        <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-950 items-center justify-center p-12 relative overflow-hidden border-r border-[var(--glass-border)]">
-          {/* 背景の幾何学的装飾 (CSSパーティクル/グリッド風) */}
+        <div class="brand-panel hidden lg:flex lg:w-1/2 items-center justify-center p-12 relative overflow-hidden border-r border-[var(--glass-border)]">
+          {/* 背景の幾何学的装飾 */}
           <div class="absolute inset-0 opacity-20 pointer-events-none">
-            <div class="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-primary filter blur-[120px] animate-pulse"></div>
-            <div class="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full bg-secondary filter blur-[120px] animate-pulse delay-500"></div>
+            <div class="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] rounded-full bg-primary filter blur-[120px] opacity-40 animate-pulse"></div>
+            <div class="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] rounded-full bg-secondary filter blur-[120px] opacity-40 animate-pulse delay-500"></div>
             <div class="absolute inset-0" style="background-image: radial-gradient(var(--glass-border) 1px, transparent 1px); background-size: 24px 24px;"></div>
           </div>
           
-          <div class="relative z-10 text-center text-primary-content animate-float">
-            <div class="mb-6 inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl">
+          <div class="relative z-10 text-center animate-float">
+            <div class="brand-icon-box mb-6 inline-flex items-center justify-center w-24 h-24 rounded-2xl backdrop-blur-md shadow-2xl">
               <i data-lucide="infinity" class="w-14 h-14 text-accent"></i>
             </div>
-            <h1 class="text-6xl font-black mb-4 tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-accent to-primary">
+            <h1 class="brand-title text-6xl font-black mb-4 tracking-wider">
               Ouroboros
             </h1>
-            <p class="text-lg opacity-80 max-w-md mx-auto leading-relaxed mb-8">
+            <p class="brand-text text-lg max-w-md mx-auto leading-relaxed mb-8 font-medium">
               継続的インスペクションで品質を守り、<br />AIが自動でコードベースを進化させる。
             </p>
-            <div class="flex justify-center gap-8 opacity-75">
-              <div class="flex flex-col items-center gap-1">
-                <div class="p-3 rounded-xl bg-white/5 border border-white/10"><i data-lucide="zap" class="w-5 h-5 text-yellow-400"></i></div>
-                <span class="text-xs">高速修復</span>
+            
+            <div class="brand-text flex justify-center gap-8">
+              <div class="flex flex-col items-center gap-1.5">
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="zap" class="w-5 h-5 text-yellow-500"></i></div>
+                <span class="text-xs font-semibold">高速修復</span>
               </div>
-              <div class="flex flex-col items-center gap-1">
-                <div class="p-3 rounded-xl bg-white/5 border border-white/10"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i></div>
-                <span class="text-xs">安全第一</span>
+              <div class="flex flex-col items-center gap-1.5">
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-500"></i></div>
+                <span class="text-xs font-semibold">安全第一</span>
               </div>
-              <div class="flex flex-col items-center gap-1">
-                <div class="p-3 rounded-xl bg-white/5 border border-white/10"><i data-lucide="git-branch" class="w-5 h-5 text-blue-400"></i></div>
-                <span class="text-xs">PR自動化</span>
+              <div class="flex flex-col items-center gap-1.5">
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="git-branch" class="w-5 h-5 text-blue-500"></i></div>
+                <span class="text-xs font-semibold">PR自動化</span>
               </div>
-              <div class="flex flex-col items-center gap-1">
-                <div class="p-3 rounded-xl bg-white/5 border border-white/10"><i data-lucide="bot" class="w-5 h-5 text-purple-400"></i></div>
-                <span class="text-xs">AI駆動</span>
+              <div class="flex flex-col items-center gap-1.5">
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="bot" class="w-5 h-5 text-purple-500"></i></div>
+                <span class="text-xs font-semibold">AI駆動</span>
               </div>
             </div>
           </div>
@@ -69,7 +70,11 @@ export const RegisterPage: FC = () => {
                   </span>
                 </div>
 
-                <form hx-post="/api/v1/auth/register" hx-target="this" hx-swap="outerHTML" class="space-y-6">
+                {/* 登録失敗時のエラーメッセージを表示するコンテナ */}
+                <div id="register-error" class="mb-6 empty:hidden"></div>
+
+                {/* hx-target を #register-error、hx-swap を innerHTML に修正してフォームが消えるバグを解消 */}
+                <form hx-post="/api/v1/auth/register" hx-target="#register-error" hx-swap="innerHTML" class="space-y-6">
                   <div class="form-control">
                     <label class="label px-1 py-1" for="email">
                       <span class="label-text font-semibold opacity-75">メールアドレス</span>
