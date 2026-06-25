@@ -13,26 +13,61 @@ interface AlertsProps {
 export const Alerts: FC<AlertsProps> = ({ items, dismissible = true }) => {
   if (!items.length) return null;
 
-  const iconMap: Record<string, string> = {
+  const iconMap: Record<AlertItem["type"], string> = {
     success: "check-circle",
     error: "alert-circle",
     warning: "alert-triangle",
     info: "info",
   };
 
+  const alertClassMap: Record<AlertItem["type"], string> = {
+    success: "alert-success bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    error: "alert-error bg-rose-500/10 text-rose-400 border-rose-500/20",
+    warning: "alert-warning bg-orange-500/10 text-orange-400 border-orange-500/20",
+    info: "alert-info bg-sky-500/10 text-sky-400 border-sky-500/20",
+  };
+
   return (
-    <div class="space-y-2 mb-4">
+    <div class="toast toast-top toast-end z-50 p-4 space-y-3 min-w-[320px]">
       {items.map((item, idx) => (
-        <div key={idx} class={`alert alert-${item.type}`}>
-          <i data-lucide={iconMap[item.type]} class="w-5 h-5" />
-          <span>{item.message}</span>
+        <div 
+          key={idx} 
+          class={`alert ${alertClassMap[item.type]} shadow-2xl rounded-xl flex items-center justify-between gap-4 border p-4 animate-fade-in-up transition-all duration-300 alert-item-toast`}
+          style={`animation-delay: ${idx * 100}ms;`}
+        >
+          <div class="flex items-center gap-2.5">
+            <i data-lucide={iconMap[item.type]} class="w-5 h-5 flex-shrink-0" />
+            <span class="text-sm font-semibold tracking-wide leading-snug">{item.message}</span>
+          </div>
+          
           {dismissible && (
-            <button class="btn btn-ghost btn-xs" hx-delete="/api/v1/ui/flash" hx-swap="none">
+            <button 
+              type="button"
+              class="btn btn-ghost btn-circle btn-xs hover:bg-base-content/10 transition-colors opacity-75 hover:opacity-100 flex-shrink-0"
+              onclick="this.closest('.alert-item-toast').remove()"
+            >
               ✕
             </button>
           )}
         </div>
       ))}
+      
+      {/* 5秒後にトーストを自動でフェードアウトして消すクライアントスクリプト */}
+      <script dangerouslySetInnerHTML={{ __html: `
+        (function() {
+          const toasts = document.querySelectorAll('.alert-item-toast');
+          toasts.forEach(toast => {
+            setTimeout(() => {
+              toast.style.opacity = '0';
+              toast.style.transform = 'translateY(-10px)';
+              setTimeout(() => {
+                toast.remove();
+              }, 300);
+            }, 5000);
+          });
+        })();
+      ` }} />
     </div>
   );
 };
+export { AlertItem, AlertsProps };

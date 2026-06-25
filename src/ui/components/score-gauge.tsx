@@ -6,24 +6,39 @@ interface ScoreGaugeProps {
   size?: number;
 }
 
-export const ScoreGauge: FC<ScoreGaugeProps> = ({ score, grade, size = 120 }) => {
-  const radius = (size - 12) / 2;
+export const ScoreGauge: FC<ScoreGaugeProps> = ({ score, grade, size = 160 }) => {
+  const strokeWidth = 10;
+  const radius = (size - strokeWidth - 4) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
-  const strokeWidth = 8;
+
+  // グレード別のカラーマッピング
+  const getGradeColorClass = (val: number) => {
+    if (val >= 90) return "text-emerald-400";
+    if (val >= 75) return "text-cyan-400";
+    if (val >= 60) return "text-warning";
+    return "text-error";
+  };
+
+  const colorClass = getGradeColorClass(score);
 
   return (
-    <div class="flex flex-col items-center gap-1">
-      <svg width={size} height={size} class="transform -rotate-90">
+    <div class="flex flex-col items-center justify-center p-2 relative group select-none">
+      
+      {/* ゲージSVG */}
+      <svg width={size} height={size} class="transform -rotate-90 filter drop-shadow-[0_0_8px_rgba(var(--glass-glow),0.15)] group-hover:drop-shadow-[0_0_15px_rgba(var(--glass-glow),0.3)] transition-all duration-300">
+        
+        {/* 背景トラック（薄い円） */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="currentColor"
+          stroke="rgba(255, 255, 255, 0.05)"
           stroke-width={strokeWidth}
           fill="transparent"
-          class="text-base-300"
         />
+        
+        {/* スコア表示メーター（アニメーション付き） */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -34,14 +49,27 @@ export const ScoreGauge: FC<ScoreGaugeProps> = ({ score, grade, size = 120 }) =>
           stroke-dasharray={circumference}
           stroke-dashoffset={offset}
           stroke-linecap="round"
-          class={score >= 80 ? "text-success" : score >= 60 ? "text-warning" : "text-error"}
+          class={`${colorClass} transition-all duration-1000 ease-out`}
+          style={`stroke-dashoffset: ${offset}; transition: stroke-dashoffset 1s ease-out;`}
         />
       </svg>
-      <div class="relative flex items-center justify-center" style={`width:${size}px;height:${size}px;margin-top:${-size}px`}>
-        <div class="text-center">
-          <div class="text-2xl font-bold">{score}</div>
-          {grade && <div class="text-xs opacity-60">{grade}</div>}
-        </div>
+      
+      {/* スコア・グレード数値テキスト（中央配置） */}
+      <div 
+        class="absolute flex flex-col items-center justify-center text-center pointer-events-none" 
+        style={`width:${size}px; height:${size}px;`}
+      >
+        <span class="text-4xl font-black tracking-tight text-base-content leading-none">
+          {score}
+        </span>
+        <span class="text-xs opacity-50 font-semibold tracking-wider uppercase mt-1">
+          スコア
+        </span>
+        {grade && (
+          <span class={`text-sm font-black mt-1 px-2.5 py-0.5 rounded-full bg-base-200/50 border border-[var(--glass-border)] ${colorClass}`}>
+            ランク {grade}
+          </span>
+        )}
       </div>
     </div>
   );

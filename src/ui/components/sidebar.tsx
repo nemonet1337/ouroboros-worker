@@ -1,36 +1,77 @@
 import type { FC } from "hono/jsx";
+import type { AuthedUser } from "../../auth/service";
 
 interface SidebarProps {
-  current?: string;
+  user?: AuthedUser;
 }
 
-export const Sidebar: FC<SidebarProps> = ({ current }) => {
+export const Sidebar: FC<SidebarProps> = ({ user }) => {
   const links = [
-    { href: "/", icon: "layout-dashboard", label: "Dashboard" },
-    { href: "/healing", icon: "wrench", label: "Self Healing" },
-    { href: "/inspection", icon: "scan-search", label: "Inspection" },
-    { href: "/code", icon: "code-2", label: "Code Mode" },
-    { href: "/refactor", icon: "refresh-cw", label: "Refactor" },
-    { href: "/webhooks", icon: "webhook", label: "Webhooks" },
-    { href: "/tokens", icon: "key", label: "API Tokens" },
-    { href: "/settings", icon: "settings", label: "Settings" },
+    { href: "/", icon: "layout-dashboard", label: "ダッシュボード" },
+    { href: "/healing", icon: "wrench", label: "自己修復" },
+    { href: "/inspection", icon: "search", label: "コード解析" },
+    { href: "/code", icon: "code", label: "コード編集" },
+    { href: "/refactor", icon: "git-pull-request", label: "リファクタ" },
+    { href: "/webhooks", icon: "webhook", label: "ウェブフック" },
+    { href: "/tokens", icon: "key", label: "APIトークン" },
+    { href: "/settings", icon: "settings", label: "システム設定" },
   ];
 
+  if (user?.role === "admin") {
+    links.push({ href: "/admin", icon: "shield-check", label: "管理者パネル" });
+  }
+
   return (
-    <aside class="w-64 bg-base-100 h-screen sticky top-0">
-      <ul class="menu p-4 w-full min-h-full gap-1">
-        {links.map((link) => (
-          <li key={link.href}>
-            <a
-              href={link.href}
-              class={`gap-3 ${current === link.href ? "active" : ""}`}
-            >
-              <i data-lucide={link.icon} class="w-4 h-4" />
-              {link.label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </aside>
+    <div class="drawer-side z-40 border-r border-[var(--glass-border)] bg-base-100">
+      <label for="drawer-toggle" class="drawer-overlay"></label>
+      <div class="flex flex-col h-full w-80 bg-base-100/80 backdrop-blur-md">
+        {/* ロゴ部分 */}
+        <div class="hidden lg:flex items-center gap-3 px-6 h-16 border-b border-[var(--glass-border)]">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-primary-content font-bold shadow-md shadow-primary/20">
+            O
+          </div>
+          <span class="text-xl font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+            Ouroboros
+          </span>
+        </div>
+        
+        {/* メニューリンク */}
+        <ul id="sidebar-menu" class="menu p-4 w-full flex-1 gap-1">
+          {links.map((link) => (
+            <li key={link.href}>
+              <a
+                href={link.href}
+                class="sidebar-link gap-3 px-4 py-3 rounded-lg text-base transition-all duration-200 hover:bg-base-200"
+              >
+                <i data-lucide={link.icon} class="w-5 h-5 opacity-70" />
+                <span>{link.label}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+
+        {/* フッター情報 */}
+        <div class="p-4 border-t border-[var(--glass-border)] text-xs opacity-50 flex justify-between items-center bg-base-200/50">
+          <span>Ouroboros Worker</span>
+          <span id="sidebar-version">v2.0.0</span>
+        </div>
+      </div>
+
+      {/* アクティブ状態付与用のクライアントスクリプト */}
+      <script dangerouslySetInnerHTML={{ __html: `
+        (function() {
+          const path = window.location.pathname;
+          const links = document.querySelectorAll('.sidebar-link');
+          links.forEach(link => {
+            const href = link.getAttribute('href');
+            if (href === path || (href !== '/' && path.startsWith(href))) {
+              link.classList.add('nav-link-active');
+              link.querySelector('i')?.classList.remove('opacity-70');
+              link.querySelector('i')?.classList.add('text-primary');
+            }
+          });
+        })();
+      ` }} />
+    </div>
   );
 };
