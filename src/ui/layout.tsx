@@ -128,15 +128,30 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
         <script dangerouslySetInnerHTML={{ __html: `
           // Lucide アイコン初期化
           lucide.createIcons();
-          document.body.addEventListener('htmx:afterSwap', function() {
+          document.addEventListener('htmx:afterSwap', function() {
             lucide.createIcons();
           });
 
           // HTMX エラーレスポンス (400, 500等) でもスワップを許可する
-          document.body.addEventListener('htmx:beforeSwap', function(evt) {
+          document.addEventListener('htmx:beforeSwap', function(evt) {
             if (evt.detail.xhr.status >= 400 && evt.detail.xhr.status < 600) {
               evt.detail.shouldSwap = true;
               evt.detail.isError = false;
+
+              // レスポンスが JSON の場合、HTMLのアラート通知に変換してスワップさせる
+              const contentType = evt.detail.xhr.getResponseHeader("Content-Type");
+              if (contentType && contentType.includes("application/json")) {
+                try {
+                  const responseObj = JSON.parse(evt.detail.xhr.responseText);
+                  const errorMsg = responseObj.error?.message || "エラーが発生しました。";
+                  const details = responseObj.error?.details ? " : " + responseObj.error.details.join(", ") : "";
+                  
+                  // serverResponseをHTMLで上書きしてHTMXにスワップさせる
+                  evt.detail.serverResponse = '<div class="alert alert-error shadow-lg rounded-xl flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
+                } catch (e) {
+                  // パース失敗時のフォールバック
+                }
+              }
             }
           });
 
