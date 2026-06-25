@@ -128,6 +128,17 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
         <script dangerouslySetInnerHTML={{ __html: `
           // Lucide アイコン初期化
           lucide.createIcons();
+          document.body.addEventListener('htmx:afterSwap', function() {
+            lucide.createIcons();
+          });
+
+          // HTMX エラーレスポンス (400, 500等) でもスワップを許可する
+          document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.xhr.status >= 400 && evt.detail.xhr.status < 600) {
+              evt.detail.shouldSwap = true;
+              evt.detail.isError = false;
+            }
+          });
 
           // テーマ切り替え機能
           (function() {
