@@ -79,6 +79,7 @@ export const defaultHealingConfig: HealingConfig = {
     },
   },
   vcs: {
+    // GITHUB_TOKEN から自動検出。手動指定する場合のみ env を参照（非推奨）
     owner: env.GITHUB_REPOSITORY_OWNER ?? "",
     repo: (env.GITHUB_REPOSITORY ?? "").split("/")[1] ?? "",
     baseBranch: "main",

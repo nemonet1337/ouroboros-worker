@@ -17,6 +17,11 @@ export interface GitHubConfig {
   repo: string;
 }
 
+export interface ResolvedRepo {
+  owner: string;
+  repo: string;
+}
+
 /**
  * Fetch-based GitHub REST client implementing the VcsProvider port.
  * No Octokit dependency, so it runs on both Node 22 and Cloudflare Workers.
@@ -24,6 +29,38 @@ export interface GitHubConfig {
 export class GitHubProvider implements VcsProvider {
   readonly name = "github";
   private readonly base: string;
+
+  /**
+   * GITHUB_TOKEN から owner/repo を自動検出する。
+   * 1. GET /user で認証ユーザーの login を取得 → owner
+   * 2. GET /user/repos?sort=updated&per_page=1 で直近更新のリポジトリを取得 → repo
+   * トークンが無効またはリポジトリが存在しない場合は null を返す。
+   */
+  static async resolveRepoFromToken(token: string): Promise<ResolvedRepo | null> {
+    const headers = {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "ouroboros-self-healing",
+    };
+    try {
+      const userRes = await fetch("https://api.github.com/user", { headers, signal: AbortSignal.timeout(10_000) });
+      if (!userRes.ok) return null;
+      const user = (await userRes.json()) as { login: string };
+      const owner = user.login;
+
+      const reposRes = await fetch(
+        `https://api.github.com/user/repos?sort=updated&per_page=1`,
+        { headers, signal: AbortSignal.timeout(10_000) }
+      );
+      if (!reposRes.ok) return null;
+      const repos = (await reposRes.json()) as Array<{ name: string }>;
+      if (repos.length === 0) return null;
+      return { owner, repo: repos[0].name };
+    } catch {
+      return null;
+    }
+  }
 
   constructor(private readonly cfg: GitHubConfig) {
     this.base = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}`;

@@ -55,11 +55,26 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     ? await env.GITHUB_TOKEN_SECRET.get()
     : env.GITHUB_TOKEN;
 
-  const [owner, repo] = (env.GITHUB_REPOSITORY ?? "/").split("/");
+  // GITHUB_REPOSITORY / GITHUB_REPOSITORY_OWNER が未設定ならトークンから自動検出
+  let owner = env.GITHUB_REPOSITORY_OWNER || "";
+  let repo = "";
+  if (env.GITHUB_REPOSITORY) {
+    const parts = env.GITHUB_REPOSITORY.split("/");
+    owner = owner || parts[0] || "";
+    repo = parts[1] || "";
+  }
+  if (!owner || !repo) {
+    const resolved = githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null;
+    if (resolved) {
+      owner = owner || resolved.owner;
+      repo = repo || resolved.repo;
+    }
+  }
+
   const vcs = new GitHubProvider({
     token: githubToken ?? "",
-    owner: env.GITHUB_REPOSITORY_OWNER || owner || "",
-    repo: repo || "",
+    owner,
+    repo,
   });
 
   // Runner priority: Service Binding (RPC) → HTTP dispatch (RUNNER_URL) → Noop
@@ -83,8 +98,8 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     ...defaultHealingConfig,
     vcs: {
       ...defaultHealingConfig.vcs,
-      owner: env.GITHUB_REPOSITORY_OWNER || owner || "",
-      repo: repo || "",
+      owner,
+      repo,
       baseBranch: defaultHealingConfig.vcs.baseBranch,
     },
   };

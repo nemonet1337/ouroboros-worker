@@ -78,9 +78,9 @@ RUNNER_URL = ""
 #                            CLOUDFLARE_ACCOUNT_ID と併用すると REST API 経由で
 #                            推論。未設定なら AI バインディングを直接使用。
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
-#   GITHUB_TOKEN             PR/Issue 作成
-#   GITHUB_REPOSITORY        owner/repo
-#   GITHUB_REPOSITORY_OWNER  owner
+#   GITHUB_TOKEN             PR/Issue 作成。owner/repo はこのトークンから自動検出される
+#   GITHUB_REPOSITORY        （非推奨）owner/repo を手動指定する場合のみ
+#   GITHUB_REPOSITORY_OWNER  （非推奨）owner を手動指定する場合のみ
 #   RUNNER_SHARED_SECRET     委譲先 runner の認証用
 #   OURO_ALERT_EMAILS        アラート通知先（カンマ区切り）
 #

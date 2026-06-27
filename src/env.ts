@@ -107,7 +107,9 @@ export interface Env {
   // secrets（wrangler secret put）
   WORKERS_AI_API_TOKEN?: string;
   GITHUB_TOKEN?: string;
+  /** @deprecated GITHUB_TOKEN から自動検出されるようになりました。明示的に上書きしたい場合のみ設定 */
   GITHUB_REPOSITORY?: string;
+  /** @deprecated GITHUB_TOKEN から自動検出されるようになりました。明示的に上書きしたい場合のみ設定 */
   GITHUB_REPOSITORY_OWNER?: string;
   RUNNER_SHARED_SECRET?: string;
 }
