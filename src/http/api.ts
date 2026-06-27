@@ -216,17 +216,45 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: "forbidden", message: "registration is disabled" } }, 403);
     }
 
-    const user = await auth.register(email, password);
-    const { sessionId } = await auth.login(email, password);
-    setSession(c, sessionId, deps.cookieSecure);
-    return c.json({ user }, 201);
+    try {
+      const user = await auth.register(email, password);
+      const { sessionId } = await auth.login(email, password);
+      setSession(c, sessionId);
+      if (c.req.header("HX-Request")) {
+        c.header("HX-Redirect", "/");
+        return c.html("");
+      }
+      return c.json({ user }, 201);
+    } catch (err) {
+      if (c.req.header("HX-Request") && err instanceof AuthError) {
+        return c.html(
+          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+        );
+      }
+      throw err;
+    }
   });
 
   app.post("/auth/login", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
-    const { user, sessionId } = await auth.login(email, password);
-    setSession(c, sessionId, deps.cookieSecure);
-    return c.json({ user });
+
+    try {
+      const { user, sessionId } = await auth.login(email, password);
+      setSession(c, sessionId);
+      if (c.req.header("HX-Request")) {
+        const next = c.req.query("next") || "/";
+        c.header("HX-Redirect", next);
+        return c.html("");
+      }
+      return c.json({ user });
+    } catch (err) {
+      if (c.req.header("HX-Request") && err instanceof AuthError) {
+        return c.html(
+          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+        );
+      }
+      throw err;
+    }
   });
 
   app.post("/auth/logout", async (c) => {
@@ -763,10 +791,11 @@ function parseHistoryEntry(row: { id: string; result: string; created_at: number
   };
 }
 
-function setSession(c: Context, sessionId: string, secure = false): void {
+function setSession(c: Context, sessionId: string, secure?: boolean): void {
+  const autoSecure = new URL(c.req.url).protocol === "https:";
   setCookie(c, SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    secure,
+    secure: secure ?? autoSecure,
     sameSite: "Lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,

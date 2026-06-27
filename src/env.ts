@@ -102,6 +102,7 @@ export interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** "true" to open registration; anything else (or absent) means closed. Default: false. */
   OURO_REGISTRATION_ENABLED?: string;
+  RUNNER_URL?: string;
 
   // secrets（wrangler secret put）
   WORKERS_AI_API_TOKEN?: string;

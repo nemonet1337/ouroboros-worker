@@ -13,7 +13,7 @@ describe("RpcRunner", () => {
     expect(result.findings).toEqual({ codeql: [] });
     expect(mockFetch).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "http://internal/scan",
+        url: "http://internal/internal/scan",
         method: "POST",
       })
     );
@@ -26,6 +26,6 @@ describe("RpcRunner", () => {
     const mockService = { fetch: mockFetch };
     const runner = new RpcRunner(mockService);
 
-    await expect(runner.scan()).rejects.toThrow("runner /scan -> 500: Internal Server Error");
+    await expect(runner.scan()).rejects.toThrow("runner /internal/scan -> 500: Internal Server Error");
   });
 });

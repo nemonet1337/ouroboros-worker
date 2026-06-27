@@ -58,12 +58,13 @@ web/               Nuxt 3 GUI (built as a static SPA, served via ASSETS)
 | `AiProvider`   | Workers AI (the only AI gateway)        |
 | `Mailer`       | MailChannels                            |
 | `VcsProvider`  | GitHub (fetch)                          |
-| `HealingRunner`| `DispatchRunner` → external runner (optional) |
-| `RateLimiter`  | Workers Rate Limiting API               |
+| `HealingRunner`| `RpcRunner`(Service Binding) / `DispatchRunner`(HTTP) → CF Worker runner |
+| `RateLimiter`  | Workers Rate Limiting API                      |
 
-Note: Workers have no filesystem/git/compilers, so the patch+validate+commit+push step can be
-**dispatched over HTTP** to an external runner (`/internal/heal`, optional via `RUNNER_URL`),
-while a **Cloudflare Workflow** drives the durable scan → analyze → fix → PR lifecycle.
+Note: Workers lack a filesystem/git/compilers, so patch application, commit, and push are
+**delegated via Service Binding or HTTP** to the `ouroboros-runner` Worker (GitHub API-based).
+When no runner is configured, the fix step is skipped via `NoopRunner`.
+A **Cloudflare Workflow** drives the durable scan → analyze → fix → PR lifecycle.
 
 ---
 

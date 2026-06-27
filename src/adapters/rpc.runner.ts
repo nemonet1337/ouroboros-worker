@@ -24,12 +24,12 @@ export class RpcRunner implements HealingRunner, CodeRunner {
   // ── HealingRunner ──────────────────────────────────────────────────────
 
   async scan(): Promise<RunnerScanResult> {
-    const findings = await this.post<AllFindings>("/scan", {});
+    const findings = await this.post<AllFindings>("/internal/scan", {});
     return { findings };
   }
 
   async applyFix(opts: RunFixOptions): Promise<RunnerFixResult> {
-    return this.post<RunnerFixResult>("/heal", {
+    return this.post<RunnerFixResult>("/internal/heal", {
       group: opts.group,
       dryRun: opts.dryRun,
       baseBranch: opts.baseBranch,
@@ -40,38 +40,38 @@ export class RpcRunner implements HealingRunner, CodeRunner {
   // ── CodeRunner ─────────────────────────────────────────────────────────
 
   async init(opts: CodeInitOptions): Promise<CodeInitResult> {
-    return this.post<CodeInitResult>("/code/init", opts);
+    return this.post<CodeInitResult>("/internal/code/init", opts);
   }
 
   async status(opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }> {
-    return this.post<{ branch: string; changedFiles: string[] }>("/code/status", opts);
+    return this.post<{ branch: string; changedFiles: string[] }>("/internal/code/status", opts);
   }
 
   async read(opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult> {
-    return this.post<CodeReadResult>("/code/read", opts);
+    return this.post<CodeReadResult>("/internal/code/read", opts);
   }
 
   async search(opts: { sessionId: string; query: string; type: "grep" | "glob" }): Promise<CodeSearchResult> {
-    return this.post<CodeSearchResult>("/code/search", opts);
+    return this.post<CodeSearchResult>("/internal/code/search", opts);
   }
 
   async write(opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult> {
-    return this.post<CodeWriteResult>("/code/write", opts);
+    return this.post<CodeWriteResult>("/internal/code/write", opts);
   }
 
   async deleteFiles(opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
-    return this.post<{ success: boolean }>("/code/delete", opts);
+    return this.post<{ success: boolean }>("/internal/code/delete", opts);
   }
 
   async diff(opts: { sessionId: string }): Promise<CodeDiffResult> {
-    return this.post<CodeDiffResult>("/code/diff", opts);
+    return this.post<CodeDiffResult>("/internal/code/diff", opts);
   }
 
   async commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult> {
-    return this.post<CodeCommitResult>("/code/commit", opts);
+    return this.post<CodeCommitResult>("/internal/code/commit", opts);
   }
 
   async push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
-    return this.post<{ success: boolean }>("/code/push", opts);
+    return this.post<{ success: boolean }>("/internal/code/push", opts);
   }
 }

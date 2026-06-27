@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Workers AI — パッチ生成に使用
+[ai]
+binding = "AI"
+
 # Runner Worker bindings
 [[d1_databases]]
 binding = "DB"
@@ -21,3 +25,6 @@ name = "RATE_LIMITER"
 type = "ratelimit"
 namespace_id = "1002"
 simple = { limit = 50, period = 60 }
+
+[vars]
+GITHUB_REPOSITORY = ""

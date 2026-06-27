@@ -1,7 +1,14 @@
 /**
  * Programmatic mirror of db/migrations/*.sql, used by the runtime migration
- * runner (self-hosted boot, optional D1 bootstrap). The .sql files remain the
- * canonical source consumed by `wrangler d1 migrations apply`; keep both in sync.
+ * runner (self-hosted boot, optional D1 bootstrap).
+ *
+ * IMPORTANT: .sql ファイルは新規 DB の `wrangler d1 migrations apply` 用ミラーです。
+ * 既存 DB へのマイグレーション適用はランタイム `runMigrations`（`_migrations` 追跡テーブル）
+ * が正です。0004/0006/0007 の ALTER ADD COLUMN は非冪等のため、既存 DB への .sql 二重適用は
+ * 禁止（新規 DB のみ適用）。
+ *
+ * The .sql files remain the canonical source consumed by `wrangler d1 migrations apply`;
+ * keep both in sync.
  * Each migration is a list of individual statements (D1's prepare runs one at a time).
  */
 export interface Migration {

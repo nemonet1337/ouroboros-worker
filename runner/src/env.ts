@@ -5,6 +5,8 @@ export interface Env {
   GITHUB_TOKEN_SECRET: { get(): Promise<string> };
   RATE_LIMITER?: { limit(opts: { key: string }): Promise<{ success: boolean }> };
   AI?: Ai;
+  GITHUB_REPOSITORY?: string;
+  RUNNER_SHARED_SECRET?: string;
 }
 
 export interface AllFindings {

@@ -1,48 +1,106 @@
 import type { FC } from "hono/jsx";
+import type { AuthedUser } from "../../auth/service";
 import { Layout } from "../layout";
-import { MetricsCards } from "../components/metrics-cards";
-import { ScoreGauge } from "../components/score-gauge";
 
-const sampleMetrics = [
-  { label: "Active Sessions", value: 12, icon: "activity" },
-  { label: "Run Today", value: 5, icon: "play", delta: "+2 from yesterday" },
-  { label: "Avg Score", value: "B+", icon: "gauge" },
-];
+interface HomePageProps {
+  user?: AuthedUser;
+}
 
-export const HomePage: FC = () => {
+export const HomePage: FC<HomePageProps> = ({ user }) => {
   return (
-    <Layout>
-      <h1 class="text-3xl font-bold mb-6">Dashboard</h1>
-      <MetricsCards metrics={sampleMetrics} />
+    <Layout user={user}>
+      {/* ウェルカムセクション */}
+      <div class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight text-base-content">
+            ダッシュボード
+          </h1>
+          <p class="text-sm opacity-60 mt-1">
+            システムの状態と AI 自己修復履歴の概要
+          </p>
+        </div>
+        <div class="text-xs opacity-50 bg-base-200 px-3 py-1.5 rounded-lg border border-[var(--glass-border)] self-start md:self-auto">
+          最終更新: <span id="current-time">{new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
+        </div>
+      </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-        <div class="card bg-base-100 shadow-lg col-span-1">
-          <div class="card-body items-center">
-            <h2 class="card-title">Last Score</h2>
-            <ScoreGauge score={78} grade="B+" size={140} />
+      {/* HTMXによる非同期メトリクス読み込みコンテナ */}
+      <div hx-get="/api/v1/metrics" hx-trigger="load" hx-target="#metrics-container" hx-swap="innerHTML">
+        <div id="metrics-container" class="space-y-8">
+          
+          {/* ローディング時スケルトン - 統計カード */}
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="skeleton h-32 w-full rounded-2xl"></div>
+            <div class="skeleton h-32 w-full rounded-2xl"></div>
+            <div class="skeleton h-32 w-full rounded-2xl"></div>
+          </div>
+
+          {/* ローディング時スケルトン - 詳細セクション */}
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="card card-glass shadow-lg col-span-1">
+              <div class="card-body items-center p-6">
+                <h2 class="card-title text-lg font-bold opacity-75">現在のヘルススコア</h2>
+                <div class="skeleton h-36 w-36 rounded-full my-4"></div>
+              </div>
+            </div>
+            
+            <div class="card card-glass shadow-lg col-span-1 lg:col-span-2">
+              <div class="card-body p-6">
+                <h2 class="card-title text-lg font-bold opacity-75">最近の修復アクティビティ</h2>
+                <div class="space-y-3 mt-4">
+                  <div class="skeleton h-6 w-3/4 rounded"></div>
+                  <div class="skeleton h-6 w-full rounded"></div>
+                  <div class="skeleton h-6 w-5/6 rounded"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="card bg-base-100 shadow-lg col-span-1 lg:col-span-2">
-          <div class="card-body">
-            <h2 class="card-title">Recent Activity</h2>
-            <ul class="timeline timeline-compact timeline-vertical">
-              <li>
-                <div class="timeline-start">2h ago</div>
-                <div class="timeline-middle">●</div>
-                <div class="timeline-end timeline-box">Healing run #104 completed</div>
-              </li>
-              <li>
-                <div class="timeline-start">5h ago</div>
-                <div class="timeline-middle">●</div>
-                <div class="timeline-end timeline-box">Inspection on main finished (A)</div>
-              </li>
-              <li>
-                <div class="timeline-start">1d ago</div>
-                <div class="timeline-middle">●</div>
-                <div class="timeline-end timeline-box">Dependency update PR merged</div>
-              </li>
-            </ul>
-          </div>
+      </div>
+
+      {/* クイックアクションパネル (リッチ化のための追加セクション) */}
+      <div class="mt-8">
+        <h2 class="text-xl font-bold mb-4 opacity-75">クイックアクション</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <a href="/inspection" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
+            <div class="p-3 rounded-xl bg-primary/10 text-primary">
+              <i data-lucide="search" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="font-bold text-sm">コードスキャン</div>
+              <div class="text-xs opacity-50 mt-0.5">解析を実行する</div>
+            </div>
+          </a>
+          
+          <a href="/healing" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
+            <div class="p-3 rounded-xl bg-secondary/10 text-secondary">
+              <i data-lucide="wrench" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="font-bold text-sm">自己修復</div>
+              <div class="text-xs opacity-50 mt-0.5">修復ログを確認する</div>
+            </div>
+          </a>
+
+          <a href="/code" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
+            <div class="p-3 rounded-xl bg-accent/10 text-accent">
+              <i data-lucide="code" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="font-bold text-sm">コード編集</div>
+              <div class="text-xs opacity-50 mt-0.5">AI セッションを開く</div>
+            </div>
+          </a>
+
+          <a href="/settings" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
+            <div class="p-3 rounded-xl bg-neutral/20 text-base-content/85">
+              <i data-lucide="settings" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="font-bold text-sm">システム設定</div>
+              <div class="text-xs opacity-50 mt-0.5">動作オプションを設定</div>
+            </div>
+          </a>
         </div>
       </div>
     </Layout>

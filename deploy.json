@@ -32,13 +32,13 @@
     },
     {
       "name": "RUNNER_URL",
-      "description": "（任意）git / コンパイラを実行するセルフホスト LocalRunner の URL（例: https://runner.example.com）。未設定の場合、自動修復の適用ステップはスキップされます。",
+      "description": "（任意）CF Worker runner（GitHub API ベース）の URL。Service Binding（RUNNER）未設定時のフォールバック（例: https://ouroboros-runner.<your-subdomain>.workers.dev）。",
       "type": "text",
       "default": ""
     },
     {
       "name": "RUNNER_SHARED_SECRET",
-      "description": "（任意）LocalRunner の /internal/* エンドポイントを保護する共有シークレット。RUNNER_URL が設定されている場合のみ必要です。",
+      "description": "（任意）runner Worker の /internal/* エンドポイントを保護する共有シークレット。RUNNER_URL または Service Binding 使用時に設定します。",
       "type": "secret"
     },
     {

@@ -12,6 +12,7 @@ import { CfQueueAdapter } from "./adapters/cf.queue";
 import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { MailChannelsMailer } from "./adapters/mailchannels.mailer";
 import { RpcRunner } from "./adapters/rpc.runner";
+import { DispatchRunner } from "./adapters/dispatch.runner";
 import { NoopRunner, type CodeRunner } from "./ports/runner";
 import { CfEmailMailer } from "./adapters/cf.email.mailer";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
@@ -61,14 +62,15 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     repo: repo || "",
   });
 
-  // External runner (DispatchRunner via RUNNER_URL) is fully retired —
-  // heavy work now goes through the in-process NoopRunner or an RPC binding
-  // (env.RUNNER) when one is configured.
-  const runner: RpcRunner | NoopRunner = env.RUNNER
+  // Runner priority: Service Binding (RPC) → HTTP dispatch (RUNNER_URL) → Noop
+  const runnerSecret = env.RUNNER_SHARED_SECRET ?? "";
+  const runner: RpcRunner | DispatchRunner | NoopRunner = env.RUNNER
     ? new RpcRunner(env.RUNNER)
-    : new NoopRunner();
+    : env.RUNNER_URL
+      ? new DispatchRunner(env.RUNNER_URL, runnerSecret)
+      : new NoopRunner();
 
-  const codeRunner = runner instanceof NoopRunner ? runner : (runner as unknown as CodeRunner);
+  const codeRunner = runner as CodeRunner;
 
   const mailer = env.EMAIL
     ? new CfEmailMailer(env.EMAIL, env.MAIL_FROM ?? "ouroboros@example.com")
