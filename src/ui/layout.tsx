@@ -12,7 +12,7 @@ export interface LayoutProps {
 
 export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, children }) => {
   return (
-    <html lang="ja" data-theme="night">
+    <html lang="ja" data-theme="winter">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -32,7 +32,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
             const savedTheme = localStorage.getItem('ouro-theme');
-            const theme = savedTheme || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'winter' : 'night');
+            const theme = savedTheme || 'winter';
             document.documentElement.setAttribute('data-theme', theme);
           })();
         ` }} />
@@ -46,7 +46,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
           <div class="drawer-content flex flex-col min-h-screen">
             
             {/* ナビゲーションバー (ヘッダー) */}
-            <div class="navbar bg-base-100/80 backdrop-blur-md sticky top-0 z-30 px-4 border-b border-[var(--glass-border)] h-16">
+            <div class="navbar bg-base-100 sticky top-0 z-30 px-4 border-b border-[var(--glass-border)] h-14">
               <div class="flex-none lg:hidden">
                 <label for="drawer-toggle" class="btn btn-square btn-ghost btn-sm">
                   <i data-lucide="menu" class="w-5 h-5"></i>
@@ -114,7 +114,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
             {/* メインコンテンツ */}
             <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate-fade-in-up">
               {flash && (
-                <div class={`alert ${flash.type === 'success' ? 'bg-emerald-600 text-white border border-emerald-700' : 'bg-rose-600 text-white border border-rose-700'} shadow-lg mb-6 rounded-xl animate-fade-in-up`}>
+                <div class={`alert ${flash.type === 'success' ? 'alert-success' : 'alert-error'} shadow-lg mb-6 rounded-lg animate-fade-in-up`}>
                   <i data-lucide={flash.type === 'success' ? 'check-circle' : 'alert-triangle'} class="w-5 h-5" />
                   <span>{flash.message}</span>
                 </div>
@@ -150,7 +150,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                   const details = responseObj.error?.details ? " : " + responseObj.error.details.join(", ") : "";
                   
                   // serverResponseをHTMLで上書きしてHTMXにスワップさせる
-                  evt.detail.serverResponse = '<div class="alert bg-rose-600 text-white border border-rose-700 shadow-lg rounded-xl flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
+                  evt.detail.serverResponse = '<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
                 } catch (e) {
                   // パース失敗時のフォールバック
                 }

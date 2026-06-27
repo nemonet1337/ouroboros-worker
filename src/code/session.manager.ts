@@ -1,6 +1,5 @@
 import type { DbAdapter } from "../ports/db";
 import type { CodeRunner, CodeInitOptions } from "../ports/runner";
-import type { CodeAgent, CodeAgentOptions } from "./agent";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
 import type { VcsProvider } from "../ports/vcs";
 
@@ -16,8 +15,7 @@ export interface CreateSessionOpts {
 export class CodeSessionManager {
   constructor(
     private readonly db: DbAdapter,
-    private readonly runner: CodeRunner,
-    private readonly agent: CodeAgent
+    private readonly runner: CodeRunner
   ) {}
 
   async create(opts: CreateSessionOpts): Promise<string> {
@@ -103,7 +101,7 @@ export class CodeSessionManager {
     await this.updateStatus(id, userId, "generating");
 
     try {
-      const { patches } = await this.agent.generate({
+      const { patches } = await this.runner.generate({
         instruction: row.instruction,
         sessionId: id,
         model: opts.model,

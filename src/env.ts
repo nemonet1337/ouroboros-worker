@@ -103,6 +103,7 @@ export interface Env {
   /** "true" to open registration; anything else (or absent) means closed. Default: false. */
   OURO_REGISTRATION_ENABLED?: string;
   RUNNER_URL?: string;
+  OURO_PLAN_MODEL?: string;
 
   // secrets（wrangler secret put）
   WORKERS_AI_API_TOKEN?: string;

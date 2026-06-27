@@ -24,7 +24,6 @@ import type { InspectionRequest } from "../types";
 import { validateWebhookUrl } from "../webhook/url.guard";
 import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
-import { CodeAgent } from "../code/agent";
 import { ProposalManager } from "../refactor/proposal.manager";
 import { FlagService, FLAGS } from "../flags/flag.service";
 import type { VersionMetadata } from "../env";
@@ -120,8 +119,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeAgentInstance = new CodeAgent({ ai: ports.ai, runner: ports.codeRunner });
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, codeAgentInstance);
+  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
 
   // ── Unified error handling ─────────────────────────────────────────────────
   app.onError((err, c) => {
@@ -707,7 +705,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/code/sessions/:id/generate", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
-    await codeManager.generate(c.req.param("id")!, userId);
+    const model = await auth.getModel(userId);
+    await codeManager.generate(c.req.param("id")!, userId, { model: model ?? undefined });
     return c.json({ ok: true });
   });
 

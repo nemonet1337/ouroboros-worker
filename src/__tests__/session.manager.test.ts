@@ -1,14 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodeSessionManager } from "../code/session.manager";
-import { CodeAgent } from "../code/agent";
 import { NoopRunner } from "../ports/runner";
-import { mockAi } from "./helpers";
 import type { DbAdapter } from "../ports/db";
 
 describe("CodeSessionManager", () => {
   let mockDb: DbAdapter;
   let runner: NoopRunner;
-  let agent: CodeAgent;
   let manager: CodeSessionManager;
   let queries: { sql: string; params: any[] }[];
 
@@ -46,8 +43,7 @@ describe("CodeSessionManager", () => {
     };
 
     runner = new NoopRunner();
-    agent = new CodeAgent({ ai: mockAi(""), runner });
-    manager = new CodeSessionManager(mockDb, runner, agent);
+    manager = new CodeSessionManager(mockDb, runner);
   });
 
   it("should create session and insert into db", async () => {

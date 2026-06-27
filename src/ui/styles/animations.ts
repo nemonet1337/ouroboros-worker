@@ -3,7 +3,7 @@ export const animations = `
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -31,10 +31,10 @@ export const animations = `
 
 @keyframes pulseGlow {
   0%, 100% {
-    box-shadow: 0 0 5px var(--glass-glow), 0 0 10px var(--glass-glow);
+    box-shadow: 0 0 3px rgba(246, 130, 31, 0.15);
   }
   50% {
-    box-shadow: 0 0 15px var(--glass-glow), 0 0 25px var(--glass-glow);
+    box-shadow: 0 0 8px rgba(246, 130, 31, 0.3);
   }
 }
 
@@ -43,13 +43,13 @@ export const animations = `
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-6px);
+    transform: translateY(-4px);
   }
 }
 
 /* ユーティリティクラス */
 .animate-fade-in-up {
-  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-slide-in-left {
@@ -57,7 +57,7 @@ export const animations = `
 }
 
 .animate-float {
-  animation: float 4s ease-in-out infinite;
+  animation: float 5s ease-in-out infinite;
 }
 
 .delay-100 { animation-delay: 100ms; }
@@ -66,11 +66,11 @@ export const animations = `
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
 
-/* DaisyUI スケルトンシマー効果の上書き */
+/* スケルトンシマー効果 */
 .skeleton {
-  background: linear-gradient(90deg, 
-    var(--glass-bg) 25%, 
-    rgba(255, 255, 255, 0.05) 50%, 
+  background: linear-gradient(90deg,
+    var(--glass-bg) 25%,
+    var(--glass-border) 50%,
     var(--glass-bg) 75%
   );
   background-size: 200% 100%;

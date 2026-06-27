@@ -1,8 +1,6 @@
 # Ouroboros Dual-Mode — Remaining TODO
 
-## 1. External Runner (RUNNER_URL) — Required for Code Mode
-
-The external runner at `RUNNER_URL` must implement these new endpoints before Code Mode can function:
+## 1. External Runner (RUNNER_URL) — Complete
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -15,48 +13,41 @@ The external runner at `RUNNER_URL` must implement these new endpoints before Co
 | `/internal/code/diff` | POST | Get unified diff of working tree |
 | `/internal/code/commit` | POST | Commit changes |
 | `/internal/code/push` | POST | Push branch to remote |
-| `/internal/code/cleanup` | POST | Remove session workspace |
+| `/internal/code/generate` | POST | AI code generation (Code Mode patches) |
 
-**Current status:** Worker-side adapter implemented (`src/adapters/dispatch.runner.ts`), but runner service must implement endpoints.
+**Current status:** All Code Mode endpoints implemented in runner (`runner/src/index.ts`). Worker-side adapters (`RpcRunner`, `DispatchRunner`, `NoopRunner`, `DynamicRunner`) all implement `CodeRunner.generate()`.
 
 ---
 
-## 2. Port & Adapter Extension — Partially Complete
+## 2. Port & Adapter Extension — Complete
 
 The new Cloudflare-native binding types have been added to `src/env.ts`:
 
 - [x] New binding types: `AnalyticsEngineDataset`, `BrowserBinding`, `FlagshipBinding`, `DynamicWorkerLoader`, `SecretsStoreSecret`, `ServiceBinding`, `SendEmailBinding`, `EmailMessage`, `VersionMetadata`
-- [ ] Wire new bindings through `src/context.ts` into `Ports` object
+- [x] Wire new bindings through `src/context.ts` into `Ports` object
 - [x] `RunnerKind` and `CodeRunner` interfaces defined in `src/ports/runner.ts`
 - [x] `NoopRunner` fallback implemented in `src/ports/runner.ts`
-- [ ] `RpcRunner` (Service Binding) implemented in `src/adapters/rpc.runner.ts`
-- [ ] `DispatchRunner` extended to implement `CodeRunner` interface
-- [ ] Export new types from `src/ports/index.ts`
+- [x] `RpcRunner` (Service Binding) implemented in `src/adapters/rpc.runner.ts`
+- [x] `DispatchRunner` implements `CodeRunner` interface
+- [x] Export new types from `src/ports/index.ts`
 
 ---
 
-## 3. Runner Fallback Chain — Not Started
-
-The current `buildContext()` always creates a `DispatchRunner` with `RUNNER_URL ?? ""`. New fallback chain:
+## 3. Runner Fallback Chain — Complete
 
 - [x] Define `RunnerKind = "local" | "dispatch" | "rpc" | "noop"`
-- [ ] Update `src/context.ts` to select runner in priority order:
-  1. `env.RUNNER` (Service Binding) → `RpcRunner`
-  2. `env.RUNNER_URL` (HTTP dispatch) → `DispatchRunner`
-  3. neither → `NoopRunner`
-- [x] Add `Env.RUNNER` binding type
-- [ ] Update `InspectionResult` workflow to call `runner.applyFix()` directly instead of `triggerHealing()`
+- [x] `src/context.ts` selects runner in priority order: Service Binding → RUNNER_URL → NoopRunner
+- [x] `Env.RUNNER` binding type added
+- [x] Healing workflow calls `runner.applyFix()` via `HealingRunner` interface
 
 ---
 
-## 4. Self-Healing Workflow — Partially Complete
-
-Current healing uses `Workflows` exclusively. New dual-mode architecture:
+## 4. Self-Healing Workflow — Complete
 
 - [x] `ports/runner.ts` has `HealingRunner` + `CodeRunner` interfaces
-- [ ] `src/context.ts` chooses `HealingRunner` via fallback chain
-- [ ] `src/workflows/healing.ts` calls `runner.applyFix()` directly when `env.RUNNER` or `env.RUNNER_URL` is set
-- [ ] Workflow remains available as the default when neither binding is configured
+- [x] `src/context.ts` chooses `HealingRunner` via fallback chain
+- [x] `src/workflows/healing.ts` calls `runner.applyFix()` directly when runner configured
+- [x] Workflow remains available as the default when neither binding is configured
 
 ---
 
@@ -105,51 +96,73 @@ Currently using `env.WORKERS_AI_API_TOKEN` / `env.GITHUB_TOKEN` directly.
 
 ---
 
-## 9. Code Mode Complete Flow — Not Started
+## 9. Code Mode Complete Flow — Complete
 
-All Code Mode endpoints removed from `api.ts`. Must be re-added with proper implementation:
-
-- [ ] Database migration: `code_sessions` table (status, patches, PR info)
-- [ ] `src/code/session.manager.ts` — session CRUD + state machine
-- [ ] `src/code/agent.ts` — AI prompt generation + patch extraction
-- [ ] `src/code/prompt.templates.ts` — language-specific prompts
-- [ ] API endpoints:
+- [x] Database migration: `code_sessions` table (status, patches, PR info)
+- [x] `src/code/session.manager.ts` — session CRUD + state machine
+- [x] AI generation delegated to runner (`CodeRunner.generate()`) — no local `CodeAgent`
+- [x] `src/code/prompt.templates.ts` — Worker-side copy deleted; prompt logic moved to runner
+- [x] Runner `codeGenerate` uses `AI.run()` with `OURO_CODE_MODEL` (default: `@cf/meta/llama-3.1-8b-instruct`)
+- [x] API endpoints:
   - `POST /api/v1/code/sessions`
   - `GET /api/v1/code/sessions`
   - `GET /api/v1/code/sessions/:id`
-  - `POST /api/v1/code/sessions/:id/generate`
+  - `POST /api/v1/code/sessions/:id/generate` (passes user model pref to runner)
   - `POST /api/v1/code/sessions/:id/apply`
   - `DELETE /api/v1/code/sessions/:id`
 - [ ] Frontend: Code sessions list + detail pages
 
 ---
 
-## 10. Refactor Mode — Stub Only
+## 10. Refactor Mode — Complete
 
-- [ ] `src/refactor/proposal.manager.ts` — parse `InspectionResult`, generate proposals
-- [ ] Wire proposal status transitions (`proposed` → `approved` → `applied/dismissed`)
-- [ ] Add `RefactorRepository` to `src/db/repositories.ts`
-- [ ] API endpoints for proposals CRUD
+- [x] `src/refactor/proposal.manager.ts` — parse `InspectionResult`, generate proposals
+- [x] Wire proposal status transitions (`proposed` → `approved` → `applied/dismissed`)
+- [x] `applyProposal` uses `runner.generate()` instead of `CodeAgent`
+- [x] `generateProposal` (summary generation) uses Worker `ai.complete()` (plan model)
+- [x] `RefactorRepository` queries via `DbAdapter`
+- [x] API endpoints for proposals CRUD
 - [ ] Frontend refactor page improvements
 
 ---
 
-## 11. Tests — None Written
+## 11. Tests
 
-| File | What to test |
-|------|--------------|
-| `src/adapters/rpc.runner.ts` | Request signing, error handling |
-| `src/adapters/dispatch.runner.ts` | HTTP dispatch, timeout behavior |
-| `src/ports/runner.ts` | `NoopRunner` fallback behavior |
-| `src/code/agent.ts` | `generate()` with mock runner, patch extraction |
-| `src/code/session.manager.ts` | Session lifecycle, state transitions |
-| `src/db/repositories.ts` (new repos) | All repository methods |
-| `src/http/api.ts` (new code endpoints) | Auth, validation, error responses |
+| File | What to test | Status |
+|------|--------------|--------|
+| `src/adapters/rpc.runner.ts` | Request signing, error handling | Not started |
+| `src/adapters/dispatch.runner.ts` | HTTP dispatch, timeout behavior | Not started |
+| `src/ports/runner.ts` | `NoopRunner` fallback behavior | Not started |
+| `src/code/session.manager.ts` | Session lifecycle, state transitions | Partial |
+| `src/db/repositories.ts` (new repos) | All repository methods | Not started |
+| `src/http/api.ts` (new code endpoints) | Auth, validation, error responses | Partial |
+| `runner/src/__tests__/routes.test.ts` | All internal endpoints (codeGenerate included) | Done |
 
 ---
 
-## 12. TypeScript — Baseline is Clean
+## 12. TypeScript
 
-**Current status:** `npm run typecheck` passes with 0 errors on `src/`.
+**Current status:** `npm run typecheck` passes with 0 errors on both `src/` and `runner/`.
 
-Remaining work is adding new code (Code Mode, Refactor Mode) without introducing new type errors.
+---
+
+## 13. Runner デプロイ (GH Actions)
+
+- [x] `.github/workflows/deploy-runner.yml` — `push` to `main` (`runner/**` 変更時) + `workflow_dispatch`
+- [x] Secrets Store `ouroboros-secrets` (`github-token`) 参照済み (`runner/wrangler.toml`)
+- [x] Service Binding `[[services]]` 再有効化 (`wrangler.toml:61-65`)
+- [ ] 初回デプロイ: runner を先にデプロイし、その後に Worker を再デプロイ
+- [ ] `CLOUDFLARE_API_TOKEN` GitHub secret の設定 (前提)
+- [ ] `RUNNER_SHARED_SECRET` の `wrangler secret put` 設定 (前提)
+
+---
+
+## 14. AI モデル分離
+
+- [x] Worker: `OURO_PLAN_MODEL` 環境変数 (`wrangler.toml` + `src/env.ts`)、デフォルト `minimax/m3`
+- [x] Worker: `src/context.ts` の `WorkersAiProvider` が `OURO_PLAN_MODEL` 優先
+- [x] Worker: `AIAnalyzer`/`ProposalManager.generateProposal`/`InspectionEngine` がプランモデル使用
+- [x] Runner: `OURO_CODE_MODEL` 環境変数 (`runner/wrangler.toml` + `runner/src/env.ts`)、デフォルト `@cf/meta/llama-3.1-8b-instruct`
+- [x] Runner: `codeGenerate` が `OURO_CODE_MODEL` + 実行時 override 対応
+- [x] Runner: `applyFix` のハードコードモデルを `OURO_CODE_MODEL` に変更
+- [x] Worker: `/code/sessions/:id/generate` がユーザー設定モデルを runner に転送

@@ -46,7 +46,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     : env.WORKERS_AI_API_TOKEN;
 
   const ai = new WorkersAiProvider(env.AI, {
-    model: DEFAULT_WORKERS_AI_MODEL,
+    model: env.OURO_PLAN_MODEL ?? DEFAULT_WORKERS_AI_MODEL,
     apiToken: workersAiApiToken,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
   });

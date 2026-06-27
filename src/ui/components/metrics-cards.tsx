@@ -29,10 +29,10 @@ export const MetricsCards: FC<MetricsCardsProps> = ({ metrics }) => {
 
   const getDeltaStyle = (delta: string) => {
     if (delta.startsWith("+") || delta.includes("改善") || delta.includes("上昇")) {
-      return { class: "text-emerald-500", icon: "arrow-up-right" };
+      return { class: "text-[#16A34A]", icon: "arrow-up-right" };
     }
     if (delta.startsWith("-") || delta.includes("悪化") || delta.includes("低下")) {
-      return { class: "text-rose-500", icon: "arrow-down-left" };
+      return { class: "text-[#FF4040]", icon: "arrow-down-left" };
     }
     return { class: "text-base-content/50", icon: "minus" };
   };
@@ -45,12 +45,9 @@ export const MetricsCards: FC<MetricsCardsProps> = ({ metrics }) => {
         return (
           <div 
             key={m.label} 
-            class="card card-glass shadow-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] hover:scale-[1.01] hover:-translate-y-1 transition-all duration-300 overflow-hidden group"
+            class="card card-glass shadow-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] hover:border-[#F6821F]/30 transition-all duration-300 overflow-hidden"
             style={`animation-delay: ${index * 100}ms`}
           >
-            {/* カード内の背景グロー効果 */}
-            <div class="absolute -right-4 -bottom-4 w-24 h-24 rounded-full bg-primary/5 group-hover:bg-primary/10 transition-all duration-300 filter blur-xl"></div>
-            
             <div class="card-body p-6 flex flex-row items-center justify-between z-10">
               <div class="flex-1 min-w-0">
                 <span class="text-xs font-semibold uppercase tracking-wider opacity-60 block truncate">
@@ -69,7 +66,7 @@ export const MetricsCards: FC<MetricsCardsProps> = ({ metrics }) => {
               </div>
               
               {m.icon && (
-                <div class="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-inner group-hover:bg-primary group-hover:text-primary-content transition-all duration-300">
+                <div class="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                   <i data-lucide={m.icon} class="w-6 h-6" />
                 </div>
               )}

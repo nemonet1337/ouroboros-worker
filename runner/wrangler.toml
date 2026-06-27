@@ -28,3 +28,4 @@ simple = { limit = 50, period = 60 }
 
 [vars]
 GITHUB_REPOSITORY = ""
+OURO_CODE_MODEL = "@cf/meta/llama-3.1-8b-instruct"

@@ -2,10 +2,13 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./env";
 import { GitHubClient } from "./github.client";
 import { scanFiles, type Finding } from "./scanner";
+import { buildCodeGenPrompt } from "./prompt.templates";
+import { isWorkersAiModelId } from "./model.util";
 import type {
   AllFindings, FindingGroup, CodeInitOptions,
   CodeInitResult, CodeReadResult, CodeSearchResult, CodeWriteResult, CodeDiffResult, CodeCommitResult,
   RunFixOptions, RunnerFixResult,
+  CodeGenerateOptions, CodeGenerateResult, Patch,
 } from "./env";
 
 export default class RunnerWorker extends WorkerEntrypoint<Env> {
@@ -68,6 +71,9 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
           break;
         case "/internal/code/push":
           result = await this.codePush(body as { sessionId: string; branch: string });
+          break;
+        case "/internal/code/generate":
+          result = await this.codeGenerate(body as CodeGenerateOptions);
           break;
         default:
           return new Response(null, { status: 404 });
@@ -138,7 +144,8 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
         const findings = opts.group.findings.filter((f: any) => f.file === entry.path || f.location?.file === entry.path);
         if (findings.length === 0) continue;
 
-        const response = await this.env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+        const model = this.env.OURO_CODE_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+        const response = await this.env.AI.run(model, {
           messages: [
             { role: "system", content: "You are a code fixer. Fix the following code issues. Return ONLY the fixed file content, no explanation." },
             { role: "user", content: `Fix these issues in the file:\n${findings.map((f: any) => `- ${f.message || f.title}`).join("\n")}\n\nOriginal file:\n\`\`\`\n${file.content}\n\`\`\`` },
@@ -421,6 +428,66 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
 
     await gh.updateRef(owner, repoName, opts.branch, commitRow.value);
     return { success: true };
+  }
+
+  async codeGenerate(opts: CodeGenerateOptions): Promise<CodeGenerateResult> {
+    if (!this.env.AI) {
+      return { patches: [], model: "" };
+    }
+
+    const model = opts.model && isWorkersAiModelId(opts.model)
+      ? opts.model
+      : (this.env.OURO_CODE_MODEL || "@cf/meta/llama-3.1-8b-instruct");
+
+    const session = await this.getSession(opts.sessionId);
+    if (!session) return { patches: [], model };
+
+    const token = await this.env.GITHUB_TOKEN_SECRET.get();
+    const [owner, repoName] = session.repoUrl.replace(/https:\/\/github\.com\//, "").replace(/\/$/, "").split("/");
+    if (!owner || !repoName) return { patches: [], model };
+
+    const gh = new GitHubClient(token, owner, repoName);
+
+    let fileList: string[] = [];
+    let fileContext: Record<string, string> = {};
+    try {
+      const files = await gh.getRepoFiles(owner, repoName, session.branch, 50);
+      fileList = files.map((f) => f.path);
+      for (const f of files.slice(0, 10)) {
+        fileContext[f.path] = f.content;
+      }
+    } catch {
+      // proceed without file context
+    }
+
+    const { system, user } = buildCodeGenPrompt({
+      instruction: opts.instruction,
+      repoStructure: fileList,
+      fileContext,
+    });
+
+    const aiResponse = await this.env.AI.run(model, {
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      max_tokens: 4096,
+    });
+
+    const raw = typeof aiResponse === "object" && aiResponse !== null && "response" in aiResponse
+      ? (aiResponse as any).response
+      : String(aiResponse ?? "");
+
+    let patches: Patch[] = [];
+    try {
+      const parsed = JSON.parse(raw.trim());
+      if (Array.isArray(parsed.patches)) patches = parsed.patches as Patch[];
+      else if (Array.isArray(parsed)) patches = parsed as Patch[];
+    } catch {
+      patches = [];
+    }
+
+    return { patches, model };
   }
 }
 

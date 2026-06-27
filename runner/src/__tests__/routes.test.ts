@@ -229,4 +229,33 @@ describe("RunnerWorker fetch router", () => {
     );
     expect(res.status).toBe(200);
   });
+
+  it("should route /internal/code/generate to codeGenerate", async () => {
+    const worker = createWorker({
+      GITHUB_REPOSITORY: "owner/repo",
+      OURO_CODE_MODEL: "@cf/meta/llama-3.1-8b-instruct",
+    });
+    vi.mocked(globalThis.fetch).mockImplementation((input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/repos/owner/repo") && !url.includes("/git/")) {
+        return Promise.resolve(new Response(JSON.stringify({ default_branch: "main" }), { status: 200 }));
+      }
+      if (url.includes("/git/refs/heads/")) {
+        return Promise.resolve(new Response(JSON.stringify({ object: { sha: "abc123" } }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ sha: "abc123", tree: [], truncated: false }), { status: 200 }));
+    });
+    const res = await worker.fetch(
+      new Request("http://internal/internal/code/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "sess-1",
+          instruction: "fix the code",
+          model: "@cf/meta/llama-3.1-8b-instruct",
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+  });
 });

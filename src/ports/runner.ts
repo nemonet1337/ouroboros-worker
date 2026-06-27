@@ -61,6 +61,11 @@ export interface CodeInitOptions {
   sessionId: string;
 }
 
+export interface CodeGenerateResult {
+  patches: Patch[];
+  model: string;
+}
+
 export interface CodeRunner {
   readonly kind: RunnerKind;
   init(opts: CodeInitOptions): Promise<CodeInitResult>;
@@ -72,6 +77,7 @@ export interface CodeRunner {
   diff(opts: { sessionId: string }): Promise<CodeDiffResult>;
   commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult>;
   push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }>;
+  generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult>;
 }
 
 export class NoopRunner implements HealingRunner, CodeRunner {
@@ -135,5 +141,9 @@ export class NoopRunner implements HealingRunner, CodeRunner {
 
   async push(_opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
     return { success: false };
+  }
+
+  async generate(_opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
+    return { patches: [], model: "" };
   }
 }

@@ -7,6 +7,7 @@ export interface Env {
   AI?: Ai;
   GITHUB_REPOSITORY?: string;
   RUNNER_SHARED_SECRET?: string;
+  OURO_CODE_MODEL?: string;
 }
 
 export interface AllFindings {
@@ -82,6 +83,25 @@ export interface CodeCommitResult {
   commitHash: string;
 }
 
+export interface Patch {
+  file: string;
+  originalContent: string;
+  fixedContent: string;
+  diff: string;
+  explanation: string;
+}
+
+export interface CodeGenerateOptions {
+  sessionId: string;
+  instruction: string;
+  model?: string;
+}
+
+export interface CodeGenerateResult {
+  patches: Patch[];
+  model: string;
+}
+
 declare module "cloudflare:workers" {
   interface WorkerEntrypoint {
     // Healing
@@ -97,5 +117,6 @@ declare module "cloudflare:workers" {
     codeDiff(opts: { sessionId: string }): Promise<CodeDiffResult>;
     codeCommit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult>;
     codePush(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }>;
+    codeGenerate(opts: CodeGenerateOptions): Promise<CodeGenerateResult>;
   }
 }

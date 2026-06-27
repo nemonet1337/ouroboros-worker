@@ -2,7 +2,6 @@ import type { AiProvider } from "../ports/ai";
 import type { DbAdapter } from "../ports/db";
 import type { VcsProvider } from "../ports/vcs";
 import type { CodeRunner } from "../ports/runner";
-import { CodeAgent } from "../code/agent";
 
 export class ProposalManager {
   constructor(
@@ -72,8 +71,7 @@ ${inspectionResult}`;
       sessionId: inspectionId,
     });
 
-    const agent = new CodeAgent({ ai: this.ai, runner });
-    const { patches } = await agent.generate({
+    const { patches } = await runner.generate({
       instruction,
       sessionId: inspectionId,
     });

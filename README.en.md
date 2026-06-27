@@ -11,7 +11,7 @@ requests automatically — with authentication, multi-tenant API tokens, telemet
 and email alerting.
 
 It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues + Workflows +
-Workers AI).
+Workers AI + Vectorize).
 
 > **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
 > (default model: `minimax/m3`). Every model Workers AI serves is selectable from the GUI
@@ -25,11 +25,14 @@ Workers AI).
 
 ```
 src/
-├── adapters/      Cloudflare service adapters (D1, R2, Queues, Workers AI …)
+├── adapters/      Cloudflare service adapters (D1, R2, Queues, Workers AI, Vectorize …)
+├── analytics/     AI usage tracker and cost estimator
 ├── analyzers/     AI analysis engine (finding grouping, risk scoring)
 ├── auth/          Authentication, sessions, API token management
+├── code/          Code session management, version tracking, caching
 ├── config/        Settings and per-language rules (10 languages)
 ├── db/            D1/SQLite layer (7 tables, migrations)
+├── flags/         Feature flag management
 ├── healing/       Self-healing orchestrator
 ├── http/          Hono-based REST API
 ├── inspection/    AI scoring engine (6 dimensions, 32 aspects)
@@ -38,7 +41,10 @@ src/
 ├── ports/         Adapter interfaces (Ports & Adapters pattern)
 ├── pr/            PR body/title generation, dedup, auto-merge
 ├── queues/        Cloudflare Queues handler
+├── refactor/      Refactoring proposal management
 ├── schemas/       JSON schema definitions
+├── testing/       Browser testing utilities
+├── ui/            Server-side rendered UI (Hono JSX)
 ├── utils/         Crypto, escalator, fix cache
 ├── vcs/           GitHub integration (fetch-based)
 ├── webhook/       Webhook dispatch (Slack, Discord, GitHub, Generic)
@@ -46,8 +52,7 @@ src/
 ├── types.ts       All type definitions
 ├── context.ts     Dependency injection
 ├── env.ts         Cloudflare bindings type
-└── index.ts       Worker entry point
-web/               Nuxt 3 GUI (built as a static SPA, served via ASSETS)
+└── index.tsx      Worker entry point
 ```
 
 | Port           | Implementation (Cloudflare Worker)      |
@@ -56,10 +61,11 @@ web/               Nuxt 3 GUI (built as a static SPA, served via ASSETS)
 | `LogStore`     | R2 objects                              |
 | `QueueAdapter` | Cloudflare Queues                       |
 | `AiProvider`   | Workers AI (the only AI gateway)        |
-| `Mailer`       | MailChannels                            |
+| `Mailer`       | MailChannels / CF Email Routing         |
 | `VcsProvider`  | GitHub (fetch)                          |
 | `HealingRunner`| `RpcRunner`(Service Binding) / `DispatchRunner`(HTTP) → CF Worker runner |
-| `RateLimiter`  | Workers Rate Limiting API                      |
+| `RateLimiter`  | Workers Rate Limiting API               |
+| `VectorizePort`| Cloudflare Vectorize (adaptive weighting)|
 
 Note: Workers lack a filesystem/git/compilers, so patch application, commit, and push are
 **delegated via Service Binding or HTTP** to the `ouroboros-runner` Worker (GitHub API-based).
@@ -81,15 +87,18 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from src/db/migrations/
 
+# Vectorize index (for adaptive weighting, optional)
+wrangler vectorize create ouroboros-weight-profiles --dimensions=32 --metric=cosine
+
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
-wrangler secret put GITHUB_REPOSITORY               # owner/repo
+wrangler secret put GITHUB_REPOSITORY               # owner/repo (auto-detected from token if omitted)
 wrangler secret put RUNNER_SHARED_SECRET            # (optional) auth for the dispatched runner
 
 wrangler deploy                                      # or: wrangler dev
 ```
 
-`wrangler.toml` wires D1, R2, Queues, Workflows, Workers AI, the Rate Limiting binding,
+`wrangler.toml` wires D1, R2, Queues, Workflows, Workers AI, Vectorize, the Rate Limiting binding,
 the daily cron trigger, and the static GUI assets.
 
 ### Admin account
@@ -128,6 +137,14 @@ the daily cron trigger, and the static GUI assets.
   Scores six weighted dimensions (security / performance / redundancy / readability / design /
   correctness) per file or per function/method/class (`granularity: "function"`), and returns
   prioritised `refactorCandidates` selected heuristically from low-scoring units.
+- **Adaptive weighting** — Vectorize stores 32-aspect scores as 32-dimensional vectors and
+  automatically adjusts aspect weights based on historical performance.
+- **Code sessions** — Request AI code generation by specifying repository, branch, and
+  instructions. Generated patches are automatically applied as pull requests.
+- **Refactoring proposals** — AI generates concrete improvement suggestions from inspection
+  results and manages them with priority ranking.
+- **AI usage analytics** — Analytics Engine tracks AI inference usage and costs.
+- **Feature flags** — Manage gradual rollouts of experimental features.
 
 ---
 
@@ -150,10 +167,31 @@ Machine-readable: `GET /api/v1/openapi.json`.
 | POST   | `/api/v1/healing`            | scope `heal`    |
 | GET    | `/api/v1/metrics`             | session/token   |
 | GET    | `/api/v1/logs`                | admin           |
+| GET/POST | `/api/v1/code/sessions`     | session/token   |
+| GET     | `/api/v1/code/sessions/:id`   | session/token   |
+| POST    | `/api/v1/code/sessions/:id/generate` | session/token |
+| POST    | `/api/v1/code/sessions/:id/apply`    | session/token |
+| GET/POST | `/api/v1/refactor/proposals` | session/token   |
 
 \* gated by the registration toggle (always allowed for the first/admin user).
 Tokens are sent as `Authorization: Bearer ouro_…`. Errors use a unified
 `{ "error": { "code", "message" } }` envelope.
+
+---
+
+## GUI pages
+
+- `/` — Home (dashboard)
+- `/healing` — Self-healing run history
+- `/inspection` — Code inspection results
+- `/code` — Code session list
+- `/code/new` — Create new code session
+- `/code/sessions/:id` — Code session details
+- `/refactor` — Refactoring proposals
+- `/webhooks` — Webhook configuration
+- `/tokens` — API token management
+- `/settings` — Personal settings (AI model selection)
+- `/admin` — Admin settings (registration toggle, user management)
 
 ---
 

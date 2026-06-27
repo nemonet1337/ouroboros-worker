@@ -15,7 +15,7 @@ export const RegisterPage: FC = () => {
           </div>
           
           <div class="relative z-10 text-center animate-float">
-            <div class="brand-icon-box mb-6 inline-flex items-center justify-center w-24 h-24 rounded-2xl backdrop-blur-md shadow-2xl">
+            <div class="brand-icon-box mb-6 inline-flex items-center justify-center w-24 h-24 rounded-lg shadow-lg">
               <i data-lucide="infinity" class="w-14 h-14 text-accent"></i>
             </div>
             <h1 class="brand-title text-6xl font-black mb-4 tracking-wider">
@@ -27,19 +27,19 @@ export const RegisterPage: FC = () => {
             
             <div class="brand-text flex justify-center gap-8">
               <div class="flex flex-col items-center gap-1.5">
-                <div class="brand-badge p-3 rounded-xl"><i data-lucide="zap" class="w-5 h-5 text-yellow-500"></i></div>
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="zap" class="w-5 h-5 text-[#FAAE40]"></i></div>
                 <span class="text-xs font-semibold">高速修復</span>
               </div>
               <div class="flex flex-col items-center gap-1.5">
-                <div class="brand-badge p-3 rounded-xl"><i data-lucide="shield-check" class="w-5 h-5 text-emerald-500"></i></div>
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="shield-check" class="w-5 h-5 text-[#16A34A]"></i></div>
                 <span class="text-xs font-semibold">安全第一</span>
               </div>
               <div class="flex flex-col items-center gap-1.5">
-                <div class="brand-badge p-3 rounded-xl"><i data-lucide="git-branch" class="w-5 h-5 text-blue-500"></i></div>
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="git-branch" class="w-5 h-5 text-[#1F6FEB]"></i></div>
                 <span class="text-xs font-semibold">PR自動化</span>
               </div>
               <div class="flex flex-col items-center gap-1.5">
-                <div class="brand-badge p-3 rounded-xl"><i data-lucide="bot" class="w-5 h-5 text-purple-500"></i></div>
+                <div class="brand-badge p-3 rounded-xl"><i data-lucide="bot" class="w-5 h-5 text-[#FF6633]"></i></div>
                 <span class="text-xs font-semibold">AI駆動</span>
               </div>
             </div>
@@ -63,7 +63,7 @@ export const RegisterPage: FC = () => {
                 </h2>
 
                 {/* 最初の登録ユーザー向けの案内 */}
-                <div class="alert alert-info bg-indigo-950/40 border border-indigo-500/20 text-xs mb-6 rounded-xl flex gap-2">
+                <div class="alert alert-info text-xs mb-6 rounded-lg flex gap-2">
                   <i data-lucide="info" class="w-4 h-4 text-accent flex-shrink-0 mt-0.5"></i>
                   <span>
                     <strong>ヒント:</strong> 最初の登録ユーザーは自動的に<strong>管理者</strong>に設定され、以後の新規登録は制限されます（後から管理パネルで開放可能）。

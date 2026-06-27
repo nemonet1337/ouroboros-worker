@@ -12,6 +12,7 @@ import type {
   CodeWriteResult,
   CodeDiffResult,
   CodeCommitResult,
+  CodeGenerateResult,
 } from "../ports/runner";
 
 export class DynamicRunner implements HealingRunner, CodeRunner {
@@ -134,5 +135,15 @@ export class DynamicRunner implements HealingRunner, CodeRunner {
       body: JSON.stringify(opts),
     }));
     return (await res.json()) as { success: boolean };
+  }
+
+  async generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
+    const worker = this.getWorker();
+    if (!worker) throw new Error("Dynamic worker not configured");
+    const res = await worker.fetch(new Request("http://internal/code/generate", {
+      method: "POST",
+      body: JSON.stringify(opts),
+    }));
+    return (await res.json()) as CodeGenerateResult;
   }
 }

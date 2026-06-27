@@ -1,0 +1,33 @@
+name: Deploy Runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "runner/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: cd runner && npm ci
+
+      - name: Deploy ouroboros-runner
+        run: cd runner && npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Post-deploy notice
+        run: |
+          echo "::notice::Runner deployed. If this is the first deployment, Worker's Service Binding must be uncommented in wrangler.toml and Worker must be re-deployed."
+          echo "See wrangler.toml lines 61-66 for the [[services]] block."

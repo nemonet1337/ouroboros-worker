@@ -30,9 +30,9 @@ export const HomePage: FC<HomePageProps> = ({ user }) => {
           
           {/* ローディング時スケルトン - 統計カード */}
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="skeleton h-32 w-full rounded-2xl"></div>
-            <div class="skeleton h-32 w-full rounded-2xl"></div>
-            <div class="skeleton h-32 w-full rounded-2xl"></div>
+            <div class="skeleton h-32 w-full rounded-xl"></div>
+            <div class="skeleton h-32 w-full rounded-xl"></div>
+            <div class="skeleton h-32 w-full rounded-xl"></div>
           </div>
 
           {/* ローディング時スケルトン - 詳細セクション */}

@@ -33,22 +33,3 @@ Constraints:
 
   return { system, user };
 }
-
-export function buildDiffApplyPrompt(instruction: string, original: string, proposed: string): { system: string; user: string } {
-  const system = `You are a careful code reviewer. Review the proposed patch for safety, correctness, and minimality. Reply JSON with approved boolean and explanation string.`;
-
-  const user = `## Instruction
-${instruction}
-
-## Original
-\`\`\`
-${original.slice(0, 10000)}
-\`\`\`
-
-## Proposed
-\`\`\`
-${proposed.slice(0, 10000)}
-\`\`\``;
-
-  return { system, user };
-}

@@ -14,10 +14,10 @@ export const ScoreGauge: FC<ScoreGaugeProps> = ({ score, grade, size = 160 }) =>
 
   // グレード別のカラーマッピング
   const getGradeColorClass = (val: number) => {
-    if (val >= 90) return "text-emerald-400";
-    if (val >= 75) return "text-cyan-400";
-    if (val >= 60) return "text-warning";
-    return "text-error";
+    if (val >= 90) return "text-[#16A34A]";
+    if (val >= 75) return "text-[#F6821F]";
+    if (val >= 60) return "text-[#FAAE40]";
+    return "text-[#FF4040]";
   };
 
   const colorClass = getGradeColorClass(score);
@@ -26,14 +26,14 @@ export const ScoreGauge: FC<ScoreGaugeProps> = ({ score, grade, size = 160 }) =>
     <div class="flex flex-col items-center justify-center p-2 relative group select-none">
       
       {/* ゲージSVG */}
-      <svg width={size} height={size} class="transform -rotate-90 filter drop-shadow-[0_0_8px_rgba(var(--glass-glow),0.15)] group-hover:drop-shadow-[0_0_15px_rgba(var(--glass-glow),0.3)] transition-all duration-300">
+      <svg width={size} height={size} class="transform -rotate-90 transition-all duration-300">
         
         {/* 背景トラック（薄い円） */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="rgba(255, 255, 255, 0.05)"
+          stroke="var(--glass-border)"
           stroke-width={strokeWidth}
           fill="transparent"
         />

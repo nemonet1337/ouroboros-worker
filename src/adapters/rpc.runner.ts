@@ -1,4 +1,4 @@
-import type { HealingRunner, RunFixOptions, RunnerFixResult, RunnerScanResult, RunnerKind, CodeRunner, CodeInitOptions, CodeInitResult, CodeCommitResult, CodeDiffResult, CodeReadResult, CodeSearchResult, CodeWriteResult } from "../ports/runner";
+import type { HealingRunner, RunFixOptions, RunnerFixResult, RunnerScanResult, RunnerKind, CodeRunner, CodeInitOptions, CodeInitResult, CodeCommitResult, CodeDiffResult, CodeReadResult, CodeSearchResult, CodeWriteResult, CodeGenerateResult } from "../ports/runner";
 import type { AllFindings } from "../types";
 
 export class RpcRunner implements HealingRunner, CodeRunner {
@@ -73,5 +73,9 @@ export class RpcRunner implements HealingRunner, CodeRunner {
 
   async push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
     return this.post<{ success: boolean }>("/internal/code/push", opts);
+  }
+
+  async generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
+    return this.post<CodeGenerateResult>("/internal/code/generate", opts);
   }
 }

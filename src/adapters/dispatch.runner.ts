@@ -11,6 +11,7 @@ import type {
   CodeWriteResult,
   CodeDiffResult,
   CodeCommitResult,
+  CodeGenerateResult,
 } from "../ports";
 import type { AllFindings } from "../types";
 
@@ -96,5 +97,10 @@ export class DispatchRunner implements HealingRunner, CodeRunner {
   async push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
     if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
     return this.post<{ success: boolean }>("/internal/code/push", opts);
+  }
+
+  async generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
+    if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for code mode");
+    return this.post<CodeGenerateResult>("/internal/code/generate", opts);
   }
 }
