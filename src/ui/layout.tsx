@@ -111,7 +111,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
             {/* メインコンテンツ */}
             <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate-fade-in-up">
               {flash && (
-                <div class={`alert ${flash.type === 'success' ? 'alert-success' : 'alert-error'} shadow-lg mb-6 rounded-xl animate-fade-in-up`}>
+                <div class={`alert ${flash.type === 'success' ? 'bg-emerald-600 text-white border border-emerald-700' : 'bg-rose-600 text-white border border-rose-700'} shadow-lg mb-6 rounded-xl animate-fade-in-up`}>
                   <i data-lucide={flash.type === 'success' ? 'check-circle' : 'alert-triangle'} class="w-5 h-5" />
                   <span>{flash.message}</span>
                 </div>
@@ -147,7 +147,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                   const details = responseObj.error?.details ? " : " + responseObj.error.details.join(", ") : "";
                   
                   // serverResponseをHTMLで上書きしてHTMXにスワップさせる
-                  evt.detail.serverResponse = '<div class="alert alert-error shadow-lg rounded-xl flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
+                  evt.detail.serverResponse = '<div class="alert bg-rose-600 text-white border border-rose-700 shadow-lg rounded-xl flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
                 } catch (e) {
                   // パース失敗時のフォールバック
                 }

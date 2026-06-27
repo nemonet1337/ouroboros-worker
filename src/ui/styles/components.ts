@@ -1,4 +1,27 @@
 export const components = `
+/* アラートの最小保証色（DaisyUI変数が解決しなくても読めるようにする） */
+.alert-error {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+.alert-success {
+  background-color: #059669;
+  color: #ffffff;
+  border-color: #047857;
+}
+.alert-warning {
+  background-color: #d97706;
+  color: #ffffff;
+  border-color: #b45309;
+}
+.alert-info {
+  background-color: #0284c7;
+  color: #ffffff;
+  border-color: #0369a1;
+}
+
+
 /* グラスモーフィズムカード */
 .card-glass {
   background: var(--glass-bg);

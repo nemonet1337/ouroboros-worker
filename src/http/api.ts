@@ -219,16 +219,16 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     try {
       const user = await auth.register(email, password);
       const { sessionId } = await auth.login(email, password);
-      setSession(c, sessionId, deps.cookieSecure);
+      setSession(c, sessionId);
       if (c.req.header("HX-Request")) {
         c.header("HX-Redirect", "/");
-        return c.body(null);
+        return c.html("");
       }
       return c.json({ user }, 201);
     } catch (err) {
       if (c.req.header("HX-Request") && err instanceof AuthError) {
         return c.html(
-          `<div class="alert alert-error"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
         );
       }
       throw err;
@@ -240,17 +240,17 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
     try {
       const { user, sessionId } = await auth.login(email, password);
-      setSession(c, sessionId, deps.cookieSecure);
+      setSession(c, sessionId);
       if (c.req.header("HX-Request")) {
         const next = c.req.query("next") || "/";
         c.header("HX-Redirect", next);
-        return c.body(null);
+        return c.html("");
       }
       return c.json({ user });
     } catch (err) {
       if (c.req.header("HX-Request") && err instanceof AuthError) {
         return c.html(
-          `<div class="alert alert-error"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
         );
       }
       throw err;
@@ -791,10 +791,11 @@ function parseHistoryEntry(row: { id: string; result: string; created_at: number
   };
 }
 
-function setSession(c: Context, sessionId: string, secure = false): void {
+function setSession(c: Context, sessionId: string, secure?: boolean): void {
+  const autoSecure = new URL(c.req.url).protocol === "https:";
   setCookie(c, SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    secure,
+    secure: secure ?? autoSecure,
     sameSite: "Lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 7,

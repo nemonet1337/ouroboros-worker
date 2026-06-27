@@ -21,10 +21,10 @@ export const Alerts: FC<AlertsProps> = ({ items, dismissible = true }) => {
   };
 
   const alertClassMap: Record<AlertItem["type"], string> = {
-    success: "alert-success bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    error: "alert-error bg-rose-500/10 text-rose-400 border-rose-500/20",
-    warning: "alert-warning bg-orange-500/10 text-orange-400 border-orange-500/20",
-    info: "alert-info bg-sky-500/10 text-sky-400 border-sky-500/20",
+    success: "bg-emerald-600 text-white border-emerald-700",
+    error: "bg-rose-600 text-white border-rose-700",
+    warning: "bg-amber-600 text-white border-amber-700",
+    info: "bg-sky-600 text-white border-sky-700",
   };
 
   return (

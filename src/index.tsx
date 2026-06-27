@@ -78,7 +78,7 @@ async function buildApp(env: Env): Promise<Hono> {
     await next();
   });
 
-  mountApi(app, { ...ctx, triggerHealing, cookieSecure: true });
+  mountApi(app, { ...ctx, triggerHealing });
 
   const requireAuthMiddleware = async (c: Context<EnvWithIdentity>, next: Next) => {
     const sid = c.req.header("cookie")?.match(/ouro_session=([^;]+)/)?.[1];
