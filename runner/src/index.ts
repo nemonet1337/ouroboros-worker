@@ -97,7 +97,7 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
     const [owner, repoName] = repo.split("/");
     if (!owner || !repoName) {
       return {
-        codeql: [], dependency: [], performance: [], secrets: [],
+        staticAnalysis: [], dependency: [], performance: [], secrets: [],
         licenses: [], detectedFrameworks: [], timestamp: new Date(), commitHash: "",
       };
     }

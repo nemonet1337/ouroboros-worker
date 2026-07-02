@@ -5,7 +5,9 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { mountApi } from "./http/api";
 import { runMigrations } from "./db";
-import { HealingRunRepository } from "./db/repositories";
+import { HealingRunRepository, SettingsRepository, CodeSessionRepository } from "./db/repositories";
+import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
+import { CODE_INDEX_STATUS_KEY } from "./vectorize/code.indexer";
 import type { GuiEvent } from "./ports/queue";
 import type { Env, EmailMessage } from "./env";
 import { buildContext, type WorkerContext } from "./context";
@@ -101,13 +103,20 @@ async function buildApp(env: Env): Promise<Hono> {
     await next();
   };
 
-  app.get("/login", (c) => {
+  app.get("/login", async (c) => {
+    // アカウントが 1 件も無い初回起動時は登録画面へ誘導する
+    if ((await ctx.auth.userCount()) === 0) {
+      return c.redirect("/register?first=1", 302);
+    }
     const next_ = c.req.query("next") || undefined;
-    return c.html(<LoginPage next={next_} />);
+    const error = c.req.query("error") || undefined;
+    return c.html(<LoginPage next={next_} error={error} />);
   });
 
   app.get("/register", (c) => {
-    return c.html(<RegisterPage />);
+    const error = c.req.query("error") || undefined;
+    const first = c.req.query("first") === "1";
+    return c.html(<RegisterPage error={error} first={first} />);
   });
 
   app.get("/", requireAuthMiddleware, (c) => {
@@ -135,10 +144,14 @@ async function buildApp(env: Env): Promise<Hono> {
     return c.html(<CodeNewPage user={identity?.user} />);
   });
 
-  app.get("/code/sessions/:id", requireAuthMiddleware, (c) => {
+  app.get("/code/sessions/:id", requireAuthMiddleware, async (c) => {
     const identity = c.get("identity");
     const sessionId = c.req.param("id")!;
-    return c.html(<CodeSessionPage sessionId={sessionId} user={identity?.user} />);
+    const sessions = new CodeSessionRepository(ctx.ports.db);
+    const session = await sessions.get(sessionId, identity!.user.id);
+    return c.html(
+      <CodeSessionPage sessionId={sessionId} user={identity?.user} session={session as any} />
+    );
   });
 
   app.get("/refactor", requireAuthMiddleware, (c) => {
@@ -156,9 +169,44 @@ async function buildApp(env: Env): Promise<Hono> {
     return c.html(<TokensPage user={identity?.user} />);
   });
 
-  app.get("/settings", requireAuthMiddleware, (c) => {
+  app.get("/settings", requireAuthMiddleware, async (c) => {
     const identity = c.get("identity");
-    return c.html(<SettingsPage user={identity?.user} />);
+    const user = identity!.user;
+    const settingsRepo = new SettingsRepository(ctx.ports.db);
+
+    const [models, globalModel, modeModels, rawSettings, rawIndexStatus, registrationEnabled] =
+      await Promise.all([
+        ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
+        ctx.auth.getModel(user.id),
+        ctx.auth.getModeModels(user.id),
+        settingsRepo.get("app_settings"),
+        settingsRepo.get(CODE_INDEX_STATUS_KEY),
+        ctx.auth.isRegistrationEnabled(),
+      ]);
+
+    let appSettings: Record<string, unknown> = {};
+    try {
+      appSettings = rawSettings ? JSON.parse(rawSettings) : {};
+    } catch {}
+    appSettings.registrationEnabled = registrationEnabled;
+
+    let codeIndexStatus = null;
+    try {
+      codeIndexStatus = rawIndexStatus ? JSON.parse(rawIndexStatus) : null;
+    } catch {}
+
+    return c.html(
+      <SettingsPage
+        user={user}
+        models={models}
+        globalModel={globalModel}
+        modeModels={modeModels}
+        defaultModel={DEFAULT_WORKERS_AI_MODEL}
+        appSettings={appSettings}
+        codeIndexStatus={codeIndexStatus}
+        vectorizeCodeEnabled={!!ctx.ports.vectorizeCode}
+      />
+    );
   });
 
   app.get("/admin", requireAuthMiddleware, (c) => {

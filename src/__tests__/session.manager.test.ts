@@ -66,4 +66,49 @@ describe("CodeSessionManager", () => {
     expect(session).toBeDefined();
     expect(session?.id).toBe("session-123");
   });
+
+  it("generates plan first and passes plan-augmented instruction with the coding model", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
+    (runner as any).generate = generateSpy;
+    const ai = {
+      name: "mock",
+      complete: vi.fn().mockResolvedValue("1. まずAを直す\n2. 次にBを直す"),
+    };
+    manager = new CodeSessionManager(mockDb, runner, ai as any);
+
+    await manager.generate("session-123", "user-1", {
+      model: "@cf/meta/llama-3.1-8b-instruct",
+      planModel: "minimax/m3",
+    });
+
+    // Plan フェーズは planModel で呼ばれる
+    expect(ai.complete).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "minimax/m3" })
+    );
+    // Plan は code_sessions.plan に保存される
+    expect(queries.some((q) => q.sql.includes("SET plan = ?"))).toBe(true);
+    // 生成は coding モデル + 計画付き instruction で呼ばれる
+    expect(generateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "@cf/meta/llama-3.1-8b-instruct",
+        instruction: expect.stringContaining("## 実装計画"),
+      })
+    );
+  });
+
+  it("still generates when the plan phase fails", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
+    (runner as any).generate = generateSpy;
+    const ai = {
+      name: "mock",
+      complete: vi.fn().mockRejectedValue(new Error("plan model down")),
+    };
+    manager = new CodeSessionManager(mockDb, runner, ai as any);
+
+    await manager.generate("session-123", "user-1", { model: "m", planModel: "p/m" });
+
+    expect(generateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ instruction: "do something" })
+    );
+  });
 });

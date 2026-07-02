@@ -51,6 +51,20 @@ class_name = "HealingWorkflow"
 binding = "VECTORIZE"
 index_name = "ouroboros-weight-profiles"
 
+# Vectorize — コードチャンク埋め込みインデックス。リポジトリのコードを
+# bge-base-en-v1.5（768 次元）で埋め込み、自己修復解析時の RAG コンテキストに使う。
+# インデックス作成: wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE_CODE"
+index_name = "ouroboros-code-index"
+
+# Worker Loader（Dynamic Worker Loading、ベータ）— RUNNER / RUNNER_URL が未設定の
+# 場合に、タスク実行時へ動的に runner Worker を生成するフォールバック実行基盤。
+# アカウントがベータ未対応で deploy に失敗する場合はこのブロックをコメントアウト
+# （その場合 runner 未設定なら明示エラーになる）。
+[[worker_loaders]]
+binding = "LOADER"
+
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
 name = "RATE_LIMITER"

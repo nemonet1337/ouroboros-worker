@@ -2,7 +2,7 @@ import {
   AnalysisResult,
   AllFindings,
   FindingGroup,
-  CodeQLFinding,
+  StaticAnalysisFinding,
   DependencyFinding,
   PerformanceFinding,
   SecretFinding,
@@ -13,7 +13,7 @@ import {
 import { HealingConfig } from "../config/healing.config";
 import type { AiProvider } from "../ports/ai";
 
-type AnyFinding = CodeQLFinding | DependencyFinding | PerformanceFinding | SecretFinding;
+type AnyFinding = StaticAnalysisFinding | DependencyFinding | PerformanceFinding | SecretFinding;
 
 interface AIGroup {
   id: string;
@@ -62,10 +62,10 @@ Output ONLY a valid JSON object with this schema (no markdown, no preamble):
 RULES:
 - Secret findings: NEVER autoFixable (requires manual rotation).
 - Dependency patch updates, no breaking changes: autoFixable=true.
-- CodeQL injection/XSS with clear fix: autoFixable=true.
+- Static-analysis injection/XSS with clear fix: autoFixable=true.
 - Performance findings: autoFixable=false.
 - MAX 10 groups. Merge similar findings.
-- findingIndices references the flat array: codeql findings first, then dependency, performance, secrets.`;
+- findingIndices references the flat array: static-analysis findings first, then dependency, performance, secrets.`;
 
 export class AIAnalyzer {
   constructor(
@@ -73,9 +73,9 @@ export class AIAnalyzer {
     private readonly ai: AiProvider
   ) {}
 
-  async analyze(findings: AllFindings): Promise<AnalysisResult> {
+  async analyze(findings: AllFindings, codeContext?: string): Promise<AnalysisResult> {
     const flat: AnyFinding[] = [
-      ...findings.codeql,
+      ...findings.staticAnalysis,
       ...findings.dependency,
       ...findings.performance,
       ...findings.secrets,
@@ -87,7 +87,7 @@ export class AIAnalyzer {
 
     // Limit per category to avoid token overflow
     const truncated = [
-      ...findings.codeql.slice(0, 30),
+      ...findings.staticAnalysis.slice(0, 30),
       ...findings.dependency.slice(0, 30),
       ...findings.performance.slice(0, 30),
       ...findings.secrets.slice(0, 30),
@@ -98,7 +98,10 @@ export class AIAnalyzer {
 Detected frameworks: ${findings.detectedFrameworks.join(", ") || "none"}
 
 Findings (${truncated.length} total, flat array indexed from 0):
-${JSON.stringify(truncated, null, 2)}`;
+${JSON.stringify(truncated, null, 2)}${codeContext ? `
+
+Relevant code (vector index):
+${codeContext}` : ""}`;
 
     try {
       const text = await this.ai.complete({
@@ -155,28 +158,30 @@ ${JSON.stringify(truncated, null, 2)}`;
       });
     }
 
-    // Critical CodeQL findings
-    const criticalCodeQL = findings.codeql.filter((f) => f.severity === "error");
-    for (const finding of criticalCodeQL.slice(0, 5)) {
+    // Critical/high static-analysis findings
+    const criticalStatic = findings.staticAnalysis.filter(
+      (f) => f.severity === "critical" || f.severity === "high"
+    );
+    for (const finding of criticalStatic.slice(0, 5)) {
       groups.push({
-        id: `fallback-codeql-${finding.ruleId}-${finding.location.startLine}`,
-        priority: "high",
+        id: `fallback-sast-${finding.ruleId}-${finding.line ?? 0}`,
+        priority: finding.severity === "critical" ? "critical" : "high",
         findings: [finding],
         autoFixable: false,
-        estimatedRisk: `CodeQL が ${finding.ruleId} を検出しました。`,
+        estimatedRisk: `静的解析が ${finding.ruleId} を検出しました。`,
         fixStrategy: {
-          title: `CodeQL: ${finding.ruleId} を修正`,
-          steps: [`${finding.location.file}:${finding.location.startLine} を確認`, "CodeQL の提案に従って修正", "テストを実行"],
+          title: `静的解析: ${finding.ruleId} を修正`,
+          steps: [`${finding.file}:${finding.line ?? "?"} を確認`, "指摘内容に従って修正", "テストを実行"],
           rationale: finding.message,
         },
       });
     }
 
-    const riskScore = criticalDeps.length > 0 || criticalCodeQL.length > 0 ? 80 : 20;
+    const riskScore = criticalDeps.length > 0 || criticalStatic.length > 0 ? 80 : 20;
 
     return {
       groups: groups.slice(0, 10),
-      summary: `フォールバック解析: ${findings.dependency.length} 件の依存関係、${findings.codeql.length} 件のCodeQL問題を検出。`,
+      summary: `フォールバック解析: ${findings.dependency.length} 件の依存関係、${findings.staticAnalysis.length} 件の静的解析問題を検出。`,
       riskScore,
       estimatedFixTime: groups.length * 30,
     };

@@ -1,5 +1,5 @@
 import type { HealingRunner, RunFixOptions, RunnerFixResult, RunnerScanResult, RunnerKind, CodeRunner, CodeInitOptions, CodeInitResult, CodeCommitResult, CodeDiffResult, CodeReadResult, CodeSearchResult, CodeWriteResult, CodeGenerateResult } from "../ports/runner";
-import type { AllFindings } from "../types";
+import { normalizeAllFindings } from "../utils/findings.normalize";
 
 export class RpcRunner implements HealingRunner, CodeRunner {
   readonly kind: RunnerKind = "rpc";
@@ -24,8 +24,8 @@ export class RpcRunner implements HealingRunner, CodeRunner {
   // ── HealingRunner ──────────────────────────────────────────────────────
 
   async scan(): Promise<RunnerScanResult> {
-    const findings = await this.post<AllFindings>("/internal/scan", {});
-    return { findings };
+    const raw = await this.post<unknown>("/internal/scan", {});
+    return { findings: normalizeAllFindings(raw) };
   }
 
   async applyFix(opts: RunFixOptions): Promise<RunnerFixResult> {

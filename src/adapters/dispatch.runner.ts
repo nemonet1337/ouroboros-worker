@@ -13,7 +13,7 @@ import type {
   CodeCommitResult,
   CodeGenerateResult,
 } from "../ports";
-import type { AllFindings } from "../types";
+import { normalizeAllFindings } from "../utils/findings.normalize";
 
 export class DispatchRunner implements HealingRunner, CodeRunner {
   readonly kind = "dispatch" as const;
@@ -40,8 +40,8 @@ export class DispatchRunner implements HealingRunner, CodeRunner {
 
   async scan(): Promise<RunnerScanResult> {
     if (!this.runnerUrl) throw new Error("RUNNER_URL not configured for edge healing");
-    const findings = await this.post<AllFindings>("/internal/scan", {});
-    return { findings };
+    const raw = await this.post<unknown>("/internal/scan", {});
+    return { findings: normalizeAllFindings(raw) };
   }
 
   async applyFix(opts: RunFixOptions): Promise<RunnerFixResult> {

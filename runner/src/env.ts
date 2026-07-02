@@ -11,7 +11,7 @@ export interface Env {
 }
 
 export interface AllFindings {
-  codeql: any[];
+  staticAnalysis: any[];
   dependency: any[];
   performance: any[];
   secrets: any[];

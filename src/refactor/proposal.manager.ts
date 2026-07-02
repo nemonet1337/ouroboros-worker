@@ -11,7 +11,7 @@ export class ProposalManager {
     private readonly repoUrl: string = ""
   ) {}
 
-  async generateProposal(inspectionId: string, userId: string): Promise<void> {
+  async generateProposal(inspectionId: string, userId: string, model?: string): Promise<void> {
     const rows = (await this.db.query<{ id: string; user_id: string; result: string }>(
       `SELECT * FROM inspections WHERE id = ? AND user_id = ?`,
       [inspectionId, userId]
@@ -30,6 +30,7 @@ Inspection Result:
 ${inspectionResult}`;
 
     const aiRes = await this.ai.complete({
+      model,
       system: "You are a refactoring assistant. You generate structured summaries of inspection findings.",
       prompt,
       maxTokens: 500,
@@ -54,7 +55,7 @@ ${inspectionResult}`;
     );
   }
 
-  async applyProposal(inspectionId: string, userId: string, runner: CodeRunner): Promise<{ prNumber: number; prUrl: string }> {
+  async applyProposal(inspectionId: string, userId: string, runner: CodeRunner, model?: string): Promise<{ prNumber: number; prUrl: string }> {
     const rows = (await this.db.query<{ id: string; user_id: string; status: string; result: string }>(
       `SELECT * FROM inspections WHERE id = ? AND user_id = ?`,
       [inspectionId, userId]
@@ -74,6 +75,7 @@ ${inspectionResult}`;
     const { patches } = await runner.generate({
       instruction,
       sessionId: inspectionId,
+      model,
     });
 
     const branch = `refactor/${inspectionId.slice(0, 8)}`;

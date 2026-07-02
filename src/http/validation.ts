@@ -5,6 +5,7 @@
  */
 import type { Context, Next } from "hono";
 import { isWorkersAiModelId } from "../config/deployment";
+import { MODEL_MODES } from "../config/model.modes";
 
 export class ValidationError extends Error {
   constructor(message: string, readonly details: string[]) {
@@ -16,17 +17,22 @@ type Validator<T> = (body: unknown) => { ok: true; value: T } | { ok: false; err
 
 export function validateBody<T>(validator: Validator<T>) {
   return async (c: Context, next: Next) => {
+    // ボディストリームは一度しか読めないため、content-type で先に分岐する。
+    // （json() 失敗後の parseBody() フォールバックは、消費済みストリームの再読取に
+    // なり常に失敗していた — htmx/ネイティブフォームのログイン不能の原因）
+    const contentType = (c.req.header("content-type") ?? "").toLowerCase();
     let body: unknown;
     try {
-      body = await c.req.json();
-    } catch {
-      // htmx forms submit as application/x-www-form-urlencoded, not JSON.
-      // Fall back to parseBody so login/register work over htmx.
-      try {
+      if (
+        contentType.includes("application/x-www-form-urlencoded") ||
+        contentType.includes("multipart/form-data")
+      ) {
         body = await c.req.parseBody();
-      } catch {
-        return c.json({ error: { code: "invalid_body", message: "request body must be valid JSON or form data" } }, 400);
+      } else {
+        body = await c.req.json();
       }
+    } catch {
+      return c.json({ error: { code: "invalid_body", message: "request body must be valid JSON or form data" } }, 400);
     }
     const result = validator(body);
     if (!result.ok) {
@@ -168,4 +174,29 @@ export const modelSchema: Validator<{ model: string | null }> = (body) => {
   if (typeof body.model === "string" && !isWorkersAiModelId(body.model))
     return { ok: false, errors: [`"${body.model}" is not a valid Workers AI model id`] };
   return { ok: true, value: body as { model: string | null } };
+};
+
+/**
+ * モード別モデル設定。htmx フォーム（form-encoded）からも送られるためフラットな
+ * フィールド構成。present なフィールドのみ適用し、空文字は「デフォルトに戻す」を意味する。
+ */
+export const modeModelsSchema: Validator<Record<string, string>> = (body) => {
+  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
+  const errors: string[] = [];
+  const value: Record<string, string> = {};
+  for (const field of ["global", ...MODEL_MODES]) {
+    const raw = body[field];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== "string") {
+      errors.push(`${field} must be a string`);
+      continue;
+    }
+    if (raw !== "" && !isWorkersAiModelId(raw)) {
+      errors.push(`"${raw}" is not a valid Workers AI model id (${field})`);
+      continue;
+    }
+    value[field] = raw;
+  }
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, value };
 };

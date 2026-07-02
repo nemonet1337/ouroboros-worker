@@ -1,4 +1,5 @@
 import { Language, Ecosystem, Framework } from "../types";
+import { DEFAULT_WORKERS_AI_MODEL } from "./deployment";
 
 export interface LanguageTarget {
   enabled: boolean;
@@ -22,7 +23,7 @@ const env = process.env;
 
 export const defaultHealingConfig: HealingConfig = {
   ai: {
-    model: "minimax/m3",
+    model: DEFAULT_WORKERS_AI_MODEL,
     maxRetries: 3,
     contextLines: 20,
   },

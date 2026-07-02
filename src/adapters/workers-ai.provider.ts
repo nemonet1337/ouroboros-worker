@@ -70,6 +70,45 @@ export class WorkersAiProvider implements AiProvider {
     return data.result?.response ?? "";
   }
 
+  /**
+   * テキスト埋め込み。VECTORIZE_CODE インデックス（768 次元）と揃えるため
+   * モデルは bge-base-en-v1.5 固定。バッチ上限 100 件ずつ分割して呼び出す。
+   */
+  async embed(texts: string[]): Promise<number[][]> {
+    const model = "@cf/baai/bge-base-en-v1.5";
+    const out: number[][] = [];
+    for (let i = 0; i < texts.length; i += 100) {
+      const batch = texts.slice(i, i + 100);
+      let data: number[][] | undefined;
+      if (this.opts.apiToken && this.opts.accountId) {
+        const url = `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/ai/run/${model}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${this.opts.apiToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ text: batch }),
+        });
+        if (!res.ok) {
+          throw new Error(`Workers AI embedding request failed: ${res.status} ${await res.text()}`);
+        }
+        const json = (await res.json()) as { result?: { data?: number[][] } };
+        data = json.result?.data;
+      } else {
+        const result = (await this.ai.run(model as keyof AiModels, { text: batch } as never)) as {
+          data?: number[][];
+        };
+        data = result?.data;
+      }
+      if (!data || data.length !== batch.length) {
+        throw new Error("Workers AI embedding returned unexpected shape");
+      }
+      out.push(...data);
+    }
+    return out;
+  }
+
   /** Enumerate every model the Workers AI binding serves (paged). */
   async listModels(): Promise<AiModelInfo[]> {
     const models: AiModelInfo[] = [];

@@ -91,11 +91,15 @@ export interface DependencyFinding {
   manifestFile?: string;
 }
 
-export interface CodeQLFinding {
+/** runner の正規表現ベース静的解析が出力する finding（旧称 CodeQLFinding）。 */
+export interface StaticAnalysisFinding {
+  id: string;
   ruleId: string;
-  severity: "error" | "warning" | "note";
+  title: string;
   message: string;
-  location: { file: string; startLine: number; endLine: number; snippet: string };
+  severity: Priority;
+  file: string;
+  line?: number;
   cwe?: string[];
   language?: Language;
 }
@@ -137,7 +141,7 @@ export interface FixStrategy {
 export interface FindingGroup {
   id: string;
   priority: Priority;
-  findings: Array<CodeQLFinding | DependencyFinding | PerformanceFinding | SecretFinding>;
+  findings: Array<StaticAnalysisFinding | DependencyFinding | PerformanceFinding | SecretFinding>;
   autoFixable: boolean;
   estimatedRisk: string;
   fixStrategy: FixStrategy;
@@ -167,7 +171,7 @@ export interface FixResult {
 }
 
 export interface AllFindings {
-  codeql: CodeQLFinding[];
+  staticAnalysis: StaticAnalysisFinding[];
   dependency: DependencyFinding[];
   performance: PerformanceFinding[];
   secrets: SecretFinding[];
@@ -570,6 +574,8 @@ export interface CodeSessionRow {
   title: string;
   instruction: string;
   status: CodeSessionStatus;
+  /** Plan フェーズで生成された実装計画（0008_mode_models で追加） */
+  plan?: string | null;
   generated_patches: string | null;
   applied_branch: string | null;
   pr_number: number | null;

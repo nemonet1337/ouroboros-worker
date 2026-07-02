@@ -98,6 +98,37 @@ export class GitHubProvider implements VcsProvider {
     return res.json() as T;
   }
 
+  /**
+   * リポジトリのテキストファイルを一括取得する（コードインデックス用）。
+   * git/trees の recursive 取得後、バイナリ拡張子と 100KB 超のファイルをスキップ。
+   */
+  async getRepoFiles(maxFiles = 300, ref?: string): Promise<Array<{ path: string; content: string }>> {
+    const branch = ref ?? (await this.api<{ default_branch: string }>(``)).default_branch;
+    const tree = await this.api<{ tree: Array<{ path: string; type: string; size?: number; sha: string }> }>(
+      `/git/trees/${encodeURIComponent(branch)}?recursive=1`
+    );
+
+    const SKIP_EXT = /\.(png|jpe?g|gif|webp|ico|svg|woff2?|ttf|eot|zip|gz|tar|pdf|mp[34]|wasm|lock)$/i;
+    const blobs = tree.tree
+      .filter((e) => e.type === "blob" && !SKIP_EXT.test(e.path) && (e.size ?? 0) <= 100_000)
+      .slice(0, maxFiles);
+
+    const files: Array<{ path: string; content: string }> = [];
+    for (const entry of blobs) {
+      try {
+        const blob = await this.api<{ content: string; encoding: string }>(`/git/blobs/${entry.sha}`);
+        if (blob.encoding !== "base64") continue;
+        const content = atob(blob.content.replace(/\n/g, ""));
+        // バイナリ判定: NUL を含むものは除外
+        if (content.includes("\u0000")) continue;
+        files.push({ path: entry.path, content });
+      } catch {
+        // 単一ファイルの取得失敗は無視して続行
+      }
+    }
+    return files;
+  }
+
   async createPR(opts: CreatePROptions): Promise<VcsPullRequest> {
     const title = opts.title.length > 255 ? opts.title.slice(0, 252) + "..." : opts.title;
     const pr = await this.api<{ number: number; html_url: string; title: string }>(`/pulls`, {

@@ -14,13 +14,13 @@ describe("DispatchRunner", () => {
 
   it("should successfully post to runnerUrl", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
-      new Response(JSON.stringify({ codeql: [] }), { status: 200 })
+      new Response(JSON.stringify({ staticAnalysis: [] }), { status: 200 })
     );
 
     const runner = new DispatchRunner("http://runner.example.com", "secret123");
     const result = await runner.scan();
 
-    expect(result.findings).toEqual({ codeql: [] });
+    expect(result.findings.staticAnalysis).toEqual([]);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://runner.example.com/internal/scan",
       expect.objectContaining({

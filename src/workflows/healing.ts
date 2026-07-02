@@ -5,11 +5,13 @@ import { Notifier } from "../notifications/notifier";
 import { PRDeduplicator } from "../pr/pr.deduplicator";
 import { FixCache } from "../utils/fix.cache";
 import { Escalator } from "../utils/escalator";
-import { HealingRunRepository } from "../db/repositories";
+import { HealingRunRepository, SettingsRepository } from "../db/repositories";
 import { buildPRBody, buildPRTitle } from "../pr/pr.body";
 import type { AllFindings, Priority } from "../types";
 import type { Env } from "../env";
-import { buildContext } from "../context";
+import { buildContext, type WorkerContext } from "../context";
+import { CodeIndexer } from "../vectorize/code.indexer";
+import type { GitHubProvider } from "../vcs/github.provider";
 
 export interface HealingParams {
   runId: string;
@@ -20,6 +22,37 @@ export interface HealingParams {
 const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low", "info"];
 
 /**
+ * Vectorize コードインデックスから findings に関連するスニペットを検索し、
+ * AIAnalyzer のプロンプトへ渡す追加コンテキストを組み立てる。エラーは非致命。
+ */
+async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Promise<string | undefined> {
+  if (!ctx.ports.vectorizeCode || !ctx.ports.ai.embed) return undefined;
+  try {
+    const top = [...findings.staticAnalysis, ...findings.secrets].slice(0, 10);
+    if (top.length === 0) return undefined;
+    const query = top
+      .map((f) => `${"file" in f ? f.file : ""} ${"message" in f ? f.message : ""}`)
+      .join("\n")
+      .slice(0, 1500);
+
+    const indexer = new CodeIndexer(
+      ctx.ports.vectorizeCode,
+      ctx.ports.ai,
+      ctx.ports.vcs as GitHubProvider,
+      new SettingsRepository(ctx.ports.db)
+    );
+    const snippets = await indexer.search(query, 8);
+    if (snippets.length === 0) return undefined;
+    return snippets
+      .map((s) => `### ${s.file}:${s.startLine}-${s.endLine}\n${s.text}`)
+      .join("\n\n");
+  } catch (err) {
+    console.warn("[workflow] code context lookup failed:", err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
+/**
  * Durable, resumable self-healing lifecycle on Cloudflare. Each phase is a
  * Workflow step (retried independently); heavy git/compiler work is dispatched
  * to the self-hosted runner via the DispatchRunner inside the fix step.
@@ -28,6 +61,26 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
   async run(event: WorkflowEvent<HealingParams>, step: WorkflowStep): Promise<void> {
     const ctx = await buildContext(this.env);
     const runs = new HealingRunRepository(ctx.ports.db);
+    const { runId } = event.payload;
+    const log = ctx.logger.child("workflow");
+
+    try {
+      await this.execute(event, step, ctx, runs);
+    } catch (err) {
+      // 失敗を healing_runs に記録して UI に表示させる（従来は findings 0 件の偽成功だった）
+      const message = err instanceof Error ? err.message : String(err);
+      await runs.update(runId, { status: "failed", summary: JSON.stringify({ error: message }) });
+      await log.error("workflow failed", { runId, reason: message });
+      throw err;
+    }
+  }
+
+  private async execute(
+    event: WorkflowEvent<HealingParams>,
+    step: WorkflowStep,
+    ctx: Awaited<ReturnType<typeof buildContext>>,
+    runs: HealingRunRepository
+  ): Promise<void> {
     const { runId, dryRun } = event.payload;
     const log = ctx.logger.child("workflow");
 
@@ -39,7 +92,12 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
 
     const analysis = await step.do("analyze", async () => {
       await runs.update(runId, { status: "analyzing" });
-      const result = await new AIAnalyzer(ctx.config, ctx.ports.ai).analyze(findings);
+      // healing モードのモデルをトリガーしたユーザー設定から解決（cron 等はデフォルト）
+      const run = await runs.find(runId);
+      const model = await ctx.auth.resolveModel(run?.user_id, "healing");
+      const config = { ...ctx.config, ai: { ...ctx.config.ai, model } };
+      const codeContext = await buildCodeContext(ctx, findings);
+      const result = await new AIAnalyzer(config, ctx.ports.ai).analyze(findings, codeContext);
       await new Notifier(ctx.config).notifyScanComplete(result);
       await new AlertService(ctx.ports.mailer, ctx.alertRecipients).scanRisk(result);
       return result;

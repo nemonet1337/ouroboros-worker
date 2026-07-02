@@ -3,9 +3,10 @@ import { LayoutPublic } from "../layout-public";
 
 interface LoginPageProps {
   next?: string;
+  error?: string;
 }
 
-export const LoginPage: FC<LoginPageProps> = ({ next }) => {
+export const LoginPage: FC<LoginPageProps> = ({ next, error }) => {
   const action = next ? `/api/v1/auth/login?next=${encodeURIComponent(next)}` : "/api/v1/auth/login";
 
   return (
@@ -69,10 +70,24 @@ export const LoginPage: FC<LoginPageProps> = ({ next }) => {
                 </h2>
 
                 {/* ログイン失敗時のエラーメッセージを表示するコンテナ */}
-                <div id="login-error" class="mb-6 empty:hidden"></div>
+                <div id="login-error" class="mb-6 empty:hidden">
+                  {error ? (
+                    <div class="alert bg-rose-600 text-white border border-rose-700">
+                      <i data-lucide="alert-circle" class="w-5 h-5"></i>
+                      <span>{error}</span>
+                    </div>
+                  ) : null}
+                </div>
 
-                {/* hx-target を #login-error、hx-swap を innerHTML に修正してフォームが消えるバグを解消 */}
-                <form hx-post={action} hx-target="#login-error" hx-swap="innerHTML" class="space-y-6">
+                {/* action/method は htmx 未ロード時（CDN 障害等）のネイティブ送信フォールバック */}
+                <form
+                  action={action}
+                  method="post"
+                  hx-post={action}
+                  hx-target="#login-error"
+                  hx-swap="innerHTML"
+                  class="space-y-6"
+                >
                   <div class="form-control">
                     <label class="label px-1 py-1" for="email">
                       <span class="label-text font-semibold opacity-75">メールアドレス</span>

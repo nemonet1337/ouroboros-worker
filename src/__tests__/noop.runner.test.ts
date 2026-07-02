@@ -5,7 +5,7 @@ describe("NoopRunner", () => {
   it("should return empty scan results", async () => {
     const runner = new NoopRunner();
     const result = await runner.scan();
-    expect(result.findings.codeql).toEqual([]);
+    expect(result.findings.staticAnalysis).toEqual([]);
   });
 
   it("should return unsuccessful fix result", async () => {
