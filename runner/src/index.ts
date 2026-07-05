@@ -311,10 +311,14 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
     const gh = new GitHubClient(token, owner, repoName);
     const files = await gh.getRepoFiles(owner, repoName, session.branch, 500);
     const results: { file: string; line: number; content: string }[] = [];
-    const globPattern = opts.type === "glob" ? opts.query : "";
 
-    const candidateFiles = opts.type === "glob"
-      ? files.filter((f) => new RegExp(globPattern.replace(/\*/g, ".*").replace(/\?/g, ".")).test(f.path))
+    // glob → 正規表現: メタ文字（バックスラッシュ含む）を全てエスケープしてから * / ? を展開
+    const globPattern = opts.type === "glob"
+      ? new RegExp(`^${opts.query.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`)
+      : null;
+
+    const candidateFiles = globPattern
+      ? files.filter((f) => globPattern.test(f.path))
       : files;
 
     for (const file of candidateFiles.slice(0, 100)) {

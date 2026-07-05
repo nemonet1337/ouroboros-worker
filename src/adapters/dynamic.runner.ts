@@ -224,7 +224,7 @@ export class DynamicRunner implements HealingRunner, CodeRunner {
     const paths = tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
 
     if (opts.type === "glob") {
-      const pattern = new RegExp(opts.query.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, "."));
+      const pattern = globToRegExp(opts.query);
       return {
         results: paths.filter((p) => pattern.test(p)).slice(0, 500).map((p) => ({ file: p, line: 1, content: "" })),
       };
@@ -338,6 +338,18 @@ export class DynamicRunner implements HealingRunner, CodeRunner {
     }
     return { success: true };
   }
+}
+
+/**
+ * glob パターンを正規表現へ安全に変換する。バックスラッシュを含む全ての
+ * 正規表現メタ文字を先にエスケープし、* / ? のみワイルドカードとして展開する。
+ */
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`);
 }
 
 /** runner/src/index.ts の generateDiff と同等の簡易 unified diff 生成 */
