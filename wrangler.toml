@@ -79,6 +79,13 @@ simple = { limit = 100, period = 60 }
 binding = "RUNNER"
 service = "ouroboros-runner"
 
+# ビルド済み Tailwind CSS（src/ui/styles/tailwind.generated.css）を文字列として
+# import し、Worker が /assets/tailwind.css として配信する
+[[rules]]
+type = "Text"
+globs = ["**/*.css"]
+fallthrough = true
+
 # 廃止した GitHub Actions の日次 cron を置き換え
 [triggers]
 crons = ["0 2 * * *"]

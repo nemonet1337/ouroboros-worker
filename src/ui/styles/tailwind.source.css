@@ -1,0 +1,102 @@
+/*
+ * Tailwind CSS v4 + daisyUI 5 のビルド入力。
+ * `npm run build:css` で src/ui/styles/tailwind.generated.css を生成し、
+ * Worker が /assets/tailwind.css として配信する（CDN 依存なし）。
+ * クラス名は src/ 配下の .ts/.tsx から静的スキャンされるため、
+ * 動的に組み立てたクラス名はソース中にリテラルとして現れる必要がある。
+ */
+@import "tailwindcss";
+@source "../../**/*.{ts,tsx}";
+
+@plugin "daisyui" {
+  themes: false;
+}
+
+/* 旧 design-tokens.ts の daisyUI 4 変数（--p/--b1 等）を daisyUI 5 テーマとして移植 */
+@plugin "daisyui/theme" {
+  name: "winter";
+  default: true;
+  color-scheme: light;
+  --color-primary: oklch(72% 0.165 57);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(78% 0.15 75);
+  --color-secondary-content: oklch(19% 0 0);
+  --color-accent: oklch(64% 0.2 38);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(32% 0 0);
+  --color-neutral-content: oklch(100% 0 0);
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(97% 0 0);
+  --color-base-300: oklch(95% 0 0);
+  --color-base-content: oklch(19% 0 0);
+  --color-info: oklch(55.5% 0.2 265);
+  --color-info-content: oklch(100% 0 0);
+  --color-success: oklch(62% 0.17 150);
+  --color-success-content: oklch(100% 0 0);
+  --color-warning: oklch(77% 0.15 75);
+  --color-warning-content: oklch(19% 0 0);
+  --color-error: oklch(60% 0.255 26);
+  --color-error-content: oklch(100% 0 0);
+  --radius-box: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-selector: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "night";
+  prefersdark: true;
+  color-scheme: dark;
+  --color-primary: oklch(72% 0.165 57);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(78% 0.15 75);
+  --color-secondary-content: oklch(19% 0 0);
+  --color-accent: oklch(64% 0.2 38);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(51% 0 0);
+  --color-neutral-content: oklch(95% 0 0);
+  --color-base-100: oklch(19% 0 0);
+  --color-base-200: oklch(15% 0 0);
+  --color-base-300: oklch(12% 0 0);
+  --color-base-content: oklch(95% 0 0);
+  --color-info: oklch(55.5% 0.2 265);
+  --color-info-content: oklch(100% 0 0);
+  --color-success: oklch(62% 0.17 150);
+  --color-success-content: oklch(100% 0 0);
+  --color-warning: oklch(77% 0.15 75);
+  --color-warning-content: oklch(19% 0 0);
+  --color-error: oklch(60% 0.255 26);
+  --color-error-content: oklch(100% 0 0);
+  --radius-box: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-selector: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* daisyUI 4 → 5 で削除されたフォーム系クラスの互換定義（既存テンプレートが使用中） */
+.form-control {
+  display: flex;
+  flex-direction: column;
+}
+.label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.25rem;
+}
+.label-text {
+  font-size: 0.875rem;
+  color: var(--color-base-content);
+}
+.label-text-alt {
+  font-size: 0.75rem;
+  color: var(--color-base-content);
+}

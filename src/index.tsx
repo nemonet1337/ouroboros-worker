@@ -26,6 +26,7 @@ import { TokensPage } from "./ui/pages/tokens";
 import { SettingsPage } from "./ui/pages/settings";
 import { AdminPage } from "./ui/pages/admin";
 import type { AuthedUser } from "./auth/service";
+import tailwindCss from "./ui/styles/tailwind.generated.css";
 
 type EnvWithIdentity = { Variables: { identity?: { user: AuthedUser; scopes?: string } } };
 
@@ -102,6 +103,14 @@ async function buildApp(env: Env): Promise<Hono> {
     c.set("identity", { user, scopes: "admin" });
     await next();
   };
+
+  // ビルド済み Tailwind v4 + daisyUI 5 CSS（npm run build:css で再生成）
+  app.get("/assets/tailwind.css", (c) => {
+    return c.body(tailwindCss, 200, {
+      "content-type": "text/css; charset=utf-8",
+      "cache-control": "public, max-age=3600",
+    });
+  });
 
   app.get("/login", async (c) => {
     // アカウントが 1 件も無い初回起動時は登録画面へ誘導する
