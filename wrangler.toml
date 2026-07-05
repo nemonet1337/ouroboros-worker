@@ -60,10 +60,11 @@ index_name = "ouroboros-code-index"
 
 # Worker Loader（Dynamic Worker Loading、ベータ）— RUNNER / RUNNER_URL が未設定の
 # 場合に、タスク実行時へ動的に runner Worker を生成するフォールバック実行基盤。
-# アカウントがベータ未対応で deploy に失敗する場合はこのブロックをコメントアウト
-# （その場合 runner 未設定なら明示エラーになる）。
-[[worker_loaders]]
-binding = "LOADER"
+# ベータ未対応アカウントでは deploy が拒否されるため既定では無効。
+# アカウントで Worker Loader が有効になったら以下 2 行のコメントを解除する
+# （未設定の間、runner 未設定時は UnconfiguredRunner が明示エラーを返す）。
+# [[worker_loaders]]
+# binding = "LOADER"
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
