@@ -93,15 +93,23 @@ Workflows (healing.ts)
 ```bash
 npm run typecheck       # TypeScript 型チェック（tsc --noEmit）
 npm run test            # Vitest ユニットテスト（src/__tests__/）
-npm run build:css       # Tailwind v4 + daisyUI 5 の CSS を生成（UI のクラス変更時に実行しコミットする）
+npm run build:css       # Tailwind v4 + daisyUI 5 の CSS を生成（ローカル開発・デプロイ前に実行）
 npm run worker:dev      # build:css + wrangler dev（ローカル開発）
 npm run worker:deploy   # build:css + wrangler deploy（本番デプロイ）
 # runner/ 配下にも typecheck / test / deploy がある（cd runner && npm run ...）
 ```
 
-> UI のスタイルは CDN ではなくビルド済み CSS（`src/ui/styles/tailwind.generated.css`、コミット対象）を
+> UI のスタイルは CDN ではなくビルド済み CSS（`src/ui/styles/tailwind.generated.css`）を
 > Worker が `/assets/tailwind.css` として配信する。テーマ定義は `tailwind.source.css` の
 > `@plugin "daisyui/theme"`（winter / night）。
+>
+> **`tailwind.generated.css` はビルド成果物のため git 管理対象外**（`.gitignore`）。
+> ローカルは `npm run worker:dev`/`worker:deploy` が `build:css` を前段実行する。
+> Cloudflare Workers Builds（Git 連携デプロイ）では、ダッシュボードの
+> **Settings → Builds → Build command** に `npm run build:css` を設定しておくこと
+> （Deploy command 実行前にこのコマンドが走り、生成物が作られる）。
+> 型チェックは `src/css.d.ts` の ambient module 宣言で解決するため、
+> ファイル未生成でも `npm run typecheck` は失敗しない。
 
 ## デプロイ
 
