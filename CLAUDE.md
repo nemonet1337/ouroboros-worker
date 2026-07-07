@@ -9,8 +9,10 @@ Ouroboros は **Cloudflare Workers 専用**のエッジネイティブな AI 自
 - AI ゲートウェイは **Cloudflare Workers AI のみ**。Anthropic / OpenAI 等の外部キーは API レベルで拒否される
 - Docker / オンプレミス対応は廃止（v2.1 で削除済み）
 - Workers にはファイルシステム・git・コンパイラが無いため、重い処理は runner (`ouroboros-runner` CF Worker, GitHub API ベース) へ Service Binding / HTTP で委譲。
-  runner 未設定時は Worker Loader（`LOADER` バインディング、ベータ）で動的 Worker を生成して実行し、
-  それも不可なら `UnconfiguredRunner` が明示エラーを返す（黙って空結果を返さない）
+  runner 未設定時は Worker Loader（`LOADER` バインディング、Dynamic Workers）で動的 Worker を生成して実行し、
+  それも不可なら `UnconfiguredRunner` が明示エラーを返す（黙って空結果を返さない）。
+  Dynamic Workers は **Workers 有料プランが必須**（無料プランは deploy 時に code 10195 で拒否される）。
+  無料プランでは wrangler.toml の `[[worker_loaders]]` をコメントアウトしておくこと
 
 ## ディレクトリ構造
 

@@ -60,11 +60,13 @@ index_name = "ouroboros-code-index"
 
 # Worker Loader（Dynamic Workers、オープンベータ）— RUNNER / RUNNER_URL が未設定の
 # 場合に、タスク実行時へ動的に runner Worker（Dynamic Worker）を生成するフォールバック
-# 実行基盤。全有料 Workers アカウントで利用可能（2026年時点でオープンベータ）。
-# 未対応アカウントで deploy が拒否される場合はこのブロックをコメントアウトする
-# （その場合 runner 未設定時は UnconfiguredRunner が明示エラーを返す）。
-[[worker_loaders]]
-binding = "LOADER"
+# 実行基盤。Workers の有料プランが必要（無料プランでは deploy が
+# code 10195 "you must switch to a paid plan" で拒否されるため既定では無効）。
+# 有料プランへ移行したら以下 2 行のコメントを解除する
+# （現状は RUNNER の Service Binding が設定済みのため本番機能に影響なし。
+# 無効の間、RUNNER/RUNNER_URL 共に未設定なら UnconfiguredRunner が明示エラーを返す）。
+# [[worker_loaders]]
+# binding = "LOADER"
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
