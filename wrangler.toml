@@ -10,6 +10,13 @@ compatibility_flags = ["nodejs_compat"]
 enabled = true
 head_sampling_rate = 1
 
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
 # Workers AI — Cloudflare デプロイで唯一許可される AI ゲートウェイ。
 # 外部ゲートウェイ（Anthropic API など）はこのターゲットでは一切使用されない。
 # 利用可能なモデルは GET /api/v1/models（env.AI.models()）で動的に検出される。
