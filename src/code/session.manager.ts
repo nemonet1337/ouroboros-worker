@@ -2,6 +2,7 @@ import type { DbAdapter } from "../ports/db";
 import type { CodeRunner, CodeInitOptions } from "../ports/runner";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
 import type { VcsProvider } from "../ports/vcs";
+import type { AiProvider } from "../ports/ai";
 
 export interface CreateSessionOpts {
   userId: string;
@@ -12,10 +13,15 @@ export interface CreateSessionOpts {
   instruction: string;
 }
 
+const PLAN_SYSTEM = `You are a senior software engineer. Given a coding task instruction,
+produce a short numbered implementation plan (max 8 steps, Japanese).
+Output ONLY the plan steps, no preamble.`;
+
 export class CodeSessionManager {
   constructor(
     private readonly db: DbAdapter,
-    private readonly runner: CodeRunner
+    private readonly runner: CodeRunner,
+    private readonly ai?: AiProvider
   ) {}
 
   async create(opts: CreateSessionOpts): Promise<string> {
@@ -89,7 +95,7 @@ export class CodeSessionManager {
   async generate(
     id: string,
     userId: string,
-    opts: { model?: string } = {}
+    opts: { model?: string; planModel?: string } = {}
   ): Promise<void> {
     const row = await this.get(id, userId);
     if (!row) throw new Error("code session not found");
@@ -100,9 +106,14 @@ export class CodeSessionManager {
 
     await this.updateStatus(id, userId, "generating");
 
+    // Plan フェーズ: planModel で実装計画を先に生成する（失敗しても生成は続行）
+    const plan = await this.generatePlan(id, row.instruction, opts.planModel);
+
     try {
       const { patches } = await this.runner.generate({
-        instruction: row.instruction,
+        instruction: plan
+          ? `${row.instruction}\n\n## 実装計画\n${plan}`
+          : row.instruction,
         sessionId: id,
         model: opts.model,
       });
@@ -178,6 +189,30 @@ export class CodeSessionManager {
     if (!row) throw new Error("code session not found");
     if (row.status === "applied") throw new Error("cannot dismiss applied session");
     await this.updateStatus(id, userId, "dismissed");
+  }
+
+  private async generatePlan(id: string, instruction: string, planModel?: string): Promise<string> {
+    if (!this.ai) return "";
+    try {
+      const plan = (
+        await this.ai.complete({
+          model: planModel,
+          system: PLAN_SYSTEM,
+          prompt: instruction,
+          maxTokens: 1024,
+        })
+      ).trim();
+      if (plan) {
+        await this.db.exec(`UPDATE code_sessions SET plan = ?, updated_at = ? WHERE id = ?`, [
+          plan,
+          Date.now(),
+          id,
+        ]);
+      }
+      return plan;
+    } catch {
+      return "";
+    }
   }
 
   private async updateStatus(id: string, userId: string, status: CodeSessionStatus): Promise<void> {

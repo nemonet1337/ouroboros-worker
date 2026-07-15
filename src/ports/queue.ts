@@ -1,6 +1,7 @@
 export type GuiEventType =
   | "inspection.requested"
   | "healing.requested"
+  | "codeindex.requested"
   | "webhook.test"
   | "alert.dispatch";
 

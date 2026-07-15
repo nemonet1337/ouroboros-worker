@@ -59,7 +59,7 @@ export async function runHealingCycle(
   // PHASE 1: scan (delegated to the runner — local or dispatched)
   const { findings } = await ports.runner.scan();
   await log.info("scan complete", {
-    codeql: findings.codeql.length,
+    staticAnalysis: findings.staticAnalysis.length,
     dependency: findings.dependency.length,
     performance: findings.performance.length,
     secrets: findings.secrets.length,

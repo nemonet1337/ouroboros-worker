@@ -10,6 +10,13 @@ compatibility_flags = ["nodejs_compat"]
 enabled = true
 head_sampling_rate = 1
 
+[observability.logs]
+enabled = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+
 # Workers AI — Cloudflare デプロイで唯一許可される AI ゲートウェイ。
 # 外部ゲートウェイ（Anthropic API など）はこのターゲットでは一切使用されない。
 # 利用可能なモデルは GET /api/v1/models（env.AI.models()）で動的に検出される。
@@ -51,6 +58,23 @@ class_name = "HealingWorkflow"
 binding = "VECTORIZE"
 index_name = "ouroboros-weight-profiles"
 
+# Vectorize — コードチャンク埋め込みインデックス。リポジトリのコードを
+# bge-base-en-v1.5（768 次元）で埋め込み、自己修復解析時の RAG コンテキストに使う。
+# インデックス作成: wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE_CODE"
+index_name = "ouroboros-code-index"
+
+# Worker Loader（Dynamic Workers、オープンベータ）— RUNNER / RUNNER_URL が未設定の
+# 場合に、タスク実行時へ動的に runner Worker（Dynamic Worker）を生成するフォールバック
+# 実行基盤。Workers の有料プランが必要（無料プランでは deploy が
+# code 10195 "you must switch to a paid plan" で拒否されるため既定では無効）。
+# 有料プランへ移行したら以下 2 行のコメントを解除する
+# （現状は RUNNER の Service Binding が設定済みのため本番機能に影響なし。
+# 無効の間、RUNNER/RUNNER_URL 共に未設定なら UnconfiguredRunner が明示エラーを返す）。
+# [[worker_loaders]]
+# binding = "LOADER"
+
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
 name = "RATE_LIMITER"
@@ -64,6 +88,13 @@ simple = { limit = 100, period = 60 }
 [[services]]
 binding = "RUNNER"
 service = "ouroboros-runner"
+
+# ビルド済み Tailwind CSS（src/ui/styles/tailwind.generated.css）を文字列として
+# import し、Worker が /assets/tailwind.css として配信する
+[[rules]]
+type = "Text"
+globs = ["**/*.css"]
+fallthrough = true
 
 # 廃止した GitHub Actions の日次 cron を置き換え
 [triggers]

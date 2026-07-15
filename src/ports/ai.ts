@@ -25,4 +25,6 @@ export interface AiProvider {
   complete(req: AiCompletionRequest): Promise<string>;
   /** Enumerate every model this backend can serve. */
   listModels?(): Promise<AiModelInfo[]>;
+  /** テキスト埋め込み（コードインデックス用）。未対応バックエンドは undefined。 */
+  embed?(texts: string[]): Promise<number[][]>;
 }

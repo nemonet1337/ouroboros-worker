@@ -230,6 +230,10 @@ web/dist
 .dev.vars
 .wrangler/
 
+# Tailwind CSS ビルド成果物（npm run build:css で生成。Cloudflare Workers Builds の
+# 「Build command」に npm run build:css を設定してデプロイ時に生成する）
+src/ui/styles/tailwind.generated.css
+
 # Local self-hosted state
 *.db
 *.db-shm

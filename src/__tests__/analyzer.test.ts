@@ -6,7 +6,7 @@ import { mockAi } from "./helpers";
 
 function emptyFindings(): AllFindings {
   return {
-    codeql: [],
+    staticAnalysis: [],
     dependency: [],
     performance: [],
     secrets: [],
@@ -61,5 +61,31 @@ describe("AIAnalyzer", () => {
     const result = await analyzer.analyze(findings);
     // Either AI succeeded or fallback kicked in — either way we get a group for lodash
     expect(result.groups.length).toBeGreaterThan(0);
+  });
+
+  it("fallback surfaces critical static-analysis findings (runner severity enum)", async () => {
+    // mockAi returns "" → JSON.parse fails → fallback heuristics kick in
+    const analyzer = new AIAnalyzer(defaultHealingConfig, mockAi(""));
+
+    const findings: AllFindings = {
+      ...emptyFindings(),
+      staticAnalysis: [
+        {
+          id: "eval-usage/src/a.ts",
+          ruleId: "eval-usage",
+          title: "evalの使用",
+          message: "evalの使用は任意コード実行のリスクがあります",
+          severity: "critical",
+          file: "src/a.ts",
+          line: 12,
+        },
+      ],
+    };
+
+    const result = await analyzer.analyze(findings);
+    expect(result.groups.length).toBeGreaterThan(0);
+    expect(result.groups[0].id).toContain("eval-usage");
+    expect(result.groups[0].priority).toBe("critical");
+    expect(result.riskScore).toBe(80);
   });
 });

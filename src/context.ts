@@ -13,7 +13,8 @@ import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { MailChannelsMailer } from "./adapters/mailchannels.mailer";
 import { RpcRunner } from "./adapters/rpc.runner";
 import { DispatchRunner } from "./adapters/dispatch.runner";
-import { NoopRunner, type CodeRunner } from "./ports/runner";
+import { DynamicRunner } from "./adapters/dynamic.runner";
+import { UnconfiguredRunner, type CodeRunner, type HealingRunner } from "./ports/runner";
 import { CfEmailMailer } from "./adapters/cf.email.mailer";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
@@ -77,13 +78,22 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     repo,
   });
 
-  // Runner priority: Service Binding (RPC) → HTTP dispatch (RUNNER_URL) → Noop
+  // Runner priority: Service Binding (RPC) → HTTP dispatch (RUNNER_URL)
+  //   → Worker Loader（動的 Worker 生成）→ UnconfiguredRunner（明示エラー）
   const runnerSecret = env.RUNNER_SHARED_SECRET ?? "";
-  const runner: RpcRunner | DispatchRunner | NoopRunner = env.RUNNER
+  const runner: HealingRunner & CodeRunner = env.RUNNER
     ? new RpcRunner(env.RUNNER)
     : env.RUNNER_URL
       ? new DispatchRunner(env.RUNNER_URL, runnerSecret)
-      : new NoopRunner();
+      : env.LOADER && githubToken && owner && repo
+        ? new DynamicRunner(env.LOADER, {
+            ai: env.AI,
+            db,
+            githubToken,
+            repository: `${owner}/${repo}`,
+            codeModel: env.OURO_PLAN_MODEL ?? DEFAULT_WORKERS_AI_MODEL,
+          })
+        : new UnconfiguredRunner();
 
   const codeRunner = runner as CodeRunner;
 
@@ -93,6 +103,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
   const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
+  const vectorizeCode = env.VECTORIZE_CODE ? new CfVectorizeAdapter(env.VECTORIZE_CODE) : undefined;
 
   const config: HealingConfig = {
     ...defaultHealingConfig,
@@ -104,7 +115,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     },
   };
 
-  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, codeRunner, rateLimiter, vectorize };
+  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, codeRunner, rateLimiter, vectorize, vectorizeCode };
   const auth = new AuthService(db);
   const flags = env.FLAGS ? new FlagService(env.FLAGS) : undefined;
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;

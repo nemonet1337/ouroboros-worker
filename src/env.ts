@@ -45,17 +45,35 @@ export interface FlagshipBinding {
   getJSONValue<T = unknown>(flag: string, defaultValue: T, opts?: Record<string, unknown>): Promise<T>;
 }
 
-export interface DynamicWorkerInstance {
+// ── Worker Loader（Dynamic Worker Loading、ベータ）────────────────────────────
+// https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/
+
+export interface DynamicWorkerCode {
+  compatibilityDate: string;
+  mainModule: string;
+  modules: Record<string, string>;
+  /** 動的 Worker の env に渡すバインディング/値。 */
+  env?: Record<string, unknown>;
+  /**
+   * 省略時はデフォルトのインターネットアクセスが有効（GitHub API へ到達可能）。
+   * null を渡すと外部通信が遮断されるため、runner 用途では省略すること。
+   */
+  globalOutbound?: unknown;
+}
+
+export interface DynamicWorkerEntrypoint {
   fetch(req: Request): Promise<Response>;
 }
 
+export interface DynamicWorkerStub {
+  getEntrypoint(name?: string): DynamicWorkerEntrypoint;
+}
+
 export interface DynamicWorkerLoader {
-  load(config: {
-    compatibilityDate: string;
-    mainModule: string;
-    modules: Record<string, string>;
-    globalOutbound: string | null;
-  }): DynamicWorkerInstance;
+  get(
+    id: string,
+    getCode: () => Promise<DynamicWorkerCode> | DynamicWorkerCode
+  ): DynamicWorkerStub;
 }
 
 export interface SecretsStoreSecret {
@@ -83,6 +101,7 @@ export interface Env {
   HEALING_WORKFLOW: Workflow;
   RATE_LIMITER?: RateLimit;
   VECTORIZE?: VectorizeIndex;
+  VECTORIZE_CODE?: VectorizeIndex;
   CODE_CACHE?: KVNamespace;
   AI_ANALYTICS?: AnalyticsEngineDataset;
   BROWSER?: BrowserBinding;

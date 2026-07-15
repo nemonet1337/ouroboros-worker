@@ -1,9 +1,7 @@
 import type { FC, PropsWithChildren } from "hono/jsx";
 import type { AuthedUser } from "../auth/service";
 import { Sidebar } from "./components/sidebar";
-import { designTokens } from "./styles/design-tokens";
-import { animations } from "./styles/animations";
-import { components } from "./styles/components";
+import { AppHead } from "./head";
 
 export interface LayoutProps {
   user?: AuthedUser;
@@ -13,33 +11,7 @@ export interface LayoutProps {
 export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, children }) => {
   return (
     <html lang="ja" data-theme="winter">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Ouroboros</title>
-        
-        {/* CSS ライブラリの読み込み (DaisyUI 4.x & Tailwind) */}
-        <script src="https://cdn.tailwindcss.com"></script>
-        <link
-          href="https://cdn.jsdelivr.net/npm/daisyui@4.12.23/dist/full.min.css"
-          rel="stylesheet"
-          type="text/css"
-        />
-        <script src="https://unpkg.com/htmx.org@2.0.8"></script>
-        <script src="https://unpkg.com/lucide@0.408.0"></script>
-
-        {/* ちらつき防止のための初期テーマ適用スクリプト */}
-        <script dangerouslySetInnerHTML={{ __html: `
-          (function() {
-            const savedTheme = localStorage.getItem('ouro-theme');
-            const theme = savedTheme || 'winter';
-            document.documentElement.setAttribute('data-theme', theme);
-          })();
-        ` }} />
-
-        {/* カスタム CSS 注入 */}
-        <style dangerouslySetInnerHTML={{ __html: designTokens + animations + components }} />
-      </head>
+      <AppHead />
       <body class="min-h-screen bg-base-300 transition-colors duration-200">
         <div class="drawer lg:drawer-open">
           <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />

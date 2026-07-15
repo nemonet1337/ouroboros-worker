@@ -1,4 +1,4 @@
-import { FindingGroup, CodeQLFinding, DependencyFinding } from "../types";
+import { FindingGroup, StaticAnalysisFinding, DependencyFinding } from "../types";
 import { HealingConfig } from "../config/healing.config";
 import type { VcsProvider } from "../ports/vcs";
 
@@ -65,9 +65,9 @@ export class FixCache {
   private computeHash(group: FindingGroup): string {
     const keys = group.findings.map((f) => {
       const dep = f as DependencyFinding;
-      const cql = f as CodeQLFinding;
+      const sast = f as StaticAnalysisFinding;
       if (dep.ecosystem && dep.packageName) return `dep:${dep.packageName}:${dep.ecosystem}`;
-      if (cql.ruleId && cql.location) return `cql:${cql.ruleId}:${cql.location.file}:${cql.location.startLine}`;
+      if (sast.ruleId && sast.file) return `sast:${sast.ruleId}:${sast.file}:${sast.line ?? 0}`;
       return JSON.stringify(f).slice(0, 100);
     });
     return stableHash(keys.sort().join("|"));

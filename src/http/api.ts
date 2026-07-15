@@ -40,7 +40,10 @@ import {
   codeSessionCreateSchema,
   codeSessionActionSchema,
   modelSchema,
+  modeModelsSchema,
 } from "./validation";
+import { MODEL_MODES, type ModelMode } from "../config/model.modes";
+import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
 
 const SESSION_COOKIE = "ouro_session";
 const API_VERSION = "v1";
@@ -119,7 +122,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
+  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
 
   // ── Unified error handling ─────────────────────────────────────────────────
   app.onError((err, c) => {
@@ -206,11 +209,20 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ enabled, firstUser });
   });
 
+  // htmx がロードされていない環境（CDN 障害等）ではフォームがネイティブ送信される。
+  // その場合は JSON ではなくリダイレクトで応答してログイン/登録を成立させる。
+  const isNativeFormPost = (c: Context) =>
+    !c.req.header("HX-Request") &&
+    (c.req.header("content-type") ?? "").includes("form");
+
   app.post("/auth/register", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
 
     // Env-var override takes precedence over the DB setting (first user always allowed).
     if (deps.registrationEnabled === false && (await auth.userCount()) > 0) {
+      if (isNativeFormPost(c)) {
+        return c.redirect(`/register?error=${encodeURIComponent("registration is disabled")}`, 302);
+      }
       return c.json({ error: { code: "forbidden", message: "registration is disabled" } }, 403);
     }
 
@@ -222,12 +234,18 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         c.header("HX-Redirect", "/");
         return c.html("");
       }
+      if (isNativeFormPost(c)) return c.redirect("/", 302);
       return c.json({ user }, 201);
     } catch (err) {
-      if (c.req.header("HX-Request") && err instanceof AuthError) {
-        return c.html(
-          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
-        );
+      if (err instanceof AuthError) {
+        if (c.req.header("HX-Request")) {
+          return c.html(
+            `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+          );
+        }
+        if (isNativeFormPost(c)) {
+          return c.redirect(`/register?error=${encodeURIComponent(err.message)}`, 302);
+        }
       }
       throw err;
     }
@@ -235,21 +253,29 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/auth/login", validateBody(credentialsSchema), async (c) => {
     const { email, password } = c.get("body") as { email: string; password: string };
+    const next = c.req.query("next") || "/";
 
     try {
       const { user, sessionId } = await auth.login(email, password);
       setSession(c, sessionId);
       if (c.req.header("HX-Request")) {
-        const next = c.req.query("next") || "/";
         c.header("HX-Redirect", next);
         return c.html("");
       }
+      if (isNativeFormPost(c)) return c.redirect(next, 302);
       return c.json({ user });
     } catch (err) {
-      if (c.req.header("HX-Request") && err instanceof AuthError) {
-        return c.html(
-          `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
-        );
+      if (err instanceof AuthError) {
+        if (c.req.header("HX-Request")) {
+          return c.html(
+            `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
+          );
+        }
+        if (isNativeFormPost(c)) {
+          const params = new URLSearchParams({ error: err.message });
+          if (next !== "/") params.set("next", next);
+          return c.redirect(`/login?${params.toString()}`, 302);
+        }
       }
       throw err;
     }
@@ -375,6 +401,71 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
+  // ── モード別 AI モデル設定 ────────────────────────────────────────────────
+  app.get("/settings/models", requireAuth(), async (c) => {
+    const user = c.get("identity")!.user;
+    const global = await auth.getModel(user.id);
+    const modes = await auth.getModeModels(user.id);
+    const effective: Record<string, string> = {};
+    for (const mode of MODEL_MODES) {
+      effective[mode] = modes[mode] ?? global ?? DEFAULT_WORKERS_AI_MODEL;
+    }
+    return c.json({ global, modes, effective, default: DEFAULT_WORKERS_AI_MODEL });
+  });
+
+  app.put("/settings/models", requireAuth(), validateBody(modeModelsSchema), async (c) => {
+    const user = c.get("identity")!.user;
+    const body = c.get("body") as Record<string, string>;
+    if (body.global !== undefined) {
+      await auth.setModel(user.id, body.global === "" ? null : body.global);
+    }
+    for (const mode of MODEL_MODES) {
+      if (body[mode] !== undefined) {
+        await auth.setModeModel(user.id, mode, body[mode] === "" ? null : body[mode]);
+      }
+    }
+    if (c.req.header("HX-Request")) {
+      return c.html(
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。</span></div><script>lucide.createIcons()</script>`
+      );
+    }
+    return c.json({ ok: true });
+  });
+
+  // ── コードインデックス（Vectorize RAG）────────────────────────────────────
+  app.post("/code-index/reindex", requireAdmin, async (c) => {
+    if (!ports.vectorizeCode) {
+      return c.json(
+        { error: { code: "not_configured", message: "VECTORIZE_CODE binding is not configured" } },
+        503
+      );
+    }
+    // インデックス構築は数分かかるため Queue で非同期実行する
+    await ports.queue.send({
+      id: newId(),
+      type: "codeindex.requested",
+      userId: c.get("identity")!.user.id,
+      payload: {},
+      enqueuedAt: Date.now(),
+    });
+    if (c.req.header("HX-Request")) {
+      return c.html(
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>インデックス作成をキューに登録しました。数分後にページを再読み込みして状態を確認してください。</span></div><script>lucide.createIcons()</script>`
+      );
+    }
+    return c.json({ ok: true }, 202);
+  });
+
+  app.get("/code-index/status", requireAuth(), async (c) => {
+    const raw = await settingsRepo.get(CODE_INDEX_STATUS_KEY);
+    if (!raw) return c.json({ status: "none" });
+    try {
+      return c.json(JSON.parse(raw));
+    } catch {
+      return c.json({ status: "none" });
+    }
+  });
+
   // ── Inspection ─────────────────────────────────────────────────────────────
   app.post("/inspect", requireAuth("inspect"), validateBody(inspectSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
@@ -399,8 +490,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     req.id ||= newId();
     req.requestedAt ||= new Date().toISOString();
 
-    const userModel = await auth.getModel(userId);
-    const model = userModel ?? DEFAULT_WORKERS_AI_MODEL;
+    const model = await auth.resolveModel(userId, "inspection");
 
     const advisor = ports.vectorize ? new WeightAdvisor(ports.vectorize) : undefined;
     const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
@@ -705,8 +795,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/code/sessions/:id/generate", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const model = await auth.getModel(userId);
-    await codeManager.generate(c.req.param("id")!, userId, { model: model ?? undefined });
+    const model = await auth.resolveModel(userId, "coding");
+    const planModel = await auth.resolveModel(userId, "plan");
+    await codeManager.generate(c.req.param("id")!, userId, { model, planModel });
     return c.json({ ok: true });
   });
 
@@ -736,7 +827,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const userId = c.get("identity")!.user.id;
     const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
     const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
-    await manager.generateProposal(c.req.param("inspectionId")!, userId);
+    const model = await auth.resolveModel(userId, "refactor");
+    await manager.generateProposal(c.req.param("inspectionId")!, userId, model);
     return c.json({ ok: true });
   });
 
@@ -744,7 +836,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const userId = c.get("identity")!.user.id;
     const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
     const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
-    const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner);
+    const model = await auth.resolveModel(userId, "refactor");
+    const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner, model);
     return c.json(result);
   });
 

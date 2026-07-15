@@ -6,8 +6,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy"
+    "build:css": "tailwindcss -i src/ui/styles/tailwind.source.css -o src/ui/styles/tailwind.generated.css --minify",
+    "worker:dev": "npm run build:css && wrangler dev",
+    "worker:deploy": "npm run build:css && wrangler deploy"
   },
   "engines": {
     "node": ">=22"
@@ -19,11 +20,14 @@
     "hono": "^4.12.29"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260710.1",
-    "@types/diff": "^8.0.0",
-    "@types/node": "^26.1.1",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.111.0"
+        "@cloudflare/workers-types": "^5.20260710.1",
+        "@tailwindcss/cli": "^4.3.2",
+        "@types/diff": "^8.0.0",
+        "@types/node": "^26.1.1",
+        "typescript": "^7.0.2",
+        "daisyui": "^5.6.13",
+        "tailwindcss": "^4.3.2",
+        "vitest": "^4.1.10",
+        "wrangler": "^4.111.0"
   }
 }

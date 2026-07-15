@@ -1,7 +1,12 @@
 import type { FC } from "hono/jsx";
 import { LayoutPublic } from "../layout-public";
 
-export const RegisterPage: FC = () => {
+interface RegisterPageProps {
+  error?: string;
+  first?: boolean;
+}
+
+export const RegisterPage: FC<RegisterPageProps> = ({ error, first }) => {
   return (
     <LayoutPublic title="アカウント作成" wide>
       <div class="flex flex-col lg:flex-row min-h-screen">
@@ -63,18 +68,41 @@ export const RegisterPage: FC = () => {
                 </h2>
 
                 {/* 最初の登録ユーザー向けの案内 */}
-                <div class="alert alert-info text-xs mb-6 rounded-lg flex gap-2">
-                  <i data-lucide="info" class="w-4 h-4 text-accent flex-shrink-0 mt-0.5"></i>
-                  <span>
-                    <strong>ヒント:</strong> 最初の登録ユーザーは自動的に<strong>管理者</strong>に設定され、以後の新規登録は制限されます（後から管理パネルで開放可能）。
-                  </span>
-                </div>
+                {first ? (
+                  <div class="alert alert-success text-xs mb-6 rounded-lg flex gap-2">
+                    <i data-lucide="crown" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                    <span>
+                      <strong>初回セットアップ:</strong> まだアカウントが存在しません。ここで登録するアカウントが<strong>管理者</strong>になります。
+                    </span>
+                  </div>
+                ) : (
+                  <div class="alert alert-info text-xs mb-6 rounded-lg flex gap-2">
+                    <i data-lucide="info" class="w-4 h-4 text-accent flex-shrink-0 mt-0.5"></i>
+                    <span>
+                      <strong>ヒント:</strong> 最初の登録ユーザーは自動的に<strong>管理者</strong>に設定され、以後の新規登録は制限されます（後から管理パネルで開放可能）。
+                    </span>
+                  </div>
+                )}
 
                 {/* 登録失敗時のエラーメッセージを表示するコンテナ */}
-                <div id="register-error" class="mb-6 empty:hidden"></div>
+                <div id="register-error" class="mb-6 empty:hidden">
+                  {error ? (
+                    <div class="alert bg-rose-600 text-white border border-rose-700">
+                      <i data-lucide="alert-circle" class="w-5 h-5"></i>
+                      <span>{error}</span>
+                    </div>
+                  ) : null}
+                </div>
 
-                {/* hx-target を #register-error、hx-swap を innerHTML に修正してフォームが消えるバグを解消 */}
-                <form hx-post="/api/v1/auth/register" hx-target="#register-error" hx-swap="innerHTML" class="space-y-6">
+                {/* action/method は htmx 未ロード時（CDN 障害等）のネイティブ送信フォールバック */}
+                <form
+                  action="/api/v1/auth/register"
+                  method="post"
+                  hx-post="/api/v1/auth/register"
+                  hx-target="#register-error"
+                  hx-swap="innerHTML"
+                  class="space-y-6"
+                >
                   <div class="form-control">
                     <label class="label px-1 py-1" for="email">
                       <span class="label-text font-semibold opacity-75">メールアドレス</span>

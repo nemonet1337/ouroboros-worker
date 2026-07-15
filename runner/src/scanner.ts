@@ -1,5 +1,7 @@
 export interface Finding {
   id: string;
+  /** staticAnalysis findings のみ設定（dependency/performance/secrets は id で識別） */
+  ruleId?: string;
   title: string;
   message: string;
   severity: "critical" | "high" | "medium" | "low" | "info";
@@ -17,7 +19,7 @@ interface ScanRule {
   language?: string;
 }
 
-const CODEQL_RULES: ScanRule[] = [
+const STATIC_ANALYSIS_RULES: ScanRule[] = [
   { id: "any-type", title: "any型の使用", pattern: /:\s*any\b|as\s+any\b/g, message: "any型の使用は型安全性を低下させます", severity: "medium" },
   { id: "non-null-assertion", title: "非nullアサーション", pattern: /\w+!\./g, message: "非nullアサーション(!)は実行時エラーの原因になりえます", severity: "medium" },
   { id: "console-log", title: "console.logの残存", pattern: /console\.(log|debug|info)\s*\(/g, message: "本番コードにconsole出力が残っています", severity: "low" },
@@ -69,14 +71,14 @@ const PERFORMANCE_RULES: [string, RegExp, string][] = [
 ];
 
 export function scanFiles(files: { path: string; content: string }[]): {
-  codeql: Finding[];
+  staticAnalysis: Finding[];
   dependency: Finding[];
   performance: Finding[];
   secrets: Finding[];
   licenses: string[];
   detectedFrameworks: string[];
 } {
-  const codeql: Finding[] = [];
+  const staticAnalysis: Finding[] = [];
   const dependency: Finding[] = [];
   const performance: Finding[] = [];
   const secrets: Finding[] = [];
@@ -86,11 +88,12 @@ export function scanFiles(files: { path: string; content: string }[]): {
   for (const file of files) {
     const lines = file.content.split("\n");
 
-    for (const rule of CODEQL_RULES) {
+    for (const rule of STATIC_ANALYSIS_RULES) {
       for (let i = 0; i < lines.length; i++) {
         if (rule.pattern.test(lines[i])) {
-          codeql.push({
+          staticAnalysis.push({
             id: `${rule.id}/${file.path}`,
+            ruleId: rule.id,
             title: rule.title,
             message: rule.message,
             severity: rule.severity,
@@ -166,7 +169,7 @@ export function scanFiles(files: { path: string; content: string }[]): {
   }
 
   return {
-    codeql: codeql.slice(0, 500),
+    staticAnalysis: staticAnalysis.slice(0, 500),
     dependency: dependency.slice(0, 200),
     performance: performance.slice(0, 200),
     secrets: secrets.slice(0, 100),

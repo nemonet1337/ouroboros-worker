@@ -13,6 +13,11 @@ class MockDbAdapter implements DbAdapter {
       const found = this.users.find(u => u.id === id);
       return found ? [{ model: found.model ?? null } as any] : [];
     }
+    if (sql.includes("SELECT mode_models FROM users WHERE id = ?")) {
+      const id = params[0] as string;
+      const found = this.users.find(u => u.id === id);
+      return found ? [{ mode_models: found.mode_models ?? null } as any] : [];
+    }
     if (sql.includes("SELECT * FROM users WHERE email = ?")) {
       const email = params[0] as string;
       const found = this.users.find(u => u.email === email);
@@ -39,6 +44,13 @@ class MockDbAdapter implements DbAdapter {
       const user = this.users.find(u => u.id === id);
       if (user) {
         user.model = params[0];
+        user.updated_at = params[1];
+      }
+    } else if (sql.includes("UPDATE users SET mode_models = ?, updated_at = ? WHERE id = ?")) {
+      const id = params[2];
+      const user = this.users.find(u => u.id === id);
+      if (user) {
+        user.mode_models = params[0];
         user.updated_at = params[1];
       }
     } else if (sql.includes("INSERT INTO users")) {
@@ -220,5 +232,89 @@ describe("AuthService", () => {
     });
 
     await expect(auth.setModel("user-1", "gpt-4o")).rejects.toThrow(AuthError);
+  });
+
+  it("sets, gets, and clears per-mode models", async () => {
+    db.users.push({
+      id: "user-1",
+      email: "test@example.com",
+      password_hash: "hash",
+      role: "member",
+      model: null,
+      mode_models: null,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    expect(await auth.getModeModels("user-1")).toEqual({});
+
+    await auth.setModeModel("user-1", "coding", "@cf/meta/llama-3.1-8b-instruct");
+    await auth.setModeModel("user-1", "refactor", "minimax/m3");
+    expect(await auth.getModeModels("user-1")).toEqual({
+      coding: "@cf/meta/llama-3.1-8b-instruct",
+      refactor: "minimax/m3",
+    });
+
+    await auth.setModeModel("user-1", "coding", null);
+    expect(await auth.getModeModels("user-1")).toEqual({ refactor: "minimax/m3" });
+  });
+
+  it("rejects invalid per-mode model id", async () => {
+    db.users.push({
+      id: "user-1",
+      email: "test@example.com",
+      password_hash: "hash",
+      role: "member",
+      model: null,
+      mode_models: null,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    await expect(auth.setModeModel("user-1", "coding", "gpt-4o")).rejects.toThrow(AuthError);
+  });
+
+  it("resolveModel falls back mode → global → default", async () => {
+    db.users.push({
+      id: "user-1",
+      email: "test@example.com",
+      password_hash: "hash",
+      role: "member",
+      model: null,
+      mode_models: null,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    // 全部未設定 → デフォルト
+    expect(await auth.resolveModel("user-1", "coding")).toBe("minimax/m3");
+    // userId 無し（cron）→ デフォルト
+    expect(await auth.resolveModel(null, "healing")).toBe("minimax/m3");
+
+    // グローバル設定 → 全モードに波及
+    await auth.setModel("user-1", "@cf/meta/llama-3.1-8b-instruct");
+    expect(await auth.resolveModel("user-1", "coding")).toBe("@cf/meta/llama-3.1-8b-instruct");
+    expect(await auth.resolveModel("user-1", "refactor")).toBe("@cf/meta/llama-3.1-8b-instruct");
+
+    // モード別設定はグローバルより優先
+    await auth.setModeModel("user-1", "refactor", "@cf/qwen/qwen2.5-coder-32b-instruct");
+    expect(await auth.resolveModel("user-1", "refactor")).toBe("@cf/qwen/qwen2.5-coder-32b-instruct");
+    expect(await auth.resolveModel("user-1", "coding")).toBe("@cf/meta/llama-3.1-8b-instruct");
+  });
+
+  it("tolerates corrupted mode_models JSON", async () => {
+    db.users.push({
+      id: "user-1",
+      email: "test@example.com",
+      password_hash: "hash",
+      role: "member",
+      model: null,
+      mode_models: "{not json",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    expect(await auth.getModeModels("user-1")).toEqual({});
+    expect(await auth.resolveModel("user-1", "coding")).toBe("minimax/m3");
   });
 });

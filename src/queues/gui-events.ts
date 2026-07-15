@@ -1,6 +1,9 @@
 import type { GuiEvent } from "../ports/queue";
 import type { Env } from "../env";
 import { buildContext } from "../context";
+import { CodeIndexer } from "../vectorize/code.indexer";
+import { SettingsRepository } from "../db/repositories";
+import { GitHubProvider } from "../vcs/github.provider";
 
 /**
  * Cloudflare Queues consumer for GUI-originated events. Healing requests start
@@ -23,6 +26,26 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
             },
           });
           await log.info("started healing workflow", { runId: event.payload.runId });
+          break;
+        }
+        case "codeindex.requested": {
+          if (!ctx.ports.vectorizeCode) {
+            await log.error("code index requested but VECTORIZE_CODE is not bound", {});
+            break;
+          }
+          const indexer = new CodeIndexer(
+            ctx.ports.vectorizeCode,
+            ctx.ports.ai,
+            ctx.ports.vcs as GitHubProvider,
+            new SettingsRepository(ctx.ports.db)
+          );
+          const status = await indexer.reindex();
+          await log.info("code index rebuilt", {
+            status: status.status,
+            files: status.files,
+            chunks: status.chunks,
+            error: status.error ?? "",
+          });
           break;
         }
         default:
