@@ -14,9 +14,11 @@ database_name = "ouroboros"
 database_id = "fa58b005-a39c-41ea-b029-19736281f6e6"
 
 # GitHub token for API access (git operations, PR creation)
+# store_id はアカウント既存の Secrets Store（Secrets Store は1アカウント1ストアの制限）。
+# `wrangler secrets-store store list --remote` で確認できる default_secrets_store の ID。
 [[secrets_store_secrets]]
 binding = "GITHUB_TOKEN_SECRET"
-store_id = "ouroboros-secrets"
+store_id = "2c7f81625137487caffd4de37aac2a3a"
 secret_name = "github-token"
 
 # Rate limiting
