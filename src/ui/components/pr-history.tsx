@@ -92,7 +92,7 @@ export const PRHistory: FC<PRHistoryProps> = ({ items, page = 1, perPage = 10 })
             <button
               class="btn btn-sm btn-outline rounded-lg border-[var(--glass-border)] hover:bg-base-200"
               disabled={page <= 1}
-              hx-get={`/api/v1/prs?page=${page - 1}`}
+              hx-get={`/ui/fragments/prs?page=${page - 1}`}
               hx-target="#pr-history-container"
               hx-swap="outerHTML"
             >
@@ -102,7 +102,7 @@ export const PRHistory: FC<PRHistoryProps> = ({ items, page = 1, perPage = 10 })
             <button
               class="btn btn-sm btn-outline rounded-lg border-[var(--glass-border)] hover:bg-base-200"
               disabled={items.length < perPage}
-              hx-get={`/api/v1/prs?page=${page + 1}`}
+              hx-get={`/ui/fragments/prs?page=${page + 1}`}
               hx-target="#pr-history-container"
               hx-swap="outerHTML"
             >

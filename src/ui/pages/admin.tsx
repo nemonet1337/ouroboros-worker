@@ -36,7 +36,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
             </h2>
             
             <div
-              hx-get="/api/v1/auth/registration"
+              hx-get="/ui/fragments/admin/registration"
               hx-trigger="load"
               hx-target="this"
               hx-swap="innerHTML"
@@ -57,7 +57,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
               </h2>
               
               <div
-                hx-get="/api/v1/logs"
+                hx-get="/ui/fragments/admin/logs"
                 hx-trigger="load"
                 hx-target="#logs-list"
                 hx-swap="innerHTML"
@@ -78,7 +78,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
               </h2>
               
               <div
-                hx-get="/api/v1/config"
+                hx-get="/ui/fragments/admin/config"
                 hx-trigger="load"
                 hx-target="#config-view"
                 hx-swap="innerHTML"

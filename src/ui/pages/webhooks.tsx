@@ -30,10 +30,11 @@ export const WebhooksPage: FC<WebhooksPageProps> = ({ user }) => {
               </h2>
               
               <form
-                hx-post="/api/v1/webhooks"
-                hx-target="this"
-                hx-swap="outerHTML"
+                hx-post="/ui/fragments/webhooks"
+                hx-target="#webhook-result"
+                hx-swap="innerHTML"
                 hx-disabled-elt="button[type='submit']"
+                hx-on--after-request="if(event.detail.successful) this.reset()"
                 class="space-y-4"
               >
                 <div class="form-control">
@@ -95,6 +96,9 @@ export const WebhooksPage: FC<WebhooksPageProps> = ({ user }) => {
                   </button>
                 </div>
               </form>
+
+              {/* 登録結果の表示エリア */}
+              <div id="webhook-result" class="mt-4 empty:hidden transition-all duration-300"></div>
             </div>
           </div>
         </div>
@@ -109,7 +113,7 @@ export const WebhooksPage: FC<WebhooksPageProps> = ({ user }) => {
               </h2>
               
               <div
-                hx-get="/api/v1/webhooks"
+                hx-get="/ui/fragments/webhooks"
                 hx-trigger="load"
                 hx-target="this"
                 hx-swap="innerHTML"

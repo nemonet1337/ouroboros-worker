@@ -19,6 +19,8 @@ import { CodePage } from "./ui/pages/code";
 import { CodeNewPage } from "./ui/pages/code-new";
 import { CodeSessionPage } from "./ui/pages/code-session";
 import { RefactorPage } from "./ui/pages/refactor";
+import { RefactorProposalPage } from "./ui/pages/refactor-proposal";
+import { createFragments } from "./ui/fragments";
 import { HealingPage } from "./ui/pages/healing";
 import { InspectionPage } from "./ui/pages/inspection";
 import { WebhooksPage } from "./ui/pages/webhooks";
@@ -82,6 +84,9 @@ async function buildApp(env: Env): Promise<Hono> {
   });
 
   mountApi(app, { ...ctx, triggerHealing });
+
+  // htmx 用 HTML フラグメント（GUI ウィジェットは JSON API ではなくこちらを読む）
+  app.route("/ui/fragments", createFragments({ ...ctx, triggerHealing }));
 
   const requireAuthMiddleware = async (c: Context<EnvWithIdentity>, next: Next) => {
     const sid = c.req.header("cookie")?.match(/ouro_session=([^;]+)/)?.[1];
@@ -166,6 +171,11 @@ async function buildApp(env: Env): Promise<Hono> {
   app.get("/refactor", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
     return c.html(<RefactorPage user={identity?.user} />);
+  });
+
+  app.get("/refactor/proposals/:id", requireAuthMiddleware, (c) => {
+    const identity = c.get("identity");
+    return c.html(<RefactorProposalPage inspectionId={c.req.param("id")!} user={identity?.user} />);
   });
 
   app.get("/webhooks", requireAuthMiddleware, (c) => {

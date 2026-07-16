@@ -30,10 +30,11 @@ export const TokensPage: FC<TokensPageProps> = ({ user }) => {
               </h2>
               
               <form
-                hx-post="/api/v1/tokens"
+                hx-post="/ui/fragments/tokens"
                 hx-target="#token-result"
                 hx-swap="innerHTML"
                 hx-disabled-elt="button[type='submit']"
+                hx-on--after-request="if(event.detail.successful) this.reset()"
                 class="space-y-4"
               >
                 <div class="form-control">
@@ -112,7 +113,7 @@ export const TokensPage: FC<TokensPageProps> = ({ user }) => {
               </h2>
               
               <div
-                hx-get="/api/v1/tokens"
+                hx-get="/ui/fragments/tokens"
                 hx-trigger="load"
                 hx-target="this"
                 hx-swap="innerHTML"

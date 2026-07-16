@@ -12,7 +12,7 @@ export const RefactorProposalPage: FC<RefactorProposalPageProps> = ({ inspection
     <Layout user={user}>
       {/* リファクタプロポーザル詳細のHTMX動的ロードコンテナ */}
       <div 
-        hx-get={`/api/v1/inspections/${inspectionId}`} 
+        hx-get={`/ui/fragments/inspections/${inspectionId}`}
         hx-trigger="load" 
         hx-target="this" 
         hx-swap="outerHTML"

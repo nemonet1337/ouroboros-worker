@@ -26,7 +26,13 @@ export const CodeNewPage: FC<CodeNewPageProps> = ({ user }) => {
             <span>セッション設定フォーム</span>
           </h2>
           
-          <form hx-post="/api/v1/code/sessions" hx-target="this" hx-swap="outerHTML" class="space-y-6">
+          <form
+            hx-post="/ui/fragments/code/sessions"
+            hx-target="#code-new-result"
+            hx-swap="innerHTML"
+            hx-disabled-elt="button[type='submit']"
+            class="space-y-6"
+          >
             <div class="form-control">
               <label class="label py-1" for="repoUrl">
                 <span class="label-text font-semibold opacity-75">リポジトリ URL</span>
@@ -80,6 +86,9 @@ export const CodeNewPage: FC<CodeNewPageProps> = ({ user }) => {
               </button>
             </div>
           </form>
+
+          {/* エラー時の表示エリア（成功時は HX-Redirect でセッション画面へ遷移する） */}
+          <div id="code-new-result" class="mt-4 empty:hidden transition-all duration-300"></div>
         </div>
       </div>
     </Layout>

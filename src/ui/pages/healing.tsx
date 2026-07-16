@@ -30,8 +30,8 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
           <div class="flex flex-wrap gap-3">
             <button
               class="btn btn-gradient rounded-xl px-5 gap-2 flex items-center justify-center"
-              hx-post="/api/v1/healing"
-              hx-vals='{"dryRun":false}'
+              hx-post="/ui/fragments/healing"
+              hx-vals='{"dryRun":"false"}'
               hx-target="#healing-result"
               hx-swap="innerHTML"
               hx-disabled-elt="this"
@@ -42,8 +42,8 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
             
             <button
               class="btn btn-outline rounded-xl border-[var(--glass-border)] hover:bg-base-200 px-5 gap-2 flex items-center justify-center text-base-content/85"
-              hx-post="/api/v1/healing"
-              hx-vals='{"dryRun":true}'
+              hx-post="/ui/fragments/healing"
+              hx-vals='{"dryRun":"true"}'
               hx-target="#healing-result"
               hx-swap="innerHTML"
               hx-disabled-elt="this"
@@ -66,7 +66,7 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
         </h2>
 
         {/* 履歴一覧のHTMX動的読み込み */}
-        <div hx-get="/api/v1/healing" hx-trigger="load" hx-target="#healing-runs" hx-swap="innerHTML">
+        <div hx-get="/ui/fragments/healing/runs" hx-trigger="load" hx-target="#healing-runs" hx-swap="innerHTML">
           <div id="healing-runs">
             {/* ローディング時スケルトン */}
             <div class="card card-glass p-6 space-y-4">

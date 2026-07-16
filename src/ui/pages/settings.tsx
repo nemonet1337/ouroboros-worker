@@ -81,7 +81,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
               </h2>
 
               <form
-                hx-put="/api/v1/auth/me"
+                hx-put="/ui/fragments/profile"
                 hx-target="#profile-result"
                 hx-swap="innerHTML"
                 hx-disabled-elt="button[type='submit']"
