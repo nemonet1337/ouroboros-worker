@@ -28,7 +28,13 @@ export interface WorkerContext {
   logger: Logger;
   deployTarget: DeployTarget;
   alertRecipients: string[];
-  registrationEnabled: boolean;
+  /**
+   * When explicitly set via the OURO_REGISTRATION_ENABLED env var, overrides
+   * the DB-persisted registration toggle (see AuthService.isRegistrationEnabled).
+   * true = force-open; false = force-closed (first-user bootstrap still allowed).
+   * Unset = fall back to the DB setting managed via the settings API/admin panel.
+   */
+  registrationEnabled?: boolean;
   githubTokenSet: boolean;
   flags?: FlagService;
   analytics?: AiUsageTracker;
@@ -127,7 +133,10 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     logger,
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    registrationEnabled: env.OURO_REGISTRATION_ENABLED === "true",
+    registrationEnabled:
+      env.OURO_REGISTRATION_ENABLED === undefined
+        ? undefined
+        : env.OURO_REGISTRATION_ENABLED === "true",
     githubTokenSet: !!githubToken,
     flags,
     analytics,

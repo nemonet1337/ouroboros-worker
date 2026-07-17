@@ -101,7 +101,11 @@ fallthrough = true
 crons = ["0 2 * * *"]
 
 [vars]
-OURO_REGISTRATION_ENABLED = "false"
+# OURO_REGISTRATION_ENABLED: ops レベルの強制オーバーライド（任意）。
+# 未設定 = DB 側のトグル（管理者パネル /settings）に従う（推奨・デフォルト動作）。
+# "false" を設定すると管理者パネルの設定に関わらず新規登録を常に拒否（初回管理者作成は可）。
+# "true" を設定すると常に新規登録を許可する。
+# OURO_REGISTRATION_ENABLED = "false"
 MAIL_FROM = "ouroboros@nemonet.work"
 OURO_PLAN_MODEL = "minimax/m3"
 # RUNNER_URL: CF Worker runner（GitHub API ベース）の URL。Service Binding 未設定時のフォールバック
