@@ -28,7 +28,13 @@ export interface WorkerContext {
   logger: Logger;
   deployTarget: DeployTarget;
   alertRecipients: string[];
-  /** OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う。 */
+  /** OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
+   *
+   * When explicitly set via the OURO_REGISTRATION_ENABLED env var, overrides
+   * the DB-persisted registration toggle (see AuthService.isRegistrationEnabled).
+   * true = force-open; false = force-closed (first-user bootstrap still allowed).
+   * Unset = fall back to the DB setting managed via the settings API/admin panel.
+   */
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
   flags?: FlagService;
@@ -132,6 +138,10 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     // （常に boolean 化すると env 未設定時に登録が恒久的に無効化されてしまう）
     registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined ? undefined : env.OURO_REGISTRATION_ENABLED === "true",
+    registrationEnabled:
+      env.OURO_REGISTRATION_ENABLED === undefined
+        ? undefined
+        : env.OURO_REGISTRATION_ENABLED === "true",
     githubTokenSet: !!githubToken,
     flags,
     analytics,
