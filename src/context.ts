@@ -137,8 +137,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     // 未設定なら undefined のまま渡し、API/GUI は DB の登録トグルへフォールバックする
     // （常に boolean 化すると env 未設定時に登録が恒久的に無効化されてしまう）
     registrationEnabled:
-      env.OURO_REGISTRATION_ENABLED === undefined ? undefined : env.OURO_REGISTRATION_ENABLED === "true",
-    registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined
         ? undefined
         : env.OURO_REGISTRATION_ENABLED === "true",
