@@ -118,7 +118,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       );
 
       let prsCreated = 0;
-      const prs: number[] = [];
+      const prs: Array<{ number: number; title: string; branch: string; url: string }> = [];
       for (const group of sorted) {
         if (prsCreated >= ctx.config.scan.maxPRsPerRun) break;
         if (!dryRun && (!group.autoFixable || cache.has(group) || dedup.isDuplicate(group))) {
@@ -147,7 +147,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
             dedup.register(pr.branch);
             await cache.record(group);
             await notifier.notifyPRCreated(pr, group);
-            prs.push(pr.number);
+            prs.push({ number: pr.number, title: pr.title, branch: pr.branch, url: pr.url });
             prsCreated++;
           } catch (err) {
             await escalator.escalate(group, (err as Error).message);

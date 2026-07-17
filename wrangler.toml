@@ -96,9 +96,10 @@ type = "Text"
 globs = ["**/*.css"]
 fallthrough = true
 
-# 廃止した GitHub Actions の日次 cron を置き換え
+# 毎時実行し、app_settings.schedule.time（UTC の HH:MM）と現在時刻を照合して
+# 一致時のみ自己修復をトリガーする（cron 式はデプロイ時固定のため DB 照合方式）
 [triggers]
-crons = ["0 2 * * *"]
+crons = ["0 * * * *"]
 
 [vars]
 # OURO_REGISTRATION_ENABLED: ops レベルの強制オーバーライド（任意）。

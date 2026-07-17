@@ -18,19 +18,6 @@ export interface SessionRow {
   created_at: number;
 }
 
-export interface ApiTokenRow {
-  id: string;
-  user_id: string;
-  name: string;
-  token_hash: string;
-  prefix: string;
-  scopes: string;
-  last_used_at: number | null;
-  revoked_at: number | null;
-  expires_at: number | null;
-  created_at: number;
-}
-
 export interface HealingRunRow {
   id: string;
   user_id: string | null;
@@ -175,48 +162,6 @@ export class SessionRepository {
   }
 }
 
-export class ApiTokenRepository {
-  constructor(private readonly db: DbAdapter) {}
-
-  async insert(row: ApiTokenRow): Promise<void> {
-    await this.db.exec(
-      `INSERT INTO api_tokens
-        (id, user_id, name, token_hash, prefix, scopes, last_used_at, revoked_at, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        row.id, row.user_id, row.name, row.token_hash, row.prefix, row.scopes,
-        row.last_used_at, row.revoked_at, row.expires_at, row.created_at,
-      ]
-    );
-  }
-
-  async findByHash(hash: string): Promise<ApiTokenRow | undefined> {
-    const rows = await this.db.query<ApiTokenRow>(
-      `SELECT * FROM api_tokens WHERE token_hash = ?`,
-      [hash]
-    );
-    return rows[0];
-  }
-
-  async listByUser(userId: string): Promise<ApiTokenRow[]> {
-    return this.db.query<ApiTokenRow>(
-      `SELECT * FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC`,
-      [userId]
-    );
-  }
-
-  async revoke(id: string, userId: string, now: number): Promise<void> {
-    await this.db.exec(
-      `UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ?`,
-      [now, id, userId]
-    );
-  }
-
-  async touch(id: string, now: number): Promise<void> {
-    await this.db.exec(`UPDATE api_tokens SET last_used_at = ? WHERE id = ?`, [now, id]);
-  }
-}
-
 export class SettingsRepository {
   constructor(private readonly db: DbAdapter) {}
 
@@ -248,6 +193,7 @@ export interface InspectionRow {
   target: string | null;
   result: string;
   status: string;
+  progress: string | null;
   created_at: number;
 }
 
@@ -256,8 +202,8 @@ export class InspectionRepository {
 
   async insert(row: InspectionRow): Promise<void> {
     await this.db.exec(
-      `INSERT INTO inspections (id, user_id, target, result, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-      [row.id, row.user_id, row.target, row.result, row.status ?? "completed", row.created_at]
+      `INSERT INTO inspections (id, user_id, target, result, status, progress, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.user_id, row.target, row.result, row.status ?? "completed", row.progress ?? null, row.created_at]
     );
   }
 
@@ -288,6 +234,22 @@ export class InspectionRepository {
     await this.db.exec(
       `UPDATE inspections SET status = ? WHERE id = ? AND user_id = ?`,
       [status, id, userId]
+    );
+  }
+
+  /** 解析パイプラインの進行状況（status + progress JSON）を更新する。 */
+  async updateProgress(id: string, userId: string, status: string, progress: unknown): Promise<void> {
+    await this.db.exec(
+      `UPDATE inspections SET status = ?, progress = ? WHERE id = ? AND user_id = ?`,
+      [status, JSON.stringify(progress), id, userId]
+    );
+  }
+
+  /** 解析完了時に結果を書き込みステータスを更新する。 */
+  async setResult(id: string, userId: string, result: string, status: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE inspections SET result = ?, status = ? WHERE id = ? AND user_id = ?`,
+      [result, status, id, userId]
     );
   }
 }

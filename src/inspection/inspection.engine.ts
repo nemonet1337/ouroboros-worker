@@ -253,7 +253,14 @@ export class InspectionEngine {
     const contentHash = computeContentHash(processedFiles);
 
     const weights = this.weightAdvisor
-      ? await this.weightAdvisor.suggestWeights(this.config.scoring.weights)
+      ? await this.weightAdvisor.suggestWeights(this.config.scoring.weights).catch((err) => {
+          // Vectorize インデックス未作成時等の失敗はデフォルト重みにフォールバック
+          console.warn(
+            "[InspectionEngine] weight advisor failed, using default weights:",
+            err instanceof Error ? err.message : err
+          );
+          return this.config.scoring.weights;
+        })
       : this.config.scoring.weights;
 
     const aiOutput = await this.callAI({ ...request, files: processedFiles });
@@ -391,18 +398,50 @@ export class InspectionEngine {
   }
 
   private async callAI(request: InspectionRequest): Promise<AIInspectionOutput> {
+    // ファイル単位で小さな JSON スキーマの解析を複数回に分割する。
+    // （32 観点 × 全ファイルの巨大 JSON を一発生成すると弱いモデルで parse に失敗するため）
+    const files: AIFileAnalysis[] = [];
+    const summaries: string[] = [];
+    let lastError: unknown;
+
+    for (const file of request.files) {
+      try {
+        const fileOut = await this.callAIForFile({ ...request, files: [file] }, file.path);
+        if (fileOut.files.length > 0) {
+          files.push(...fileOut.files);
+        }
+        if (fileOut.summary) summaries.push(fileOut.summary);
+      } catch (err) {
+        lastError = err;
+        console.error(`[InspectionEngine] file analysis failed for ${file.path}:`, err);
+      }
+    }
+
+    if (files.length === 0) {
+      throw lastError ?? new Error("AI analysis produced no file results");
+    }
+
+    return {
+      summary: summaries.join(" ").slice(0, 2000) || "解析が完了しました。",
+      files,
+    };
+  }
+
+  private async callAIForFile(request: InspectionRequest, path: string): Promise<AIInspectionOutput> {
     const userPrompt = buildUserPrompt(request);
     const system = `${SYSTEM_PROMPT}
 
+You are analyzing a SINGLE file (${path}).
 You MUST respond with ONLY a single valid JSON object (no markdown fences, no preamble)
 matching this JSON schema:
-${JSON.stringify(INSPECTION_TOOL.input_schema)}`;
+${JSON.stringify(INSPECTION_TOOL.input_schema)}
+The "files" array MUST contain exactly one entry for this file.`;
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= this.config.ai.maxRetries; attempt++) {
       if (attempt > 0) {
         await sleep(1000 * attempt);
-        console.warn(`[InspectionEngine] retry ${attempt}/${this.config.ai.maxRetries}`);
+        console.warn(`[InspectionEngine] retry ${attempt}/${this.config.ai.maxRetries} for ${path}`);
       }
 
       try {
@@ -416,7 +455,7 @@ ${JSON.stringify(INSPECTION_TOOL.input_schema)}`;
         return JSON.parse(cleaned) as AIInspectionOutput;
       } catch (err) {
         lastError = err;
-        console.error(`[InspectionEngine] attempt ${attempt + 1} failed:`, err);
+        console.error(`[InspectionEngine] attempt ${attempt + 1} failed for ${path}:`, err);
       }
     }
 

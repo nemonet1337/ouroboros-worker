@@ -291,6 +291,7 @@ export async function runUserInspection(opts: {
       target: req.language ?? null,
       result: JSON.stringify(result),
       status: "completed",
+      progress: null,
       created_at: Date.now(),
     });
     await log.info("inspection complete", { id: result.id, grade: result.scoreCard.grade });

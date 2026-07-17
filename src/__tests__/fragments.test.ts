@@ -55,9 +55,6 @@ function buildDeps(overrides: Partial<FragmentDeps> = {}): FragmentDeps {
       userCount: vi.fn().mockResolvedValue(1),
       isRegistrationEnabled: vi.fn().mockResolvedValue(true),
       setRegistrationEnabled: vi.fn(),
-      listTokens: vi.fn().mockResolvedValue([]),
-      createToken: vi.fn().mockResolvedValue({ secret: "ouro_secret123", prefix: "ouro_sec", id: "tok-1" }),
-      revokeToken: vi.fn(),
       resolveModel: vi.fn().mockResolvedValue("minimax/m3"),
       updateProfile: vi.fn().mockResolvedValue({ id: "user-1", email: "new@test.com", role: "admin", model: null }),
     } as any,
@@ -76,9 +73,7 @@ describe("UI fragments", () => {
     ["/prs?page=1"],
     ["/history"],
     ["/code/sessions"],
-    ["/refactor/proposals"],
     ["/webhooks"],
-    ["/tokens"],
     ["/healing/runs"],
   ])("GET %s returns HTML (not raw JSON) for an authed session", async (path) => {
     const app = createFragments(buildDeps());
@@ -94,9 +89,7 @@ describe("UI fragments", () => {
     const app = createFragments(buildDeps());
     const cases: Array<[string, string]> = [
       ["/code/sessions", "セッションはありません"],
-      ["/refactor/proposals", "リファクタリング提案はまだありません"],
       ["/webhooks", "登録済みの Webhook はありません"],
-      ["/tokens", "有効なトークンはありません"],
       ["/healing/runs", "修復実行履歴はありません"],
       ["/history", "スキャン履歴はありません"],
     ];
@@ -151,26 +144,6 @@ describe("UI fragments", () => {
     const res = await app.request("/code/sessions", authed);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("この機能は現在無効化されています");
-  });
-
-  it("creates a token from form data and shows the secret once", async () => {
-    const deps = buildDeps();
-    const app = createFragments(deps);
-    const form = new URLSearchParams();
-    form.set("name", "github-actions-ci");
-    form.append("scopes", "read");
-    form.append("scopes", "inspect");
-    form.set("expiresInDays", "30");
-    const res = await app.request("/tokens", {
-      method: "POST",
-      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain("ouro_secret123");
-    expect(body).toContain("トークンを生成しました");
-    expect(deps.auth.createToken).toHaveBeenCalledWith("user-1", "github-actions-ci", ["read", "inspect"], 30);
   });
 
   it("triggers healing with dryRun parsed from the form value", async () => {

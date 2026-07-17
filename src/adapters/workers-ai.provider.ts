@@ -109,13 +109,16 @@ export class WorkersAiProvider implements AiProvider {
     return out;
   }
 
-  /** Enumerate every model the Workers AI binding serves (paged). */
+  /** Enumerate the text-generation models the Workers AI binding serves (paged). */
   async listModels(): Promise<AiModelInfo[]> {
     const models: AiModelInfo[] = [];
     const perPage = 100;
     for (let page = 1; ; page++) {
       const batch = await this.ai.models({ per_page: perPage, page });
       for (const m of batch) {
+        // 埋め込み/画像等を除外し、Text Generation モデルのみを返す
+        const task = m.task?.name ?? "";
+        if (task && task !== "Text Generation") continue;
         models.push({
           value: m.name,
           label: m.name.replace(/^@[^/]+\//, ""),

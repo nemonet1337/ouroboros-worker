@@ -28,7 +28,7 @@ export interface ResolvedRepo {
  */
 export class GitHubProvider implements VcsProvider {
   readonly name = "github";
-  private readonly base: string;
+  private base: string;
 
   /**
    * GITHUB_TOKEN から owner/repo を自動検出する。
@@ -62,8 +62,22 @@ export class GitHubProvider implements VcsProvider {
     }
   }
 
-  constructor(private readonly cfg: GitHubConfig) {
+  constructor(private cfg: GitHubConfig) {
     this.base = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}`;
+  }
+
+  /** 現在の対象リポジトリを差し替える（選択リポジトリの切替に使用）。 */
+  setRepo(owner: string, repo: string): void {
+    this.cfg = { ...this.cfg, owner, repo };
+    this.base = `https://api.github.com/repos/${owner}/${repo}`;
+  }
+
+  get owner(): string {
+    return this.cfg.owner;
+  }
+
+  get repo(): string {
+    return this.cfg.repo;
   }
 
   private ghHeaders(hasBody = false): Record<string, string> {

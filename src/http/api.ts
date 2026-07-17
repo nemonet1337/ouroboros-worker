@@ -8,7 +8,7 @@ import {
   type DeployTarget,
 } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
-import { parseScopes, hasScope, newId, type Scope } from "../auth/tokens";
+import { hasScope, newId, type Scope } from "../auth/tokens";
 import { Logger } from "../logging/logger";
 import {
   InspectionRepository,
@@ -23,12 +23,12 @@ import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
 import { FlagService, FLAGS } from "../flags/flag.service";
+import { resolveFeatureFlag } from "../flags/flag.service";
 import type { VersionMetadata } from "../env";
 import {
   validateBody,
   credentialsSchema,
   profileUpdateSchema,
-  tokenCreateSchema,
   inspectSchema,
   webhookCreateSchema,
   webhookPatchSchema,
@@ -41,6 +41,7 @@ import {
 } from "./validation";
 import { MODEL_MODES, type ModelMode } from "../config/model.modes";
 import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
+import { getSelectedRepo } from "../config/settings.keys";
 import {
   buildMetricsData,
   loadPublicConfig,
@@ -58,7 +59,7 @@ const SETTINGS_KEY = "app_settings";
 const DEFAULT_SETTINGS = {
   weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
   gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
-  schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo" },
+  schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo", time: "" },
   notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
 };
 
@@ -141,18 +142,12 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     await next();
   });
 
-  // ── Identity resolution (cookie session OR bearer token) ───────────────────
+  // ── Identity resolution (cookie session only) ─────────────────────────────
   app.use("*", async (c: Context<Env>, next: Next) => {
-    const bearer = c.req.header("authorization");
-    if (bearer?.startsWith("Bearer ")) {
-      const id = await auth.resolveToken(bearer.slice(7).trim());
-      if (id) c.set("identity", { user: { id: id.id, email: id.email, role: id.role, model: id.model }, scopes: id.scopes });
-    } else {
-      const sid = getCookie(c, SESSION_COOKIE);
-      if (sid) {
-        const user = await auth.resolveSession(sid);
-        if (user) c.set("identity", { user, scopes: "admin" });
-      }
+    const sid = getCookie(c, SESSION_COOKIE);
+    if (sid) {
+      const user = await auth.resolveSession(sid);
+      if (user) c.set("identity", { user, scopes: "admin" });
     }
     await next();
   });
@@ -174,11 +169,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   const requireFlag = (flagName: string, defaultValue: boolean) => {
     return async (c: Context, next: Next) => {
-      if (deps.flags) {
-        const enabled = await deps.flags.get(flagName, defaultValue);
-        if (!enabled) {
-          return c.json({ error: { code: "forbidden", message: `Feature ${flagName} is disabled` } }, 403);
-        }
+      const enabled = await resolveFeatureFlag(settingsRepo, deps.flags, flagName, defaultValue);
+      if (!enabled) {
+        return c.json({ error: { code: "forbidden", message: `Feature ${flagName} is disabled` } }, 403);
       }
       await next();
     };
@@ -299,28 +292,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const identity = c.get("identity")!;
     const user = await auth.updateProfile(identity.user.id, body.email, body.password);
     return c.json({ user });
-  });
-
-  // ── API tokens ─────────────────────────────────────────────────────────────
-  app.get("/tokens", requireAuth(), async (c) => {
-    return c.json({ tokens: await auth.listTokens(c.get("identity")!.user.id) });
-  });
-
-  app.post("/tokens", requireAuth(), validateBody(tokenCreateSchema), async (c) => {
-    const body = c.get("body") as { name: string; scopes?: Scope[]; expiresInDays?: number };
-    const scopes = (body.scopes ?? ["read"]).filter((s) => parseScopes(s).length > 0);
-    const created = await auth.createToken(
-      c.get("identity")!.user.id,
-      body.name ?? "token",
-      scopes.length ? scopes : (["read"] as Scope[]),
-      body.expiresInDays
-    );
-    return c.json(created, 201); // secret returned exactly once
-  });
-
-  app.delete("/tokens/:id", requireAuth(), async (c) => {
-    await auth.revokeToken(c.get("identity")!.user.id, c.req.param("id")!);
-    return c.json({ ok: true });
   });
 
   // ── App config (languages; git + AI credentials come from CF Secrets) ──────
@@ -623,10 +594,18 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/code/sessions", requireAuth("inspect"), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionCreateSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const body = c.get("body") as { repoUrl: string; branch?: string; baseBranch?: string; title: string; instruction: string };
+    const body = c.get("body") as { repoUrl?: string; branch?: string; baseBranch?: string; title: string; instruction: string };
+    let repoUrl = body.repoUrl;
+    if (!repoUrl) {
+      const selected = await getSelectedRepo(settingsRepo);
+      if (!selected) {
+        return c.json({ error: { code: "no_repo_selected", message: "no repository selected; set one in the dashboard" } }, 400);
+      }
+      repoUrl = `https://github.com/${selected.owner}/${selected.repo}`;
+    }
     const id = await codeManager.create({
       userId,
-      repoUrl: body.repoUrl,
+      repoUrl,
       branch: body.branch ?? "main",
       baseBranch: body.baseBranch ?? "main",
       title: body.title,

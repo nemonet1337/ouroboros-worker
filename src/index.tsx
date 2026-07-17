@@ -7,7 +7,7 @@ import { mountApi } from "./http/api";
 import { runMigrations } from "./db";
 import { HealingRunRepository, SettingsRepository, CodeSessionRepository } from "./db/repositories";
 import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
-import { CODE_INDEX_STATUS_KEY } from "./vectorize/code.indexer";
+import { SELECTED_REPO_KEY, parseSelectedRepo, areWebhooksEnabled, getFeatureFlags } from "./config/settings.keys";
 import type { GuiEvent } from "./ports/queue";
 import type { Env, EmailMessage } from "./env";
 import { buildContext, type WorkerContext } from "./context";
@@ -18,13 +18,10 @@ import { RegisterPage } from "./ui/pages/register";
 import { CodePage } from "./ui/pages/code";
 import { CodeNewPage } from "./ui/pages/code-new";
 import { CodeSessionPage } from "./ui/pages/code-session";
-import { RefactorPage } from "./ui/pages/refactor";
-import { RefactorProposalPage } from "./ui/pages/refactor-proposal";
 import { createFragments } from "./ui/fragments";
 import { HealingPage } from "./ui/pages/healing";
 import { InspectionPage } from "./ui/pages/inspection";
 import { WebhooksPage } from "./ui/pages/webhooks";
-import { TokensPage } from "./ui/pages/tokens";
 import { SettingsPage } from "./ui/pages/settings";
 import { AdminPage } from "./ui/pages/admin";
 import type { AuthedUser } from "./auth/service";
@@ -36,6 +33,14 @@ export { HealingWorkflow } from "./workflows/healing";
 
 let migrated = false;
 let cachedApp: Awaited<ReturnType<typeof buildApp>> | undefined;
+
+// 設定画面のデフォルト（app_settings 未設定時のフォールバック）
+const DEFAULT_APP_SETTINGS = {
+  weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
+  gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
+  schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo", time: "" },
+  notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
+};
 
 async function ensureMigrated(env: Env): Promise<void> {
   if (migrated) return;
@@ -80,6 +85,17 @@ async function buildApp(env: Env): Promise<Hono> {
 
   app.use("*", async (c, next) => {
     await ensureMigrated(env);
+    // 選択リポジトリ（settings.selected_repo）を毎リクエスト反映する。
+    // cachedApp がアイソレート単位で再利用されても常に最新の選択を使う。
+    try {
+      const raw = await new SettingsRepository(ctx.ports.db).get(SELECTED_REPO_KEY);
+      const parsed = parseSelectedRepo(raw);
+      if (parsed && (parsed.owner !== ctx.currentRepo.owner || parsed.repo !== ctx.currentRepo.repo)) {
+        ctx.refreshRepo(parsed.owner, parsed.repo);
+      }
+    } catch {
+      // 設定読み取り失敗は致命的ではない（既存の解決値を使う）
+    }
     await next();
   });
 
@@ -145,7 +161,7 @@ async function buildApp(env: Env): Promise<Hono> {
 
   app.get("/inspection", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
-    return c.html(<InspectionPage user={identity?.user} />);
+    return c.html(<InspectionPage user={identity?.user} selectedRepo={ctx.currentRepo} />);
   });
 
   app.get("/code", requireAuthMiddleware, (c) => {
@@ -155,7 +171,7 @@ async function buildApp(env: Env): Promise<Hono> {
 
   app.get("/code/new", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
-    return c.html(<CodeNewPage user={identity?.user} />);
+    return c.html(<CodeNewPage user={identity?.user} selectedRepo={ctx.currentRepo} />);
   });
 
   app.get("/code/sessions/:id", requireAuthMiddleware, async (c) => {
@@ -168,24 +184,9 @@ async function buildApp(env: Env): Promise<Hono> {
     );
   });
 
-  app.get("/refactor", requireAuthMiddleware, (c) => {
-    const identity = c.get("identity");
-    return c.html(<RefactorPage user={identity?.user} />);
-  });
-
-  app.get("/refactor/proposals/:id", requireAuthMiddleware, (c) => {
-    const identity = c.get("identity");
-    return c.html(<RefactorProposalPage inspectionId={c.req.param("id")!} user={identity?.user} />);
-  });
-
   app.get("/webhooks", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
     return c.html(<WebhooksPage user={identity?.user} />);
-  });
-
-  app.get("/tokens", requireAuthMiddleware, (c) => {
-    const identity = c.get("identity");
-    return c.html(<TokensPage user={identity?.user} />);
   });
 
   app.get("/settings", requireAuthMiddleware, async (c) => {
@@ -193,25 +194,19 @@ async function buildApp(env: Env): Promise<Hono> {
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
 
-    const [models, globalModel, modeModels, rawSettings, rawIndexStatus, registrationEnabled] =
+    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags] =
       await Promise.all([
         ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
         ctx.auth.getModel(user.id),
         ctx.auth.getModeModels(user.id),
         settingsRepo.get("app_settings"),
-        settingsRepo.get(CODE_INDEX_STATUS_KEY),
-        ctx.auth.isRegistrationEnabled(),
+        areWebhooksEnabled(settingsRepo),
+        getFeatureFlags(settingsRepo),
       ]);
 
-    let appSettings: Record<string, unknown> = {};
+    let appSettings: Record<string, unknown> = { ...DEFAULT_APP_SETTINGS };
     try {
-      appSettings = rawSettings ? JSON.parse(rawSettings) : {};
-    } catch {}
-    appSettings.registrationEnabled = registrationEnabled;
-
-    let codeIndexStatus = null;
-    try {
-      codeIndexStatus = rawIndexStatus ? JSON.parse(rawIndexStatus) : null;
+      appSettings = { ...DEFAULT_APP_SETTINGS, ...(rawSettings ? JSON.parse(rawSettings) : {}) };
     } catch {}
 
     return c.html(
@@ -222,8 +217,8 @@ async function buildApp(env: Env): Promise<Hono> {
         modeModels={modeModels}
         defaultModel={DEFAULT_WORKERS_AI_MODEL}
         appSettings={appSettings}
-        codeIndexStatus={codeIndexStatus}
-        vectorizeCodeEnabled={!!ctx.ports.vectorizeCode}
+        webhooksEnabled={webhooksEnabled}
+        featureFlags={featureFlags}
       />
     );
   });
@@ -272,8 +267,37 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env);
     const wctx = await buildContext(env);
+    // セッションクリーンアップは毎時実行
     await wctx.auth.cleanupExpiredSessions();
-    const trigger = makeTriggerHealing(env, wctx);
-    await trigger({ trigger: "cron", dryRun: false });
+    // 自己修復は app_settings.schedule.time（UTC の HH:MM）の時（HH）が
+    // 現在の UTC 時と一致する場合のみトリガーする（毎時 cron + DB 照合方式）
+    if (await shouldRunScheduledHealing(wctx, new Date())) {
+      const trigger = makeTriggerHealing(env, wctx);
+      await trigger({ trigger: "cron", dryRun: false });
+    }
   },
 };
+
+/**
+ * app_settings.schedule.time（"HH:MM" UTC）の時（HH）が現在の UTC 時と一致するか判定する。
+ * 未設定・不正な形式のときは false（スケジュール実行なし）。
+ */
+export async function shouldRunScheduledHealing(
+  wctx: WorkerContext,
+  now: Date
+): Promise<boolean> {
+  const raw = await new SettingsRepository(wctx.ports.db).get("app_settings").catch(() => undefined);
+  if (!raw) return false;
+  let time = "";
+  try {
+    const parsed = JSON.parse(raw) as { schedule?: { time?: string } };
+    time = typeof parsed.schedule?.time === "string" ? parsed.schedule.time : "";
+  } catch {
+    return false;
+  }
+  const match = /^(\d{2}):(\d{2})$/.exec(time);
+  if (!match) return false;
+  const hour = Number(match[1]);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return false;
+  return now.getUTCHours() === hour;
+}

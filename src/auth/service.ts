@@ -1,14 +1,12 @@
 import type { DbAdapter } from "../ports/db";
 import {
-  ApiTokenRepository,
   SessionRepository,
   SettingsRepository,
   UserRepository,
-  type ApiTokenRow,
   type UserRow,
 } from "../db/repositories";
 import { hashPassword, verifyPassword } from "./password";
-import { generateApiToken, newId, newSessionId, sha256Hex, type Scope } from "./tokens";
+import { newId, newSessionId } from "./tokens";
 import { isWorkersAiModelId, DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
 import type { ModelMode } from "../config/model.modes";
 
@@ -21,11 +19,6 @@ export interface AuthedUser {
   email: string;
   role: "admin" | "member";
   model: string | null;
-}
-
-export interface TokenIdentity extends AuthedUser {
-  tokenId: string;
-  scopes: string;
 }
 
 export class AuthError extends Error {
@@ -41,18 +34,16 @@ function toAuthedUser(row: UserRow): AuthedUser {
 /**
  * Runtime-agnostic auth orchestration over the repositories. Handles
  * registration (with admin-controlled toggle + first-user bootstrap), login,
- * sessions, and scoped API tokens.
+ * and sessions. API authentication is session-cookie only (no API tokens).
  */
 export class AuthService {
   private readonly users: UserRepository;
   private readonly sessions: SessionRepository;
-  private readonly tokens: ApiTokenRepository;
   private readonly settings: SettingsRepository;
 
   constructor(db: DbAdapter) {
     this.users = new UserRepository(db);
     this.sessions = new SessionRepository(db);
-    this.tokens = new ApiTokenRepository(db);
     this.settings = new SettingsRepository(db);
   }
 
@@ -138,52 +129,6 @@ export class AuthService {
     }
     const user = await this.users.findById(session.user_id);
     return user ? toAuthedUser(user) : undefined;
-  }
-
-  async resolveToken(secret: string): Promise<TokenIdentity | undefined> {
-    if (!secret.startsWith("ouro_")) return undefined;
-    const hash = await sha256Hex(secret);
-    const token = await this.tokens.findByHash(hash);
-    if (!token || token.revoked_at) return undefined;
-    if (token.expires_at && token.expires_at < Date.now()) return undefined;
-    const user = await this.users.findById(token.user_id);
-    if (!user) return undefined;
-    await this.tokens.touch(token.id, Date.now());
-    return { ...toAuthedUser(user), tokenId: token.id, scopes: token.scopes };
-  }
-
-  async createToken(
-    userId: string,
-    name: string,
-    scopes: Scope[],
-    expiresInDays?: number
-  ): Promise<{ secret: string; prefix: string; id: string }> {
-    const { secret, hash, prefix } = await generateApiToken();
-    const now = Date.now();
-    const id = newId();
-    const row: ApiTokenRow = {
-      id,
-      user_id: userId,
-      name: name.slice(0, 80) || "token",
-      token_hash: hash,
-      prefix,
-      scopes: (scopes.length ? scopes : ["read"]).join(","),
-      last_used_at: null,
-      revoked_at: null,
-      expires_at: expiresInDays ? now + expiresInDays * 86_400_000 : null,
-      created_at: now,
-    };
-    await this.tokens.insert(row);
-    return { secret, prefix, id };
-  }
-
-  async listTokens(userId: string): Promise<Array<Omit<ApiTokenRow, "token_hash">>> {
-    const rows = await this.tokens.listByUser(userId);
-    return rows.map(({ token_hash: _omit, ...rest }) => rest);
-  }
-
-  async revokeToken(userId: string, tokenId: string): Promise<void> {
-    await this.tokens.revoke(tokenId, userId, Date.now());
   }
 
   async updateProfile(userId: string, email: string, password?: string): Promise<AuthedUser> {

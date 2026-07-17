@@ -23,6 +23,12 @@ export interface DispatchContext {
 
 export class WebhookManager {
   /**
+   * @param isEnabled グローバル配信スイッチの判定コールバック。省略時は常に有効。
+   *   settings.webhooks_enabled が "false" のとき false を返すよう配線する。
+   */
+  constructor(private readonly isEnabled?: () => boolean | Promise<boolean>) {}
+
+  /**
    * Evaluate thresholds, determine which events fire, and deliver to all
    * matching enabled endpoints concurrently.
    */
@@ -31,6 +37,7 @@ export class WebhookManager {
     endpoints: WebhookEndpoint[],
     ctx: DispatchContext = {}
   ): Promise<WebhookDeliveryResult[]> {
+    if (this.isEnabled && !(await this.isEnabled())) return [];
     const active = endpoints.filter((e) => e.enabled);
     if (active.length === 0) return [];
 
@@ -76,6 +83,7 @@ export class WebhookManager {
     endpoints: WebhookEndpoint[],
     ctx: DispatchContext = {}
   ): Promise<WebhookDeliveryResult[]> {
+    if (this.isEnabled && !(await this.isEnabled())) return [];
     const active = endpoints.filter(
       (e) => e.enabled && e.events.includes("inspection.failed")
     );

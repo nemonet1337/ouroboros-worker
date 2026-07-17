@@ -4,6 +4,7 @@ import { buildContext } from "../context";
 import { CodeIndexer } from "../vectorize/code.indexer";
 import { SettingsRepository } from "../db/repositories";
 import { GitHubProvider } from "../vcs/github.provider";
+import { runInspectionPipeline } from "../inspection/pipeline";
 
 /**
  * Cloudflare Queues consumer for GUI-originated events. Healing requests start
@@ -28,9 +29,24 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           await log.info("started healing workflow", { runId: event.payload.runId });
           break;
         }
+        case "inspection.requested": {
+          const inspectionId = String(event.payload.inspectionId ?? "");
+          const userId = event.userId ?? "";
+          if (!inspectionId || !userId) {
+            await log.error("inspection.requested missing inspectionId/userId", {});
+            break;
+          }
+          await runInspectionPipeline({
+            ctx,
+            log,
+            inspectionId,
+            userId,
+            instruction: String(event.payload.instruction ?? ""),
+          });
+          break;
+        }
         case "codeindex.requested": {
-          if (!ctx.ports.vectorizeCode) {
-            await log.error("code index requested but VECTORIZE_CODE is not bound", {});
+          if (!ctx.ports.vectorizeCode) {            await log.error("code index requested but VECTORIZE_CODE is not bound", {});
             break;
           }
           const indexer = new CodeIndexer(

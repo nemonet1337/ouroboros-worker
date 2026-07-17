@@ -24,6 +24,25 @@ export const HomePage: FC<HomePageProps> = ({ user }) => {
         </div>
       </div>
 
+      {/* リポジトリ選択カード（システム全体で 1 つの対象リポジトリ） */}
+      <div class="mb-8">
+        <div
+          class="card card-glass shadow-lg"
+          hx-get="/ui/fragments/repos"
+          hx-trigger="load"
+          hx-target="this"
+          hx-swap="innerHTML"
+        >
+          <div class="card-body p-6">
+            <h2 class="card-title text-lg font-bold flex items-center gap-2">
+              <i data-lucide="github" class="w-5 h-5 text-primary" />
+              <span>対象リポジトリ</span>
+            </h2>
+            <div class="skeleton h-12 w-full rounded-xl mt-2"></div>
+          </div>
+        </div>
+      </div>
+
       {/* HTMXによる非同期メトリクス読み込みコンテナ */}
       <div hx-get="/ui/fragments/metrics" hx-trigger="load" hx-target="#metrics-container" hx-swap="outerHTML">
         <div id="metrics-container" class="space-y-8">

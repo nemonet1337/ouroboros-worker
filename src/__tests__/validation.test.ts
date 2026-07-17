@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   credentialsSchema,
   profileUpdateSchema,
-  tokenCreateSchema,
   inspectSchema,
   webhookCreateSchema,
 } from "../http/validation";
@@ -22,12 +21,6 @@ describe("request validation schemas", () => {
     expect(ok(profileUpdateSchema({ email: "a@b.io", password: "supersecret" }))).toBe(true);
     expect(ok(profileUpdateSchema({ email: "not-an-email" }))).toBe(false);
     expect(ok(profileUpdateSchema({ email: "a@b.io", password: "short" }))).toBe(false);
-  });
-
-  it("token scopes are restricted to the known set", () => {
-    expect(ok(tokenCreateSchema({ name: "ci", scopes: ["read", "heal"] }))).toBe(true);
-    expect(ok(tokenCreateSchema({ name: "ci", scopes: ["superuser"] }))).toBe(false);
-    expect(ok(tokenCreateSchema({ scopes: ["read"] }))).toBe(false); // name required
   });
 
   it("inspect requires at least one file with path+content", () => {

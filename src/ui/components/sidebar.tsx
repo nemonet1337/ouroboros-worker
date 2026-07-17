@@ -11,9 +11,7 @@ export const Sidebar: FC<SidebarProps> = ({ user }) => {
     { href: "/healing", icon: "wrench", label: "自己修復" },
     { href: "/inspection", icon: "search", label: "コード解析" },
     { href: "/code", icon: "code", label: "コード編集" },
-    { href: "/refactor", icon: "git-pull-request", label: "リファクタ" },
     { href: "/webhooks", icon: "webhook", label: "ウェブフック" },
-    { href: "/tokens", icon: "key", label: "APIトークン" },
     { href: "/settings", icon: "settings", label: "システム設定" },
   ];
 

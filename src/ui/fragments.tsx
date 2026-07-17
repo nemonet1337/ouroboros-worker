@@ -19,14 +19,12 @@ import type { Logger } from "../logging/logger";
 import type { TriggerHealingResult } from "../http/api";
 import type { InspectionRequest, InspectionResult, Language } from "../types";
 import { FlagService, FLAGS } from "../flags/flag.service";
-import { parseScopes, type Scope } from "../auth/tokens";
 import {
   InspectionRepository,
   WebhookRepository,
   HealingRunRepository,
   SettingsRepository,
   CodeSessionRepository,
-  RefactorRepository,
 } from "../db/repositories";
 import {
   buildMetricsData,
@@ -39,18 +37,30 @@ import { validateWebhookUrl } from "../webhook/url.guard";
 import { webhookCreateSchema, codeSessionCreateSchema } from "../http/validation";
 import { newId } from "../auth/tokens";
 import { CodeSessionManager } from "../code/session.manager";
+import { ProposalManager } from "../refactor/proposal.manager";
 import { MetricsDashboard } from "./components/metrics-dashboard";
 import { PRHistory } from "./components/pr-history";
 import { InspectionHistoryList } from "./components/inspection-history-list";
 import { InspectionDetail } from "./components/inspection-detail";
+import { InspectionProgress } from "./components/inspection-progress";
 import { CodeSessionList } from "./components/code-session-list";
-import { ProposalList } from "./components/proposal-list";
 import { WebhookList } from "./components/webhook-list";
-import { TokenList } from "./components/token-list";
 import { HealingRunList } from "./components/healing-run-list";
+import { RepoSelector } from "./components/repo-selector";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
+import { resolveFeatureFlag } from "../flags/flag.service";
+import { getSelectedRepo, setSelectedRepo, setWebhooksEnabled, setFeatureFlags } from "../config/settings.keys";
 
 const SESSION_COOKIE = "ouro_session";
+const APP_SETTINGS_KEY = "app_settings";
+
+// GUI で切り替え可能な機能トグル一覧（settings.tsx の FEATURE_TOGGLES と対応）
+const SYSTEM_FEATURE_FLAGS: string[] = [
+  FLAGS.CODE_NEEDS_FIX,
+  FLAGS.CODE_FIX_COMPLETE,
+  FLAGS.REFACTOR_APPROVED,
+  FLAGS.REFACTOR_APPLIED,
+];
 
 export interface FragmentDeps {
   ports: Ports;
@@ -111,7 +121,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const refactorRepo = new RefactorRepository(ports.db);
   const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
   const log = deps.logger.child("fragments");
 
@@ -144,11 +153,9 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   };
 
   const requireFlag = (flagName: string, defaultValue: boolean) => async (c: Context<Env>, next: Next) => {
-    if (deps.flags) {
-      const enabled = await deps.flags.get(flagName, defaultValue);
-      if (!enabled) {
-        return c.html(<Alert type="info" message="この機能は現在無効化されています。" />);
-      }
+    const enabled = await resolveFeatureFlag(settingsRepo, deps.flags, flagName, defaultValue);
+    if (!enabled) {
+      return c.html(<Alert type="info" message="この機能は現在無効化されています。" />);
     }
     await next();
   };
@@ -173,6 +180,38 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     return c.html(<PRHistory items={items} page={page} perPage={perPage} />);
   });
 
+  // ── リポジトリ選択（システム全体で 1 つ） ─────────────────────────────────
+  app.get("/repos", async (c) => {
+    const selected = await getSelectedRepo(settingsRepo);
+    let repos: Awaited<ReturnType<NonNullable<typeof ports.vcs.listRepos>>> = [];
+    try {
+      repos = ports.vcs.listRepos ? await ports.vcs.listRepos() : [];
+    } catch {
+      // 一覧取得に失敗しても手動入力は可能
+    }
+    return c.html(<RepoSelector repos={repos} selected={selected} />);
+  });
+
+  app.post("/repos/select", async (c) => {
+    const body = await c.req.parseBody();
+    const repo = typeof body.repo === "string" ? body.repo.trim() : "";
+    let selected: { owner: string; repo: string } | null;
+    let error: string | undefined;
+    try {
+      selected = await setSelectedRepo(settingsRepo, repo);
+    } catch (err) {
+      selected = await getSelectedRepo(settingsRepo);
+      error = (err as Error).message;
+    }
+    let repos: Awaited<ReturnType<NonNullable<typeof ports.vcs.listRepos>>> = [];
+    try {
+      repos = ports.vcs.listRepos ? await ports.vcs.listRepos() : [];
+    } catch {
+      // ignore
+    }
+    return c.html(<RepoSelector repos={repos} selected={selected} error={error} />);
+  });
+
   // ── Inspection ────────────────────────────────────────────────────────────
   app.get("/history", async (c) => {
     const rows = await inspections.listByUser(c.get("identity").user.id, 50);
@@ -180,36 +219,75 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   });
 
   app.get("/inspections/:id", async (c) => {
-    const row = await inspections.find(c.req.param("id")!, c.get("identity").user.id);
+    const userId = c.get("identity").user.id;
+    const row = await inspections.find(c.req.param("id")!, userId);
     if (!row) return c.html(<Alert type="error" message="検査結果が見つかりません。" />);
+
+    // 進行中（queued/indexing/searching/analyzing）は進捗を表示してポーリング継続
+    if (row.status !== "completed" && row.status !== "proposed" && row.status !== "applied" && row.status !== "dismissed") {
+      let steps: { step: string; message: string; at: number }[] = [];
+      try {
+        steps = row.progress ? JSON.parse(row.progress) : [];
+      } catch {
+        steps = [];
+      }
+      return c.html(<InspectionProgress id={row.id} status={row.status} steps={steps} />);
+    }
+
     let result: InspectionResult;
     try {
       result = JSON.parse(row.result);
     } catch {
       return c.html(<Alert type="error" message="検査結果の読み込みに失敗しました。" />);
     }
-    return c.html(<InspectionDetail result={result} />);
+    return c.html(<InspectionDetail result={result} inspectionId={row.id} status={row.status} />);
   });
 
   app.post("/inspect", async (c) => {
     const userId = c.get("identity").user.id;
+    const selected = await getSelectedRepo(settingsRepo);
+    if (!selected) {
+      return c.html(
+        <Alert type="error" message="対象リポジトリが選択されていません。ダッシュボードでリポジトリを選択してください。" />
+      );
+    }
     const body = await c.req.parseBody();
-    const language = typeof body.language === "string" ? body.language : "";
-    const code = typeof body.code === "string" ? body.code : "";
-    if (!language || !code.trim()) {
-      return c.html(<Alert type="error" message="対象言語とソースコードを入力してください。" />);
+    const instruction = typeof body.instruction === "string" ? body.instruction.trim() : "";
+
+    // 日次クォータ / レート制限チェック
+    const { success: rlOk } = await ports.rateLimiter.limit(`inspect:${userId}`);
+    if (!rlOk) {
+      return c.html(<Alert type="error" message="レート制限を超過しました。時間をおいて再度お試しください。" />);
     }
-    const req: InspectionRequest = {
+
+    // queued 状態の inspection 行を作成
+    const inspectionId = newId();
+    await inspections.insert({
+      id: inspectionId,
+      user_id: userId,
+      target: `${selected.owner}/${selected.repo}`,
+      result: "{}",
+      status: "queued",
+      progress: JSON.stringify([{ step: "queued", message: "解析をキューに登録しました。", at: Date.now() }]),
+      created_at: Date.now(),
+    });
+
+    await ports.queue.send({
       id: newId(),
-      language: language as Language,
-      files: [{ path: `snippet.${LANGUAGE_EXT[language] ?? "txt"}`, content: code }],
-      requestedAt: new Date().toISOString(),
-    };
-    const outcome = await runUserInspection({ ports, inspections, auth, log, userId, req });
-    if (!outcome.ok) {
-      return c.html(<Alert type="error" message={`解析に失敗しました: ${outcome.message}`} />);
-    }
-    return c.html(<InspectionDetail result={outcome.result} />);
+      type: "inspection.requested",
+      userId,
+      payload: { inspectionId, instruction },
+      enqueuedAt: Date.now(),
+    });
+
+    // 進捗をポーリング表示
+    return c.html(
+      <InspectionProgress
+        id={inspectionId}
+        status="queued"
+        steps={[{ step: "queued", message: "解析をキューに登録しました。", at: Date.now() }]}
+      />
+    );
   });
 
   // ── Code モード ───────────────────────────────────────────────────────────
@@ -219,6 +297,12 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   });
 
   app.post("/code/sessions", requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
+    const selected = await getSelectedRepo(settingsRepo);
+    if (!selected) {
+      return c.html(
+        <Alert type="error" message="対象リポジトリが選択されていません。ダッシュボードでリポジトリを選択してください。" />
+      );
+    }
     const body = await c.req.parseBody();
     const check = codeSessionCreateSchema(body);
     if (!check.ok) {
@@ -227,7 +311,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const v = check.value;
     const id = await codeManager.create({
       userId: c.get("identity").user.id,
-      repoUrl: v.repoUrl,
+      repoUrl: `https://github.com/${selected.owner}/${selected.repo}`,
       branch: v.branch ?? "main",
       baseBranch: v.baseBranch ?? "main",
       title: v.title,
@@ -259,10 +343,56 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     );
   });
 
-  // ── Refactor モード ───────────────────────────────────────────────────────
-  app.get("/refactor/proposals", requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
-    const rows = await refactorRepo.listProposals(c.get("identity").user.id);
-    return c.html(<ProposalList proposals={rows} />);
+  // ── Refactor モード（提案の生成/適用/却下は Inspection 詳細に統合） ────────
+  const renderInspectionDetail = async (c: Context<Env>, inspectionId: string) => {
+    const userId = c.get("identity").user.id;
+    const row = await inspections.find(inspectionId, userId);
+    if (!row) return c.html(<Alert type="error" message="検査結果が見つかりません。" />);
+    let result: InspectionResult;
+    try {
+      result = JSON.parse(row.result);
+    } catch {
+      return c.html(<Alert type="error" message="検査結果の読み込みに失敗しました。" />);
+    }
+    return c.html(<InspectionDetail result={result} inspectionId={row.id} status={row.status} />);
+  };
+
+  app.post("/refactor/:id/propose", requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
+    const userId = c.get("identity").user.id;
+    const inspectionId = c.req.param("id")!;
+    const selected = await getSelectedRepo(settingsRepo);
+    const repoUrl = selected
+      ? `https://github.com/${selected.owner}/${selected.repo}`
+      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const model = await auth.resolveModel(userId, "refactor");
+    await manager.generateProposal(inspectionId, userId, model);
+    return renderInspectionDetail(c, inspectionId);
+  });
+
+  app.post("/refactor/:id/apply", requireFlag(FLAGS.REFACTOR_APPLIED, true), async (c) => {
+    const userId = c.get("identity").user.id;
+    const inspectionId = c.req.param("id")!;
+    const selected = await getSelectedRepo(settingsRepo);
+    const repoUrl = selected
+      ? `https://github.com/${selected.owner}/${selected.repo}`
+      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const model = await auth.resolveModel(userId, "refactor");
+    await manager.applyProposal(inspectionId, userId, ports.codeRunner, model);
+    return renderInspectionDetail(c, inspectionId);
+  });
+
+  app.post("/refactor/:id/dismiss", requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
+    const userId = c.get("identity").user.id;
+    const inspectionId = c.req.param("id")!;
+    const selected = await getSelectedRepo(settingsRepo);
+    const repoUrl = selected
+      ? `https://github.com/${selected.owner}/${selected.repo}`
+      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    await manager.dismissProposal(inspectionId, userId);
+    return renderInspectionDetail(c, inspectionId);
   });
 
   // ── Webhook ───────────────────────────────────────────────────────────────
@@ -344,63 +474,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     }
   });
 
-  // ── API トークン ──────────────────────────────────────────────────────────
-  app.get("/tokens", async (c) =>
-    c.html(<TokenList tokens={await auth.listTokens(c.get("identity").user.id)} />)
-  );
-
-  app.post("/tokens", async (c) => {
-    const userId = c.get("identity").user.id;
-    const body = await c.req.parseBody({ all: true });
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) return c.html(<Alert type="error" message="トークン識別名を入力してください。" />);
-
-    const rawScopes = Array.isArray(body.scopes) ? body.scopes : body.scopes ? [body.scopes] : [];
-    const scopes = rawScopes.filter((s): s is Scope => typeof s === "string" && parseScopes(s).length > 0);
-
-    const rawDays = typeof body.expiresInDays === "string" ? Number.parseInt(body.expiresInDays, 10) : NaN;
-    const expiresInDays = Number.isFinite(rawDays) && rawDays >= 1 ? Math.min(rawDays, 365) : undefined;
-
-    const created = await auth.createToken(userId, name, scopes.length ? scopes : ["read"], expiresInDays);
-    return c.html(
-      <>
-        {/* シークレットはここで一度だけ表示される */}
-        <div class="card card-glass border border-emerald-500/30 p-4 space-y-3">
-          <div class="flex items-center gap-2 text-sm font-bold text-emerald-500">
-            <i data-lucide="check-circle" class="w-4 h-4" />
-            <span>トークンを生成しました</span>
-          </div>
-          <p class="text-xs opacity-60">
-            このシークレットは今回しか表示されません。安全な場所にコピーして保管してください。
-          </p>
-          <div class="flex items-center gap-2">
-            <code
-              id="new-token-secret"
-              class="flex-1 font-mono text-xs px-3 py-2 rounded-lg bg-base-200 border border-[var(--glass-border)] break-all select-all"
-            >
-              {created.secret}
-            </code>
-            <button
-              type="button"
-              class="btn btn-sm btn-outline rounded-lg gap-1"
-              onclick="navigator.clipboard.writeText(document.getElementById('new-token-secret').textContent)"
-            >
-              <i data-lucide="copy" class="w-3.5 h-3.5" />
-              <span>コピー</span>
-            </button>
-          </div>
-        </div>
-        <TokenList tokens={await auth.listTokens(userId)} oob />
-      </>
-    );
-  });
-
-  app.post("/tokens/:id/revoke", async (c) => {
-    const userId = c.get("identity").user.id;
-    await auth.revokeToken(userId, c.req.param("id")!);
-    return c.html(<TokenList tokens={await auth.listTokens(userId)} />);
-  });
-
   // ── 自己修復 ──────────────────────────────────────────────────────────────
   app.get("/healing/runs", async (c) => c.html(<HealingRunList runs={await runs.recent(50)} />));
 
@@ -432,6 +505,36 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const password = typeof body.password === "string" && body.password.length > 0 ? body.password : undefined;
     await auth.updateProfile(userId, email, password);
     return c.html(<Alert type="success" message="プロファイルを更新しました。" />);
+  });
+
+  // ── システム設定（管理者のみ: Webhook/機能トグル/スケジュール） ────────────
+  app.put("/system-settings", requireAdmin, async (c) => {
+    const body = await c.req.parseBody({ all: true });
+
+    // Webhook 全体スイッチ（チェックボックス: on/未送信）
+    await setWebhooksEnabled(settingsRepo, body.webhooksEnabled === "on" || body.webhooksEnabled === "true");
+
+    // 機能トグル（flag:<name> フィールド。フォームはチェック時のみ送信される）
+    const flags: Record<string, boolean> = {};
+    for (const t of SYSTEM_FEATURE_FLAGS) {
+      const raw = body[`flag:${t}`];
+      flags[t] = raw === "on" || raw === "true";
+    }
+    await setFeatureFlags(settingsRepo, flags);
+
+    // 自己修復スケジュール（app_settings.schedule.time = "HH:MM" UTC）
+    const time = typeof body.scheduleTime === "string" ? body.scheduleTime.trim() : "";
+    const raw = await settingsRepo.get(APP_SETTINGS_KEY);
+    let appSettings: Record<string, unknown> = {};
+    try {
+      appSettings = raw ? JSON.parse(raw) : {};
+    } catch {}
+    const schedule = (appSettings.schedule ?? {}) as Record<string, unknown>;
+    schedule.time = /^\d{2}:\d{2}$/.test(time) ? time : "";
+    appSettings.schedule = schedule;
+    await settingsRepo.set(APP_SETTINGS_KEY, JSON.stringify(appSettings));
+
+    return c.html(<Alert type="success" message="システム設定を保存しました。" />);
   });
 
   // ── 管理者 ────────────────────────────────────────────────────────────────

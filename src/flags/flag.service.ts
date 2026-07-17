@@ -1,4 +1,6 @@
 import type { FlagshipBinding } from "../env";
+import type { SettingsRepository } from "../db/repositories";
+import { getFeatureFlags } from "../config/settings.keys";
 
 export class FlagService {
   constructor(private readonly flags?: FlagshipBinding) {}
@@ -17,6 +19,27 @@ export class FlagService {
     if (!this.flags) return defaultValue;
     return this.flags.getNumberValue(flag, defaultValue);
   }
+}
+
+/**
+ * 機能トグルの解決順:
+ *   1. settings.feature_flags JSON に該当キーがあればそれを採用（DB 永続・GUI 管理）
+ *   2. Flagship（env.FLAGS）→ デフォルト値
+ */
+export async function resolveFeatureFlag(
+  settings: SettingsRepository,
+  flags: FlagService | undefined,
+  flagName: string,
+  defaultValue: boolean
+): Promise<boolean> {
+  const stored = await getFeatureFlags(settings).catch(() => ({}) as Record<string, boolean>);
+  if (Object.prototype.hasOwnProperty.call(stored, flagName)) {
+    return stored[flagName];
+  }
+  if (flags) {
+    return flags.get(flagName, defaultValue);
+  }
+  return defaultValue;
 }
 
 export const FLAGS = {

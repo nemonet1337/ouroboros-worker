@@ -81,25 +81,6 @@ export const profileUpdateSchema: Validator<{ email: string; password?: string }
   return { ok: true, value: { email: body.email as string, password: body.password as string | undefined } };
 };
 
-const VALID_SCOPES = new Set(["read", "inspect", "heal", "admin"]);
-
-export const tokenCreateSchema: Validator<{ name: string; scopes?: string[]; expiresInDays?: number }> = (body) => {
-  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
-  const errors: string[] = [];
-  if (typeof body.name !== "string" || body.name.length < 1 || body.name.length > 80)
-    errors.push("name must be a string between 1 and 80 characters");
-  if (body.scopes !== undefined) {
-    if (!Array.isArray(body.scopes) || body.scopes.some((s) => !VALID_SCOPES.has(s)))
-      errors.push("scopes must be an array of: read, inspect, heal, admin");
-  }
-  if (body.expiresInDays !== undefined) {
-    if (typeof body.expiresInDays !== "number" || body.expiresInDays < 1 || body.expiresInDays > 3650)
-      errors.push("expiresInDays must be a number between 1 and 3650");
-  }
-  if (errors.length) return { ok: false, errors };
-  return { ok: true, value: body as { name: string; scopes?: string[]; expiresInDays?: number } };
-};
-
 export const inspectSchema: Validator<Record<string, unknown>> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   const errors: string[] = [];
@@ -144,7 +125,7 @@ export const configSchema: Validator<Record<string, unknown>> = (body) => {
 };
 
 export const codeSessionCreateSchema: Validator<{
-  repoUrl: string;
+  repoUrl?: string;
   branch?: string;
   baseBranch?: string;
   title: string;
@@ -152,14 +133,15 @@ export const codeSessionCreateSchema: Validator<{
 }> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   const errors: string[] = [];
-  if (typeof body.repoUrl !== "string" || body.repoUrl.length === 0)
-    errors.push("repoUrl must be a non-empty string");
+  // repoUrl は任意（選択リポジトリを使う場合は省略可）。指定時は文字列であること。
+  if (body.repoUrl !== undefined && typeof body.repoUrl !== "string")
+    errors.push("repoUrl must be a string");
   if (typeof body.title !== "string" || body.title.length === 0)
     errors.push("title must be a non-empty string");
   if (typeof body.instruction !== "string" || body.instruction.length === 0)
     errors.push("instruction must be a non-empty string");
   if (errors.length) return { ok: false, errors };
-  return { ok: true, value: body as { repoUrl: string; branch?: string; baseBranch?: string; title: string; instruction: string } };
+  return { ok: true, value: body as { repoUrl?: string; branch?: string; baseBranch?: string; title: string; instruction: string } };
 };
 
 export const codeSessionActionSchema: Validator<Record<string, unknown>> = (body) => {

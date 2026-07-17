@@ -20,6 +20,8 @@ import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 import { FlagService } from "./flags/flag.service";
 import { AiUsageTracker, CostEstimator } from "./analytics/ai.usage.tracker";
+import { SettingsRepository } from "./db/repositories";
+import { getSelectedRepo } from "./config/settings.keys";
 
 export interface WorkerContext {
   ports: Ports;
@@ -40,6 +42,10 @@ export interface WorkerContext {
   flags?: FlagService;
   analytics?: AiUsageTracker;
   versionMetadata?: VersionMetadata;
+  /** 現在の対象リポジトリ（settings.selected_repo 優先で解決済み）。 */
+  currentRepo: { owner: string; repo: string };
+  /** 対象リポジトリを実行時に差し替える（vcs provider と config.vcs をミューテート）。 */
+  refreshRepo: (owner: string, repo: string) => void;
 }
 
 export async function buildContext(env: Env): Promise<WorkerContext> {
@@ -63,10 +69,16 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     ? await env.GITHUB_TOKEN_SECRET.get()
     : env.GITHUB_TOKEN;
 
-  // GITHUB_REPOSITORY / GITHUB_REPOSITORY_OWNER が未設定ならトークンから自動検出
-  let owner = env.GITHUB_REPOSITORY_OWNER || "";
-  let repo = "";
-  if (env.GITHUB_REPOSITORY) {
+  // 対象リポジトリの解決順:
+  //   1. settings.selected_repo（D1、システム全体で 1 つ・最優先）
+  //   2. GITHUB_REPOSITORY / GITHUB_REPOSITORY_OWNER env
+  //   3. GITHUB_TOKEN からの自動検出
+  const settingsRepo = new SettingsRepository(db);
+  const selected = await getSelectedRepo(settingsRepo).catch(() => null);
+
+  let owner = selected?.owner || env.GITHUB_REPOSITORY_OWNER || "";
+  let repo = selected?.repo || "";
+  if (!selected && env.GITHUB_REPOSITORY) {
     const parts = env.GITHUB_REPOSITORY.split("/");
     owner = owner || parts[0] || "";
     repo = parts[1] || "";
@@ -127,6 +139,15 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   const flags = env.FLAGS ? new FlagService(env.FLAGS) : undefined;
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
 
+  const currentRepo = { owner, repo };
+  const refreshRepo = (nextOwner: string, nextRepo: string): void => {
+    currentRepo.owner = nextOwner;
+    currentRepo.repo = nextRepo;
+    vcs.setRepo(nextOwner, nextRepo);
+    config.vcs.owner = nextOwner;
+    config.vcs.repo = nextRepo;
+  };
+
   return {
     ports,
     config,
@@ -144,5 +165,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     flags,
     analytics,
     versionMetadata: env.CF_VERSION_METADATA,
+    currentRepo,
+    refreshRepo,
   };
 }

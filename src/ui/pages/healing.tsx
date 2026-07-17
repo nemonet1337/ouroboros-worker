@@ -66,7 +66,7 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
         </h2>
 
         {/* 履歴一覧のHTMX動的読み込み */}
-        <div hx-get="/ui/fragments/healing/runs" hx-trigger="load" hx-target="#healing-runs" hx-swap="innerHTML">
+        <div hx-get="/ui/fragments/healing/runs" hx-trigger="load, every 5s" hx-target="#healing-runs" hx-swap="innerHTML">
           <div id="healing-runs">
             {/* ローディング時スケルトン */}
             <div class="card card-glass p-6 space-y-4">
