@@ -30,7 +30,7 @@ export const InspectionPage: FC<InspectionPageProps> = ({ user }) => {
               </h2>
               
               <form
-                hx-post="/api/v1/inspect"
+                hx-post="/ui/fragments/inspect"
                 hx-target="#inspect-result"
                 hx-swap="innerHTML"
                 hx-disabled-elt="button[type='submit']"
@@ -98,7 +98,7 @@ export const InspectionPage: FC<InspectionPageProps> = ({ user }) => {
               </h2>
               
               <div
-                hx-get="/api/v1/history"
+                hx-get="/ui/fragments/history"
                 hx-trigger="load"
                 hx-target="this"
                 hx-swap="innerHTML"

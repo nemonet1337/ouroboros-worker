@@ -96,7 +96,7 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
               <h2 class="font-semibold text-sm opacity-75">アクション</h2>
               {(session.status === "ready" || session.status === "failed") && (
                 <button
-                  hx-post={`/api/v1/code/sessions/${session.id}/generate`}
+                  hx-post={`/ui/fragments/code/sessions/${session.id}/generate`}
                   hx-target="#session-action-result"
                   hx-swap="innerHTML"
                   class="btn btn-gradient btn-sm w-full rounded-xl gap-2"
@@ -107,7 +107,7 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
               )}
               {session.status === "generated" && (
                 <button
-                  hx-post={`/api/v1/code/sessions/${session.id}/apply`}
+                  hx-post={`/ui/fragments/code/sessions/${session.id}/apply`}
                   hx-target="#session-action-result"
                   hx-swap="innerHTML"
                   class="btn btn-gradient btn-sm w-full rounded-xl gap-2"

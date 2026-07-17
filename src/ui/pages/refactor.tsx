@@ -21,7 +21,7 @@ export const RefactorPage: FC<RefactorPageProps> = ({ user }) => {
       </div>
 
       {/* 提案一覧のHTMXロードコンテナ */}
-      <div hx-get="/api/v1/refactor/proposals" hx-trigger="load" hx-target="this" hx-swap="innerHTML">
+      <div hx-get="/ui/fragments/refactor/proposals" hx-trigger="load" hx-target="this" hx-swap="innerHTML">
         {/* ローディング時スケルトン */}
         <div class="card card-glass p-6 space-y-4">
           <div class="skeleton h-8 w-1/4 rounded-lg"></div>

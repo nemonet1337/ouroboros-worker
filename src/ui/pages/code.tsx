@@ -36,7 +36,7 @@ export const CodePage: FC<CodePageProps> = ({ user }) => {
           <span>稼働中のセッション一覧</span>
         </h2>
         
-        <div hx-get="/api/v1/code/sessions" hx-trigger="load" hx-target="this" hx-swap="innerHTML">
+        <div hx-get="/ui/fragments/code/sessions" hx-trigger="load" hx-target="this" hx-swap="innerHTML">
           {/* 読み込み中のプレースホルダー */}
           <div class="card card-glass p-6 space-y-4">
             <div class="skeleton h-8 w-1/4 rounded-lg"></div>

@@ -28,7 +28,8 @@ export interface WorkerContext {
   logger: Logger;
   deployTarget: DeployTarget;
   alertRecipients: string[];
-  /**
+  /** OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
+   *
    * When explicitly set via the OURO_REGISTRATION_ENABLED env var, overrides
    * the DB-persisted registration toggle (see AuthService.isRegistrationEnabled).
    * true = force-open; false = force-closed (first-user bootstrap still allowed).
@@ -133,6 +134,8 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     logger,
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    // 未設定なら undefined のまま渡し、API/GUI は DB の登録トグルへフォールバックする
+    // （常に boolean 化すると env 未設定時に登録が恒久的に無効化されてしまう）
     registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined
         ? undefined

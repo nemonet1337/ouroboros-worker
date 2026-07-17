@@ -25,7 +25,7 @@ export const HomePage: FC<HomePageProps> = ({ user }) => {
       </div>
 
       {/* HTMXによる非同期メトリクス読み込みコンテナ */}
-      <div hx-get="/api/v1/metrics" hx-trigger="load" hx-target="#metrics-container" hx-swap="innerHTML">
+      <div hx-get="/ui/fragments/metrics" hx-trigger="load" hx-target="#metrics-container" hx-swap="outerHTML">
         <div id="metrics-container" class="space-y-8">
           
           {/* ローディング時スケルトン - 統計カード */}
