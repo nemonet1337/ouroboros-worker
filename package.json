@@ -20,7 +20,7 @@
     "hono": "^4.12.30"
   },
   "devDependencies": {
-        "@cloudflare/workers-types": "^5.20260710.1",
+        "@cloudflare/workers-types": "^5.20260718.1",
         "@tailwindcss/cli": "^4.3.3",
         "@types/diff": "^8.0.0",
         "@types/node": "^26.1.1",
