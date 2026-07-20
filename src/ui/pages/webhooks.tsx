@@ -82,13 +82,6 @@ export const WebhooksPage: FC<WebhooksPageProps> = ({ user }) => {
                   </select>
                 </div>
                 
-                <div class="form-control bg-base-200/40 border border-[var(--glass-border)] p-3 rounded-xl">
-                  <label class="label cursor-pointer flex items-center justify-between py-1">
-                    <span class="label-text font-semibold opacity-75">Webhook を有効にする</span>
-                    <input type="checkbox" name="enabled" class="toggle toggle-primary" checked />
-                  </label>
-                </div>
-                
                 <div class="form-control pt-2">
                   <button type="submit" class="btn btn-gradient rounded-xl py-3 h-auto gap-2 flex items-center justify-center">
                     <i data-lucide="plus" class="w-4 h-4" />

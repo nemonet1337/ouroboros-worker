@@ -101,7 +101,6 @@ export interface Env {
   HEALING_WORKFLOW: Workflow;
   RATE_LIMITER?: RateLimit;
   VECTORIZE?: VectorizeIndex;
-  VECTORIZE_CODE?: VectorizeIndex;
   CODE_CACHE?: KVNamespace;
   AI_ANALYTICS?: AnalyticsEngineDataset;
   BROWSER?: BrowserBinding;

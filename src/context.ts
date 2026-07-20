@@ -122,7 +122,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
   const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
-  const vectorizeCode = env.VECTORIZE_CODE ? new CfVectorizeAdapter(env.VECTORIZE_CODE) : undefined;
 
   const config: HealingConfig = {
     ...defaultHealingConfig,
@@ -134,7 +133,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     },
   };
 
-  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, codeRunner, rateLimiter, vectorize, vectorizeCode };
+  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, codeRunner, rateLimiter, vectorize };
   const auth = new AuthService(db);
   const flags = env.FLAGS ? new FlagService(env.FLAGS) : undefined;
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;

@@ -33,8 +33,6 @@ export interface Ports {
   runner: HealingRunner;
   codeRunner: CodeRunner;
   rateLimiter: RateLimiter;
-  /** 検査スコアの重み学習用インデックス（ouroboros-weight-profiles） */
-  vectorize?: VectorizePort;
   /** コード埋め込み検索用インデックス（ouroboros-code-index） */
-  vectorizeCode?: VectorizePort;
+  vectorize?: VectorizePort;
 }

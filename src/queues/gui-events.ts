@@ -46,11 +46,12 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           break;
         }
         case "codeindex.requested": {
-          if (!ctx.ports.vectorizeCode) {            await log.error("code index requested but VECTORIZE_CODE is not bound", {});
+          if (!ctx.ports.vectorize) {
+            await log.error("code index requested but VECTORIZE is not bound", {});
             break;
           }
           const indexer = new CodeIndexer(
-            ctx.ports.vectorizeCode,
+            ctx.ports.vectorize,
             ctx.ports.ai,
             ctx.ports.vcs as GitHubProvider,
             new SettingsRepository(ctx.ports.db)

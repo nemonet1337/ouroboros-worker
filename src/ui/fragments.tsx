@@ -325,7 +325,15 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const userId = c.get("identity").user.id;
     const model = await auth.resolveModel(userId, "coding");
     const planModel = await auth.resolveModel(userId, "plan");
-    await codeManager.generate(c.req.param("id")!, userId, { model, planModel });
+    const body = await c.req.parseBody();
+    const mode = body.codeMode === "code_only" ? "code_only" : "plan_code";
+    await codeManager.generate(c.req.param("id")!, userId, { model, planModel, mode });
+    const updated = await codeManager.get(c.req.param("id")!, userId);
+    if (updated && updated.status === "failed") {
+      return c.html(
+        <Alert type="error" message={`パッチ生成に失敗しました: ${updated.error_message ?? "不明なエラー"}`} />
+      );
+    }
     return c.html(
       <Alert type="success" message="パッチを生成しました。「状態を更新」を押して内容を確認してください。" />
     );
@@ -423,7 +431,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       user_id: userId,
       url: v.url as string,
       type: configData.adapter,
-      enabled: v.enabled === "on" || v.enabled === "true" ? 1 : 0,
+      enabled: 1,
       config: JSON.stringify(configData),
       created_at: Date.now(),
     });
@@ -477,6 +485,37 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   // ── 自己修復 ──────────────────────────────────────────────────────────────
   app.get("/healing/runs", async (c) => c.html(<HealingRunList runs={await runs.recent(50)} />));
 
+  // 修復実行のログ（R2 の healing/<runId>.log をモーダル表示用に取得）
+  app.get("/healing/runs/:id/logs", async (c) => {
+    const runId = c.req.param("id");
+    const run = await runs.find(runId);
+    if (!run) return c.html(<Alert type="error" message="実行が見つかりません。" />, 404);
+    const file = `healing/${runId}.log`;
+    let content = "";
+    try {
+      content = await ports.logs.read(file);
+    } catch {
+      content = "";
+    }
+    const summary = run.summary ? JSON.parse(run.summary as string) : null;
+    return c.html(
+      <div class="space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-semibold">実行ログ</div>
+          <div class="badge badge-sm">{run.status}</div>
+        </div>
+        {summary && (
+          <div class="text-xs opacity-60 font-mono whitespace-pre-wrap break-words">
+            {JSON.stringify(summary, null, 2)}
+          </div>
+        )}
+        <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
+          {content || "（ログはまだ出力されていません）"}
+        </pre>
+      </div>
+    );
+  });
+
   app.post("/healing", async (c) => {
     const userId = c.get("identity").user.id;
     const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
@@ -522,8 +561,20 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     }
     await setFeatureFlags(settingsRepo, flags);
 
-    // 自己修復スケジュール（app_settings.schedule.time = "HH:MM" UTC）
+    // 自己修復スケジュール（app_settings.schedule.time = "HH:MM" UTC, daysOfWeek = 曜日番号配列）
     const time = typeof body.scheduleTime === "string" ? body.scheduleTime.trim() : "";
+    const days = Array.isArray(body.scheduleDays)
+      ? (body.scheduleDays as unknown[])
+      : body.scheduleDays !== undefined
+        ? [body.scheduleDays]
+        : [];
+    const daysOfWeek = Array.from(
+      new Set(
+        days
+          .map((d) => Number(d))
+          .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6),
+      ),
+    );
     const raw = await settingsRepo.get(APP_SETTINGS_KEY);
     let appSettings: Record<string, unknown> = {};
     try {
@@ -531,6 +582,8 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     } catch {}
     const schedule = (appSettings.schedule ?? {}) as Record<string, unknown>;
     schedule.time = /^\d{2}:\d{2}$/.test(time) ? time : "";
+    // 空配列（全未選択）は毎日実行を意味するため、保存しない（undefined 扱い）。
+    schedule.daysOfWeek = daysOfWeek.length > 0 ? daysOfWeek : undefined;
     appSettings.schedule = schedule;
     await settingsRepo.set(APP_SETTINGS_KEY, JSON.stringify(appSettings));
 

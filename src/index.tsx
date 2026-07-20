@@ -289,9 +289,11 @@ export async function shouldRunScheduledHealing(
   const raw = await new SettingsRepository(wctx.ports.db).get("app_settings").catch(() => undefined);
   if (!raw) return false;
   let time = "";
+  let daysOfWeek: number[] | undefined;
   try {
-    const parsed = JSON.parse(raw) as { schedule?: { time?: string } };
+    const parsed = JSON.parse(raw) as { schedule?: { time?: string; daysOfWeek?: number[] } };
     time = typeof parsed.schedule?.time === "string" ? parsed.schedule.time : "";
+    daysOfWeek = Array.isArray(parsed.schedule?.daysOfWeek) ? parsed.schedule!.daysOfWeek : undefined;
   } catch {
     return false;
   }
@@ -299,5 +301,8 @@ export async function shouldRunScheduledHealing(
   if (!match) return false;
   const hour = Number(match[1]);
   if (!Number.isFinite(hour) || hour < 0 || hour > 23) return false;
-  return now.getUTCHours() === hour;
+  if (now.getUTCHours() !== hour) return false;
+  // 曜日指定が無い（undefined/空）場合は毎日実行。指定ありは一致時のみ。
+  if (daysOfWeek && daysOfWeek.length > 0 && !daysOfWeek.includes(now.getUTCDay())) return false;
+  return true;
 }

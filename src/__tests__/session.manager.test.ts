@@ -111,4 +111,42 @@ describe("CodeSessionManager", () => {
       expect.objectContaining({ instruction: "do something" })
     );
   });
+
+  it("code_only mode skips the plan phase and stores mode", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
+    (runner as any).generate = generateSpy;
+    const ai = {
+      name: "mock",
+      complete: vi.fn().mockResolvedValue("1. plan"),
+    };
+    manager = new CodeSessionManager(mockDb, runner, ai as any);
+
+    await manager.generate("session-123", "user-1", {
+      model: "m",
+      planModel: "p/m",
+      mode: "code_only",
+    });
+
+    // Plan フェーズ（ai.complete）は呼ばれない
+    expect(ai.complete).not.toHaveBeenCalled();
+    // 計画なしの instruction で生成される
+    expect(generateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ instruction: "do something" })
+    );
+    // mode カラムが code_only で保存される
+    expect(queries.some((q) => q.sql.includes("mode = ?") && q.params.includes("code_only"))).toBe(true);
+  });
+
+  it("stores error_message when runner returns empty patches", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({ patches: [], model: "m", error: "empty" });
+    (runner as any).generate = generateSpy;
+    manager = new CodeSessionManager(mockDb, runner);
+
+    await manager.generate("session-123", "user-1", { model: "m" });
+
+    const errQuery = queries.find((q) => q.sql.includes("error_message = ?"));
+    expect(errQuery).toBeDefined();
+    expect(errQuery!.params).toContain("empty");
+    expect(errQuery!.params).toContain("failed");
+  });
 });

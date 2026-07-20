@@ -100,6 +100,8 @@ export interface CodeGenerateOptions {
 export interface CodeGenerateResult {
   patches: Patch[];
   model: string;
+  /** 生成失敗時の理由（JSON パース失敗等）。成功時は undefined */
+  error?: string;
 }
 
 declare module "cloudflare:workers" {

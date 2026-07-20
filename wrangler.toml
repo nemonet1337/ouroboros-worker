@@ -51,18 +51,11 @@ binding = "HEALING_WORKFLOW"
 name = "ouroboros-healing"
 class_name = "HealingWorkflow"
 
-# Vectorize — 適応的重み付けシステム。32観点のスコアを 32 次元ベクターとして
-# 蓄積し、過去実績から観点ごとの重みを自動調整する。
-# インデックス作成: wrangler vectorize create ouroboros-weight-profiles --dimensions=32 --metric=cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "ouroboros-weight-profiles"
-
 # Vectorize — コードチャンク埋め込みインデックス。リポジトリのコードを
 # bge-base-en-v1.5（768 次元）で埋め込み、自己修復解析時の RAG コンテキストに使う。
 # インデックス作成: wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
 [[vectorize]]
-binding = "VECTORIZE_CODE"
+binding = "VECTORIZE"
 index_name = "ouroboros-code-index"
 
 # Worker Loader（Dynamic Workers、オープンベータ）— RUNNER / RUNNER_URL が未設定の

@@ -83,7 +83,17 @@ export const HealingRunList: FC<HealingRunListProps> = ({ runs, oob }) => {
             );
             return (
               <tr key={run.id} class="border-b border-[var(--glass-border)]/30 align-top">
-                <td class="p-3 font-mono text-xs text-primary">{run.id.slice(0, 8)}</td>
+                <td class="p-3 font-mono text-xs">
+                  <button
+                    class="link link-primary"
+                    hx-get={`/ui/fragments/healing/runs/${run.id}/logs`}
+                    hx-target="#healing-log-modal-body"
+                    hx-swap="innerHTML"
+                    onclick="healing_log_modal.showModal()"
+                  >
+                    {run.id.slice(0, 8)}
+                  </button>
+                </td>
                 <td class="p-3 text-xs">{TRIGGER_LABELS[run.trigger] ?? run.trigger}</td>
                 <td class="p-3">
                   <span class={`badge badge-sm rounded-full font-bold ${status.class}`}>{status.label}</span>
@@ -135,6 +145,20 @@ export const HealingRunList: FC<HealingRunListProps> = ({ runs, oob }) => {
           })}
         </tbody>
       </table>
+      <dialog id="healing-log-modal" class="modal">
+        <div class="modal-box max-w-3xl">
+          <h3 class="font-bold text-lg mb-4">修復実行ログ</h3>
+          <div id="healing-log-modal-body" class="empty:hidden"></div>
+          <div class="modal-action">
+            <form method="dialog">
+              <button class="btn btn-sm">閉じる</button>
+            </form>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button>閉じる</button>
+        </form>
+      </dialog>
     </div>
   );
 };

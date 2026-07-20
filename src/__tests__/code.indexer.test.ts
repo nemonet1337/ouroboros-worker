@@ -108,4 +108,23 @@ describe("CodeIndexer", () => {
     expect(snippets).toHaveLength(1);
     expect(snippets[0]).toMatchObject({ file: "src/a.ts", startLine: 1, text: "snippet" });
   });
+
+  it("reindex passes a bounded maxFiles to getRepoFiles to avoid subrequest limits", async () => {
+    const { repo } = mockSettings();
+    const { port } = mockVectorize();
+    const ai = mockAiWithEmbed();
+    let capturedMax: number | undefined;
+    const vcs = {
+      getRepoFiles: async (maxFiles?: number) => {
+        capturedMax = maxFiles;
+        return [{ path: "src/a.ts", content: "const a = 1;\nconst b = 2;" }];
+      },
+    };
+    const indexer = new CodeIndexer(port, ai as any, vcs, repo);
+
+    await indexer.reindex();
+
+    expect(capturedMax).toBeDefined();
+    expect(capturedMax!).toBeLessThanOrEqual(80);
+  });
 });

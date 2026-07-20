@@ -71,7 +71,7 @@ export class WorkersAiProvider implements AiProvider {
   }
 
   /**
-   * テキスト埋め込み。VECTORIZE_CODE インデックス（768 次元）と揃えるため
+   * テキスト埋め込み。VECTORIZE インデックス（768 次元）と揃えるため
    * モデルは bge-base-en-v1.5 固定。バッチ上限 100 件ずつ分割して呼び出す。
    */
   async embed(texts: string[]): Promise<number[][]> {

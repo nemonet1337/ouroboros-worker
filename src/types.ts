@@ -576,6 +576,10 @@ export interface CodeSessionRow {
   status: CodeSessionStatus;
   /** Plan フェーズで生成された実装計画（0008_mode_models で追加） */
   plan?: string | null;
+  /** パッチ生成失敗時のエラー理由（0010 で追加） */
+  error_message?: string | null;
+  /** 生成モード: plan_code / code_only（0010 で追加） */
+  mode?: string;
   generated_patches: string | null;
   applied_branch: string | null;
   pr_number: number | null;

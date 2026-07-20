@@ -65,9 +65,13 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   featureFlags = {},
 }) => {
   const isAdmin = user?.role === "admin";
-  const schedule = (appSettings.schedule ?? {}) as Record<string, string>;
+  const schedule = (appSettings.schedule ?? {}) as Record<string, unknown>;
   // schedule.time は "HH:MM"（UTC）。未設定は cronExpr から推定できないので空。
   const scheduleTime = typeof schedule.time === "string" ? schedule.time : "";
+  // schedule.daysOfWeek は UTC の曜日番号配列（0=日〜6=土）。空/未設定は毎日実行。
+  const daysOfWeekRaw = Array.isArray(schedule.daysOfWeek) ? (schedule.daysOfWeek as unknown[]) : [];
+  const daysOfWeek = new Set(daysOfWeekRaw.filter((d): d is number => typeof d === "number"));
+  const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
   return (
     <Layout user={user}>
@@ -272,6 +276,31 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     <label class="label px-1">
                       <span class="label-text-alt opacity-50">
                         毎時 cron が UTC の HH:00 と照合し、一致時に自己修復を実行します。空欄で無効。
+                      </span>
+                    </label>
+                  </div>
+
+                  <div class="form-control">
+                    <label class="label py-1">
+                      <span class="label-text font-semibold opacity-75">実行曜日 (UTC)</span>
+                    </label>
+                    <div class="flex flex-wrap gap-2">
+                      {DAY_LABELS.map((label, idx) => (
+                        <label class="label cursor-pointer gap-1 px-1">
+                          <input
+                            type="checkbox"
+                            name="scheduleDays"
+                            value={idx}
+                            class="checkbox checkbox-sm checkbox-primary"
+                            checked={daysOfWeek.has(idx)}
+                          />
+                          <span class="label-text text-sm opacity-75">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <label class="label px-1">
+                      <span class="label-text-alt opacity-50">
+                        未選択（全て未チェック）の場合は毎日実行します。
                       </span>
                     </label>
                   </div>

@@ -16,7 +16,6 @@ import type { Logger } from "../logging/logger";
 import type { InspectionRequest, InspectionResult } from "../types";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import { InspectionEngine } from "../inspection/inspection.engine";
-import { WeightAdvisor } from "../inspection/weight.advisor";
 import { newId } from "../auth/tokens";
 
 export interface HistoryEntry {
@@ -281,8 +280,7 @@ export async function runUserInspection(opts: {
 
   const model = await auth.resolveModel(userId, "inspection");
 
-  const advisor = ports.vectorize ? new WeightAdvisor(ports.vectorize) : undefined;
-  const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } }, advisor);
+  const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } });
   try {
     const result = await engine.inspect(req);
     await inspections.insert({

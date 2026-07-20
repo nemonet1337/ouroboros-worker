@@ -14,7 +14,6 @@ import { InspectionRepository, SettingsRepository } from "../db/repositories";
 import { CodeIndexer, CODE_INDEX_STATUS_KEY, type CodeIndexStatus } from "../vectorize/code.indexer";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
-import { WeightAdvisor } from "../inspection/weight.advisor";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import type { InspectionRequest, Language } from "../types";
 import { newId } from "../auth/tokens";
@@ -78,10 +77,10 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
   };
 
   try {
-    const vectorizeCode = ctx.ports.vectorizeCode;
+    const vectorize = ctx.ports.vectorize;
     const vcs = ctx.ports.vcs as GitHubProvider;
 
-    if (!vectorizeCode || !ctx.ports.ai.embed) {
+    if (!vectorize || !ctx.ports.ai.embed) {
       // Vectorize が無い場合は RAG をスキップし、代表ファイルを直接取得して解析する
       await push("analyzing", "Vectorize 未設定のため、リポジトリのファイルを直接解析します。", "analyzing");
       const files = await vcs.getRepoFiles(MAX_ANALYSIS_FILES);
@@ -89,39 +88,47 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
       return;
     }
 
-    const indexer = new CodeIndexer(vectorizeCode, ctx.ports.ai, vcs, settings);
+    const indexer = new CodeIndexer(vectorize, ctx.ports.ai, vcs, settings);
 
-    // 1. indexing — 古い/未構築ならインデックス再構築
+    // 1. indexing — 古い/未構築ならインデックス再構築（失敗時は検索をスキップして直接解析へフォールバック）
     const currentStatus = await indexer.getStatus();
+    let indexReady = !needsReindex(currentStatus);
     if (needsReindex(currentStatus)) {
       await push("indexing", "コードインデックスを構築しています（Vectorize）…", "indexing");
       const status = await indexer.reindex();
       if (status.status === "failed") {
-        await push("indexing", `インデックス構築に失敗しました: ${status.error ?? "不明なエラー"}`, "indexing");
+        await push("indexing", `インデックス構築に失敗しました: ${status.error ?? "不明なエラー"}（直接解析へフォールバック）`, "indexing");
+        indexReady = false;
       } else {
         await push("indexing", `インデックス構築完了（${status.files} ファイル / ${status.chunks} チャンク）。`, "indexing");
+        indexReady = true;
       }
     } else {
       await push("indexing", "既存のコードインデックスを使用します。", "indexing");
     }
 
-    // 2. searching — 指示に関連するチャンクを検索
-    await push("searching", "関連するコードを Vectorize で検索しています…", "searching");
-    const query = instruction.trim() || "コード全体の品質・セキュリティ・パフォーマンス上の問題";
-    const snippets = await indexer.search(query, 12);
-    const targetPaths = uniqueTopPaths(snippets.map((s) => s.file), MAX_ANALYSIS_FILES);
-    await push(
-      "searching",
-      snippets.length > 0
-        ? `関連チャンク ${snippets.length} 件を取得（対象ファイル: ${targetPaths.join(", ") || "なし"}）。`
-        : "関連チャンクが見つからなかったため代表ファイルを解析します。",
-      "searching"
-    );
+    // 2. searching — 指示に関連するチャンクを検索（インデックス未構築/失敗時はスキップ）
+    let targetPaths: string[] = [];
+    if (indexReady) {
+      await push("searching", "関連するコードを Vectorize で検索しています…", "searching");
+      const query = instruction.trim() || "コード全体の品質・セキュリティ・パフォーマンス上の問題";
+      const snippets = await indexer.search(query, 12);
+      targetPaths = uniqueTopPaths(snippets.map((s) => s.file), MAX_ANALYSIS_FILES);
+      await push(
+        "searching",
+        snippets.length > 0
+          ? `関連チャンク ${snippets.length} 件を取得（対象ファイル: ${targetPaths.join(", ") || "なし"}）。`
+          : "関連チャンクが見つからなかったため代表ファイルを解析します。",
+        "searching"
+      );
+    } else {
+      await push("searching", "インデックス未構築のため、代表ファイルを直接解析します。", "searching");
+    }
 
     // 3. analyzing — 対象ファイルの本文を取得して AI 解析
     await push("analyzing", "AI によるコード解析を実行しています…", "analyzing");
-    const allFiles = await vcs.getRepoFiles(300);
-    let files = allFiles.filter((f) => targetPaths.includes(f.path));
+    const allFiles = await vcs.getRepoFiles(MAX_ANALYSIS_FILES);
+    let files = targetPaths.length > 0 ? allFiles.filter((f) => targetPaths.includes(f.path)) : [];
     if (files.length === 0) files = allFiles.slice(0, MAX_ANALYSIS_FILES);
 
     await analyzeAndStore({ ctx, inspections, inspectionId, userId, instruction, files, steps });
@@ -159,11 +166,9 @@ async function analyzeAndStore(opts: {
   };
 
   const model = await ctx.auth.resolveModel(userId, "inspection");
-  const advisor = ctx.ports.vectorize ? new WeightAdvisor(ctx.ports.vectorize) : undefined;
   const engine = new InspectionEngine(
     ctx.ports.ai,
-    { ai: { ...defaultInspectionConfig.ai, model } },
-    advisor
+    { ai: { ...defaultInspectionConfig.ai, model } }
   );
 
   const result = await engine.inspect(req);

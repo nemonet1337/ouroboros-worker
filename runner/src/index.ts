@@ -483,15 +483,17 @@ export default class RunnerWorker extends WorkerEntrypoint<Env> {
       : String(aiResponse ?? "");
 
     let patches: Patch[] = [];
+    let error: string | undefined;
     try {
       const parsed = JSON.parse(raw.trim());
       if (Array.isArray(parsed.patches)) patches = parsed.patches as Patch[];
       else if (Array.isArray(parsed)) patches = parsed as Patch[];
+      else error = "AI の応答に patches 配列が含まれていませんでした。";
     } catch {
-      patches = [];
+      error = `AI 応答の JSON パースに失敗しました: ${raw.slice(0, 200)}`;
     }
 
-    return { patches, model };
+    return { patches, model, error };
   }
 }
 

@@ -19,7 +19,6 @@ import { computeContentHash, preprocessFiles } from "./preprocessor";
 import { buildUserPrompt, SYSTEM_PROMPT } from "./prompt.builder";
 import { aggregateScoreCards, calculateScoreCard } from "./score.calculator";
 import { selectRefactorCandidates } from "./refactor.selector";
-import type { WeightAdvisor } from "./weight.advisor";
 import { ASPECTS } from "./aspects";
 
 // ─── Internal AI response types ──────────────────────────────────────────────
@@ -221,8 +220,7 @@ export class InspectionEngine {
 
   constructor(
     private readonly ai: AiProvider,
-    config: Partial<InspectionConfig> = {},
-    private readonly weightAdvisor?: WeightAdvisor
+    config: Partial<InspectionConfig> = {}
   ) {
     this.config = {
       ...defaultInspectionConfig,
@@ -252,16 +250,7 @@ export class InspectionEngine {
     );
     const contentHash = computeContentHash(processedFiles);
 
-    const weights = this.weightAdvisor
-      ? await this.weightAdvisor.suggestWeights(this.config.scoring.weights).catch((err) => {
-          // Vectorize インデックス未作成時等の失敗はデフォルト重みにフォールバック
-          console.warn(
-            "[InspectionEngine] weight advisor failed, using default weights:",
-            err instanceof Error ? err.message : err
-          );
-          return this.config.scoring.weights;
-        })
-      : this.config.scoring.weights;
+    const weights = this.config.scoring.weights;
 
     const aiOutput = await this.callAI({ ...request, files: processedFiles });
 
@@ -315,11 +304,6 @@ export class InspectionEngine {
       aiModel: this.config.ai.model,
       contentHash,
     };
-
-    // Non-blocking: store result in Vectorize for future weight suggestions.
-    if (this.weightAdvisor) {
-      this.weightAdvisor.store(result).catch(() => {});
-    }
 
     return result;
   }

@@ -26,7 +26,7 @@ const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low", "info"]
  * AIAnalyzer のプロンプトへ渡す追加コンテキストを組み立てる。エラーは非致命。
  */
 async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Promise<string | undefined> {
-  if (!ctx.ports.vectorizeCode || !ctx.ports.ai.embed) return undefined;
+  if (!ctx.ports.vectorize || !ctx.ports.ai.embed) return undefined;
   try {
     const top = [...findings.staticAnalysis, ...findings.secrets].slice(0, 10);
     if (top.length === 0) return undefined;
@@ -36,7 +36,7 @@ async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Prom
       .slice(0, 1500);
 
     const indexer = new CodeIndexer(
-      ctx.ports.vectorizeCode,
+      ctx.ports.vectorize,
       ctx.ports.ai,
       ctx.ports.vcs as GitHubProvider,
       new SettingsRepository(ctx.ports.db)
@@ -63,6 +63,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
     const runs = new HealingRunRepository(ctx.ports.db);
     const { runId } = event.payload;
     const log = ctx.logger.child("workflow");
+    const runLog = ctx.logger.child(`healing/${runId}`);
 
     try {
       await this.execute(event, step, ctx, runs);
@@ -71,6 +72,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       const message = err instanceof Error ? err.message : String(err);
       await runs.update(runId, { status: "failed", summary: JSON.stringify({ error: message }) });
       await log.error("workflow failed", { runId, reason: message });
+      await runLog.error("workflow failed", { reason: message });
       throw err;
     }
   }
@@ -83,15 +85,19 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
   ): Promise<void> {
     const { runId, dryRun } = event.payload;
     const log = ctx.logger.child("workflow");
+    const runLog = ctx.logger.child(`healing/${runId}`);
 
     const findings = await step.do("scan", async (): Promise<AllFindings> => {
       await runs.update(runId, { status: "scanning", workflow_id: event.instanceId });
+      await runLog.info("scan: 開始");
       const r = await ctx.ports.runner.scan();
+      await runLog.info("scan: 完了", { groups: r.findings.staticAnalysis.length + r.findings.secrets.length });
       return r.findings;
     });
 
     const analysis = await step.do("analyze", async () => {
       await runs.update(runId, { status: "analyzing" });
+      await runLog.info("analyze: 開始");
       // healing モードのモデルをトリガーしたユーザー設定から解決（cron 等はデフォルト）
       const run = await runs.find(runId);
       const model = await ctx.auth.resolveModel(run?.user_id, "healing");
@@ -100,11 +106,13 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       const result = await new AIAnalyzer(config, ctx.ports.ai).analyze(findings, codeContext);
       await new Notifier(ctx.config).notifyScanComplete(result);
       await new AlertService(ctx.ports.mailer, ctx.alertRecipients).scanRisk(result);
+      await runLog.info("analyze: 完了", { riskScore: result.riskScore });
       return result;
     });
 
     await step.do("fix", async () => {
       await runs.update(runId, { status: "fixing" });
+      await runLog.info("fix: 開始");
       const dedup = new PRDeduplicator(ctx.config, ctx.ports.vcs);
       const cache = new FixCache(ctx.config, ctx.ports.vcs);
       const escalator = new Escalator(ctx.config, ctx.ports.vcs);
@@ -165,6 +173,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
         summary: JSON.stringify({ riskScore: analysis.riskScore, prsCreated, prs }),
       });
       await log.info("workflow cycle done", { runId, prsCreated });
+      await runLog.info("fix: 完了", { prsCreated });
     });
   }
 }

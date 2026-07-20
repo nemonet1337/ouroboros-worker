@@ -400,9 +400,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   // ── コードインデックス（Vectorize RAG）────────────────────────────────────
   app.post("/code-index/reindex", requireAdmin, async (c) => {
-    if (!ports.vectorizeCode) {
+    if (!ports.vectorize) {
       return c.json(
-        { error: { code: "not_configured", message: "VECTORIZE_CODE binding is not configured" } },
+        { error: { code: "not_configured", message: "VECTORIZE binding is not configured" } },
         503
       );
     }

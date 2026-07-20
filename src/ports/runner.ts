@@ -64,6 +64,8 @@ export interface CodeInitOptions {
 export interface CodeGenerateResult {
   patches: Patch[];
   model: string;
+  /** 生成失敗時の理由（JSON パース失敗等）。成功時は undefined */
+  error?: string;
 }
 
 export interface CodeRunner {
@@ -209,6 +211,6 @@ export class NoopRunner implements HealingRunner, CodeRunner {
   }
 
   async generate(_opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
-    return { patches: [], model: "" };
+    return { patches: [], model: "", error: "no runner configured" };
   }
 }

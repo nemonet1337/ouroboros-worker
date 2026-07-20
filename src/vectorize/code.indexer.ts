@@ -27,7 +27,12 @@ interface RepoFileSource {
 const CHUNK_LINES = 50;
 const CHUNK_OVERLAP = 10;
 const CHUNK_MAX_CHARS = 1500;
-const MAX_CHUNKS = 2000;
+// 1 回の Worker 呼び出し（Queue コンシューマー含む）で発行できる subrequest 数には
+// 上限があるため、インデックス対象を抑える。ファイル数 × blob 取得 + 埋め込み/upsert
+// バッチがこの上限を超えないよう、チャンク数も併せて絞る。
+const MAX_INDEX_FILES = 80;
+const MAX_CHUNKS = 500;
+const EMBED_BATCH = 20;
 const METADATA_TEXT_LIMIT = 800;
 
 /**
@@ -78,7 +83,7 @@ export class CodeIndexer {
     await this.saveStatus({ status: "indexing", files: 0, chunks: 0, updatedAt: Date.now() });
 
     try {
-      const files = await this.vcs.getRepoFiles();
+      const files = await this.vcs.getRepoFiles(MAX_INDEX_FILES);
       const allChunks: Array<{ id: string; file: string; startLine: number; endLine: number; text: string }> = [];
       for (const file of files) {
         for (const chunk of this.chunk(file)) {
@@ -88,9 +93,9 @@ export class CodeIndexer {
         if (allChunks.length >= MAX_CHUNKS) break;
       }
 
-      // 100 件ずつ埋め込み + upsert（Queue コンシューマーの実行時間内に収める）
-      for (let i = 0; i < allChunks.length; i += 100) {
-        const batch = allChunks.slice(i, i + 100);
+      // 小バッチずつ埋め込み + upsert（subrequest 上限に配慮）
+      for (let i = 0; i < allChunks.length; i += EMBED_BATCH) {
+        const batch = allChunks.slice(i, i + EMBED_BATCH);
         const vectors = await this.ai.embed(batch.map((c) => c.text));
         await this.vectorize.upsert(
           batch.map((c, j) => ({

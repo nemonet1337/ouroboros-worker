@@ -47,8 +47,9 @@ export class CodeSessionManager {
     await this.db.exec(
       `INSERT INTO code_sessions
          (id, user_id, repo_url, branch, base_branch, title, instruction, status,
-          generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at,
+          error_message, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id,
         row.user_id,
@@ -64,6 +65,8 @@ export class CodeSessionManager {
         row.pr_url,
         row.created_at,
         row.updated_at,
+        null,
+        "plan_code",
       ]
     );
 
@@ -95,7 +98,7 @@ export class CodeSessionManager {
   async generate(
     id: string,
     userId: string,
-    opts: { model?: string; planModel?: string } = {}
+    opts: { model?: string; planModel?: string; mode?: "plan_code" | "code_only" } = {}
   ): Promise<void> {
     const row = await this.get(id, userId);
     if (!row) throw new Error("code session not found");
@@ -104,31 +107,37 @@ export class CodeSessionManager {
       throw new Error(`cannot generate from status: ${row.status}`);
     }
 
+    const mode: "plan_code" | "code_only" = opts.mode ?? "plan_code";
     await this.updateStatus(id, userId, "generating");
 
-    // Plan フェーズ: planModel で実装計画を先に生成する（失敗しても生成は続行）
-    const plan = await this.generatePlan(id, row.instruction, opts.planModel);
+    // Plan フェーズ: plan_code モードのみ planModel で実装計画を先に生成する
+    const plan = mode === "plan_code"
+      ? await this.generatePlan(id, row.instruction, opts.planModel)
+      : "";
 
     try {
-      const { patches } = await this.runner.generate({
+      const result = await this.runner.generate({
         instruction: plan
           ? `${row.instruction}\n\n## 実装計画\n${plan}`
           : row.instruction,
         sessionId: id,
         model: opts.model,
       });
+      const patches = result.patches;
 
       if (!patches.length) {
-        await this.updateStatus(id, userId, "failed");
+        const reason = result.error ?? "生成されたパッチが空でした。";
+        await this.setError(id, userId, reason, mode);
         return;
       }
 
       await this.db.exec(
-        `UPDATE code_sessions SET generated_patches = ?, status = ?, updated_at = ? WHERE id = ?`,
-        [JSON.stringify(patches), "generated", Date.now(), id]
+        `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, mode = ?, updated_at = ? WHERE id = ?`,
+        [JSON.stringify(patches), "generated", mode, Date.now(), id]
       );
-    } catch {
-      await this.updateStatus(id, userId, "failed");
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      await this.setError(id, userId, `パッチ生成に失敗しました: ${reason}`, mode);
     }
   }
 
@@ -219,6 +228,18 @@ export class CodeSessionManager {
     await this.db.exec(
       `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       [status, Date.now(), id, userId]
+    );
+  }
+
+  private async setError(
+    id: string,
+    userId: string,
+    errorMessage: string,
+    mode: "plan_code" | "code_only"
+  ): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET status = ?, error_message = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["failed", errorMessage, mode, Date.now(), id, userId]
     );
   }
 }

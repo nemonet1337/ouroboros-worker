@@ -88,6 +88,14 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
                 </div>
               </div>
             ) : null}
+
+            {/* 生成失敗時のエラー理由 */}
+            {session.status === "failed" && session.error_message ? (
+              <div class="alert alert-error text-sm">
+                <i data-lucide="alert-triangle" class="w-4 h-4" />
+                <span>{session.error_message}</span>
+              </div>
+            ) : null}
           </div>
 
           {/* サイドパネル: アクション */}
@@ -95,15 +103,41 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
             <div class="bg-base-200 rounded-xl p-4 space-y-3">
               <h2 class="font-semibold text-sm opacity-75">アクション</h2>
               {(session.status === "ready" || session.status === "failed") && (
-                <button
-                  hx-post={`/ui/fragments/code/sessions/${session.id}/generate`}
-                  hx-target="#session-action-result"
-                  hx-swap="innerHTML"
-                  class="btn btn-gradient btn-sm w-full rounded-xl gap-2"
-                >
-                  <i data-lucide="sparkles" class="w-4 h-4" />
-                  パッチを生成
-                </button>
+                <>
+                  {/* 生成モード選択（Plan+Code / Code のみ） */}
+                  <div class="form-control" id="code-mode-inputs">
+                    <label class="label cursor-pointer justify-start gap-2 py-1">
+                      <input
+                        type="radio"
+                        name="codeMode"
+                        value="plan_code"
+                        class="radio radio-primary radio-sm"
+                        checked={session.mode !== "code_only"}
+                      />
+                      <span class="label-text text-xs">Plan + Code（計画を立ててから生成）</span>
+                    </label>
+                    <label class="label cursor-pointer justify-start gap-2 py-1">
+                      <input
+                        type="radio"
+                        name="codeMode"
+                        value="code_only"
+                        class="radio radio-primary radio-sm"
+                        checked={session.mode === "code_only"}
+                      />
+                      <span class="label-text text-xs">Code のみ（計画なしで直接生成）</span>
+                    </label>
+                  </div>
+                  <button
+                    hx-post={`/ui/fragments/code/sessions/${session.id}/generate`}
+                    hx-target="#session-action-result"
+                    hx-swap="innerHTML"
+                    hx-include="#code-mode-inputs"
+                    class="btn btn-gradient btn-sm w-full rounded-xl gap-2"
+                  >
+                    <i data-lucide="sparkles" class="w-4 h-4" />
+                    パッチを生成
+                  </button>
+                </>
               )}
               {session.status === "generated" && (
                 <button

@@ -344,6 +344,8 @@ export interface CodeSessionRow {
   instruction: string;
   status: string;
   plan?: string | null;
+  error_message?: string | null;
+  mode?: string;
   generated_patches: string | null;
   applied_branch: string | null;
   pr_number: number | null;
@@ -359,12 +361,14 @@ export class CodeSessionRepository {
     await this.db.exec(
       `INSERT INTO code_sessions
         (id, user_id, repo_url, branch, base_branch, title, instruction, status,
-         generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at,
+         error_message, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id, row.user_id, row.repo_url, row.branch, row.base_branch,
         row.title, row.instruction, row.status, row.generated_patches,
         row.applied_branch, row.pr_number, row.pr_url, row.created_at, row.updated_at,
+        row.error_message ?? null, row.mode ?? "plan_code",
       ]
     );
   }
@@ -391,10 +395,17 @@ export class CodeSessionRepository {
     );
   }
 
-  async setPatches(id: string, userId: string, patches: unknown[]): Promise<void> {
+  async setPatches(id: string, userId: string, patches: unknown[], mode?: string): Promise<void> {
     await this.db.exec(
-      `UPDATE code_sessions SET generated_patches = ?, status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-      [JSON.stringify(patches), "generated", Date.now(), id, userId]
+      `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      [JSON.stringify(patches), "generated", mode ?? "plan_code", Date.now(), id, userId]
+    );
+  }
+
+  async setError(id: string, userId: string, errorMessage: string, mode?: string): Promise<void> {
+    await this.db.exec(
+      `UPDATE code_sessions SET status = ?, error_message = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["failed", errorMessage, mode ?? "plan_code", Date.now(), id, userId]
     );
   }
 
