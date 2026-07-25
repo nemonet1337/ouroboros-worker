@@ -65,17 +65,15 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
           <span>修復実行履歴</span>
         </h2>
 
-        {/* 履歴一覧のHTMX動的読み込み */}
-        <div hx-get="/ui/fragments/healing/runs" hx-trigger="load, every 5s" hx-target="#healing-runs" hx-swap="innerHTML">
-          <div id="healing-runs">
-            {/* ローディング時スケルトン */}
-            <div class="card card-glass p-6 space-y-4">
-              <div class="skeleton h-8 w-1/4 rounded-lg"></div>
-              <div class="space-y-2">
-                <div class="skeleton h-12 w-full rounded-lg"></div>
-                <div class="skeleton h-12 w-full rounded-lg"></div>
-                <div class="skeleton h-12 w-full rounded-lg"></div>
-              </div>
+        {/* 履歴一覧のHTMX動的読み込み（フラグメント側がページングと自動更新を持つ） */}
+        <div hx-get="/ui/fragments/healing/runs" hx-trigger="load" hx-swap="outerHTML">
+          {/* ローディング時スケルトン */}
+          <div class="card card-glass p-6 space-y-4">
+            <div class="skeleton h-8 w-1/4 rounded-lg"></div>
+            <div class="space-y-2">
+              <div class="skeleton h-12 w-full rounded-lg"></div>
+              <div class="skeleton h-12 w-full rounded-lg"></div>
+              <div class="skeleton h-12 w-full rounded-lg"></div>
             </div>
           </div>
         </div>

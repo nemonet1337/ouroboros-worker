@@ -47,6 +47,7 @@ import { CodeSessionList } from "./components/code-session-list";
 import { WebhookList } from "./components/webhook-list";
 import { HealingRunList } from "./components/healing-run-list";
 import { RepoSelector } from "./components/repo-selector";
+import { NotificationBell, type NotificationItem } from "./components/notification-bell";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
 import { resolveFeatureFlag } from "../flags/flag.service";
 import { getSelectedRepo, setSelectedRepo, setWebhooksEnabled, setFeatureFlags } from "../config/settings.keys";
@@ -159,6 +160,56 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     }
     await next();
   };
+
+  // ── 進捗通知（ナビバーのベル。全ページから 10 秒間隔でポーリングされる） ──
+  const PROGRESS_LABELS: Record<string, string> = {
+    queued: "待機中",
+    indexing: "インデックス構築中",
+    searching: "コード検索中",
+    analyzing: "解析中",
+    scanning: "スキャン中",
+    fixing: "修復中",
+    running: "実行中",
+    initializing: "初期化中",
+    generating: "パッチ生成中",
+    applying: "適用中",
+  };
+
+  app.get("/notifications", async (c) => {
+    const userId = c.get("identity").user.id;
+    const [activeInspections, activeRuns, activeSessions] = await Promise.all([
+      inspections.listActive(userId),
+      runs.listActive(),
+      codeSessions.listActive(userId),
+    ]);
+    const items: NotificationItem[] = [
+      ...activeInspections.map((r) => ({
+        icon: "scan-search",
+        kind: "コード解析",
+        title: r.target ?? r.id.slice(0, 8),
+        status: PROGRESS_LABELS[r.status] ?? r.status,
+        href: "/inspection",
+        at: r.created_at,
+      })),
+      ...activeRuns.map((r) => ({
+        icon: "wrench",
+        kind: "自己修復",
+        title: r.id.slice(0, 8),
+        status: PROGRESS_LABELS[r.status] ?? r.status,
+        href: "/healing",
+        at: r.created_at,
+      })),
+      ...activeSessions.map((r) => ({
+        icon: "code",
+        kind: "コード編集",
+        title: r.title,
+        status: PROGRESS_LABELS[r.status] ?? r.status,
+        href: `/code/sessions/${r.id}`,
+        at: r.created_at,
+      })),
+    ].sort((a, b) => b.at - a.at);
+    return c.html(<NotificationBell items={items} />);
+  });
 
   // ── ダッシュボード ─────────────────────────────────────────────────────────
   app.get("/metrics", async (c) => {
@@ -483,7 +534,24 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   });
 
   // ── 自己修復 ──────────────────────────────────────────────────────────────
-  app.get("/healing/runs", async (c) => c.html(<HealingRunList runs={await runs.recent(50)} />));
+  const HEALING_RUNS_PER_PAGE = 10;
+  const renderHealingRuns = async (page: number, oob = false) => {
+    // perPage+1 件取得して次ページ有無を判定する
+    const rows = await runs.recent(HEALING_RUNS_PER_PAGE + 1, (page - 1) * HEALING_RUNS_PER_PAGE);
+    return (
+      <HealingRunList
+        runs={rows.slice(0, HEALING_RUNS_PER_PAGE)}
+        page={page}
+        hasNext={rows.length > HEALING_RUNS_PER_PAGE}
+        oob={oob}
+      />
+    );
+  };
+
+  app.get("/healing/runs", async (c) => {
+    const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
+    return c.html(await renderHealingRuns(page));
+  });
 
   // 修復実行のログ（R2 の healing/<runId>.log をモーダル表示用に取得）
   app.get("/healing/runs/:id/logs", async (c) => {
@@ -531,7 +599,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
               : `自己修復サイクルを開始しました (実行 ID: ${out.runId.slice(0, 8)})。`
           }
         />
-        <HealingRunList runs={await runs.recent(50)} oob />
+        {await renderHealingRuns(1, true)}
       </>
     );
   });

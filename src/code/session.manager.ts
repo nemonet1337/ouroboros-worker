@@ -70,11 +70,18 @@ export class CodeSessionManager {
       ]
     );
 
-    await this.runner.init({
-      repoUrl: opts.repoUrl,
-      branch: opts.branch,
-      sessionId: id,
-    });
+    try {
+      await this.runner.init({
+        repoUrl: opts.repoUrl,
+        branch: opts.branch,
+        sessionId: id,
+      });
+    } catch (err) {
+      // initializing のままスタックさせず、失敗として記録した上でエラーを表示させる
+      const reason = err instanceof Error ? err.message : String(err);
+      await this.setError(id, row.user_id, `セッション初期化に失敗しました: ${reason}`, "plan_code");
+      throw err;
+    }
 
     await this.updateStatus(id, row.user_id, "ready");
     return id;

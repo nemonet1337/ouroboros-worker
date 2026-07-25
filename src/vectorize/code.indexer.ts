@@ -27,12 +27,12 @@ interface RepoFileSource {
 const CHUNK_LINES = 50;
 const CHUNK_OVERLAP = 10;
 const CHUNK_MAX_CHARS = 1500;
-// 1 回の Worker 呼び出し（Queue コンシューマー含む）で発行できる subrequest 数には
-// 上限があるため、インデックス対象を抑える。ファイル数 × blob 取得 + 埋め込み/upsert
-// バッチがこの上限を超えないよう、チャンク数も併せて絞る。
-const MAX_INDEX_FILES = 80;
+// ファイル取得は tarball 1 リクエストになったため、subrequest 予算を消費するのは
+// 埋め込み呼び出し（MAX_CHUNKS / EMBED_BATCH 回）と upsert（1 回）のみ。
+// 無料プランの上限 50/呼び出しに収まるようチャンク数を絞る。
+const MAX_INDEX_FILES = 200;
 const MAX_CHUNKS = 500;
-const EMBED_BATCH = 20;
+const EMBED_BATCH = 100; // bge-base-en-v1.5 のバッチ上限
 const METADATA_TEXT_LIMIT = 800;
 
 /**
@@ -93,14 +93,17 @@ export class CodeIndexer {
         if (allChunks.length >= MAX_CHUNKS) break;
       }
 
-      // 小バッチずつ埋め込み + upsert（subrequest 上限に配慮）
+      // 埋め込みは 100 件バッチ、upsert は一括 1 回（subrequest 上限に配慮）
+      const vectors: number[][] = [];
       for (let i = 0; i < allChunks.length; i += EMBED_BATCH) {
         const batch = allChunks.slice(i, i + EMBED_BATCH);
-        const vectors = await this.ai.embed(batch.map((c) => c.text));
+        vectors.push(...(await this.ai.embed(batch.map((c) => c.text))));
+      }
+      if (allChunks.length > 0) {
         await this.vectorize.upsert(
-          batch.map((c, j) => ({
+          allChunks.map((c, i) => ({
             id: c.id,
-            values: vectors[j],
+            values: vectors[i],
             metadata: {
               file: c.file,
               startLine: c.startLine,

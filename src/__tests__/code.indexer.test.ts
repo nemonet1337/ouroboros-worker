@@ -125,6 +125,6 @@ describe("CodeIndexer", () => {
     await indexer.reindex();
 
     expect(capturedMax).toBeDefined();
-    expect(capturedMax!).toBeLessThanOrEqual(80);
+    expect(capturedMax!).toBeLessThanOrEqual(200);
   });
 });

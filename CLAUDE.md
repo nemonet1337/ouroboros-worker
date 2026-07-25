@@ -8,7 +8,7 @@ Ouroboros は **Cloudflare Workers 専用**のエッジネイティブな AI 自
 **制約:**
 - AI ゲートウェイは **Cloudflare Workers AI のみ**。Anthropic / OpenAI 等の外部キーは API レベルで拒否される
 - Docker / オンプレミス対応は廃止（v2.1 で削除済み）
-- Workers にはファイルシステム・git・コンパイラが無いため、重い処理は runner (`ouroboros-runner` CF Worker, GitHub API ベース) へ Service Binding / HTTP で委譲。
+- Workers にはファイルシステム・git・コンパイラが無いため、重い処理は runner (`ouroborous-runner` CF Worker, GitHub API ベース, 別リポジトリ `nemonet1337/ouroborous-runner` で管理) へ Service Binding / HTTP で委譲。
   runner 未設定時は Worker Loader（`LOADER` バインディング、Dynamic Workers）で動的 Worker を生成して実行し、
   それも不可なら `UnconfiguredRunner` が明示エラーを返す（黙って空結果を返さない）。
   Dynamic Workers は **Workers 有料プランが必須**（無料プランは deploy 時に code 10195 で拒否される）。
@@ -51,10 +51,10 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   context.ts           全 Ports + Auth の依存性注入（buildContext）
   env.ts               Cloudflare バインディング・シークレット型定義
   index.tsx            Worker エントリーポイント（fetch / queue / email / scheduled + SSR ルート）
-runner/                ouroboros-runner Worker（GitHub API ベースの scan/heal/code 実行）
 ```
 
 > 注: 旧 `web/` Nuxt 3 SPA は廃止済み。GUI は `src/ui/` の Hono JSX SSR。
+> runner Worker は別リポジトリ `ouroborous-runner` に移管済み（このリポジトリには含まれない）。
 
 ## 主要パターン
 
@@ -96,7 +96,7 @@ npm run test            # Vitest ユニットテスト（src/__tests__/）
 npm run build:css       # Tailwind v4 + daisyUI 5 の CSS を生成（ローカル開発・デプロイ前に実行）
 npm run worker:dev      # build:css + wrangler dev（ローカル開発）
 npm run worker:deploy   # build:css + wrangler deploy（本番デプロイ）
-# runner/ 配下にも typecheck / test / deploy がある（cd runner && npm run ...）
+# runner は別リポジトリ ouroborous-runner（typecheck / test / deploy は向こうで実行）
 ```
 
 > UI のスタイルは CDN ではなくビルド済み CSS（`src/ui/styles/tailwind.generated.css`）を

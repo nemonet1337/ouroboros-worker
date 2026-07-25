@@ -35,6 +35,15 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                 {/* バージョンバッジ */}
                 <span id="version-badge" class="text-xs px-2 py-0.5 rounded-full bg-base-200 text-base-content/60 hidden font-mono"></span>
 
+                {/* 進捗通知ベル（進行中の解析・修復・編集セッションを全ページで表示） */}
+                {user && (
+                  <div
+                    hx-get="/ui/fragments/notifications"
+                    hx-trigger="load, every 10s"
+                    hx-swap="innerHTML"
+                  ></div>
+                )}
+
                 {/* テーマ切り替えトグル */}
                 <button id="theme-toggle" class="btn btn-ghost btn-sm btn-circle" aria-label="テーマ切替">
                   <i data-lucide="sun" class="w-5 h-5 hidden dark-icon" />

@@ -114,30 +114,57 @@ export class GitHubProvider implements VcsProvider {
 
   /**
    * リポジトリのテキストファイルを一括取得する（コードインデックス用）。
-   * git/trees の recursive 取得後、バイナリ拡張子と 100KB 超のファイルをスキップ。
+   * tarball を 1 リクエストで取得して展開する。blob 毎の API 呼び出しは
+   * Workers の subrequest 上限（無料プラン 50/呼び出し）を食い潰すため使わない。
+   * バイナリ拡張子・100KB 超・NUL を含むファイルはスキップ。
    */
   async getRepoFiles(maxFiles = 300, ref?: string): Promise<Array<{ path: string; content: string }>> {
-    const branch = ref ?? (await this.api<{ default_branch: string }>(``)).default_branch;
-    const tree = await this.api<{ tree: Array<{ path: string; type: string; size?: number; sha: string }> }>(
-      `/git/trees/${encodeURIComponent(branch)}?recursive=1`
+    const res = await fetch(`${this.base}/tarball/${ref ? encodeURIComponent(ref) : ""}`, {
+      headers: this.ghHeaders(),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`GitHub API GET /tarball -> ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+    // ponytail: tarball 全体をメモリ展開（Workers メモリ上限 128MB が天井）。巨大リポジトリで溢れる場合はストリーミング解析へ
+    const tar = new Uint8Array(
+      await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
     );
 
     const SKIP_EXT = /\.(png|jpe?g|gif|webp|ico|svg|woff2?|ttf|eot|zip|gz|tar|pdf|mp[34]|wasm|lock)$/i;
-    const blobs = tree.tree
-      .filter((e) => e.type === "blob" && !SKIP_EXT.test(e.path) && (e.size ?? 0) <= 100_000)
-      .slice(0, maxFiles);
+    const decoder = new TextDecoder();
+    const NUL = String.fromCharCode(0);
+    const cstr = (bytes: Uint8Array): string => decoder.decode(bytes).split(NUL)[0];
 
     const files: Array<{ path: string; content: string }> = [];
-    for (const entry of blobs) {
-      try {
-        const blob = await this.api<{ content: string; encoding: string }>(`/git/blobs/${entry.sha}`);
-        if (blob.encoding !== "base64") continue;
-        const content = atob(blob.content.replace(/\n/g, ""));
+    let paxPath: string | undefined;
+    let off = 0;
+    while (off + 512 <= tar.length && files.length < maxFiles) {
+      const header = tar.subarray(off, off + 512);
+      if (header.every((b) => b === 0)) break; // アーカイブ終端
+      const size = parseInt(cstr(header.subarray(124, 136)).trim(), 8) || 0;
+      const type = String.fromCharCode(header[156]);
+      const data = tar.subarray(off + 512, Math.min(off + 512 + size, tar.length));
+      const name = cstr(header.subarray(0, 100));
+      const prefix = cstr(header.subarray(345, 500));
+      off += 512 + Math.ceil(size / 512) * 512;
+
+      if (type === "x") {
+        // pax 拡張ヘッダー（"NN path=<long path>\n"）: 次の通常エントリのパスを上書き
+        paxPath = decoder.decode(data).match(/\d+ path=([^\n]+)\n/)?.[1];
+        continue;
+      }
+      const fullName = paxPath ?? (prefix ? `${prefix}/${name}` : name);
+      paxPath = undefined;
+      if (type !== "0" && type !== NUL) continue; // 通常ファイル以外（ディレクトリ等）
+      // tarball 先頭の "owner-repo-<sha>/" ディレクトリを剥がす
+      const path = fullName.replace(/^[^/]+\//, "");
+      if (!path || SKIP_EXT.test(path) || size > 100_000) continue;
+      {
+        const content = decoder.decode(data);
         // バイナリ判定: NUL を含むものは除外
         if (content.includes("\u0000")) continue;
-        files.push({ path: entry.path, content });
-      } catch {
-        // 単一ファイルの取得失敗は無視して続行
+        files.push({ path, content });
       }
     }
     return files;

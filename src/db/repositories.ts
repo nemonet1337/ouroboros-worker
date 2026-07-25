@@ -230,6 +230,16 @@ export class InspectionRepository {
     return Number(rows[0]?.n ?? 0);
   }
 
+  /** 進行中（queued/indexing/searching/analyzing）の検査。通知欄用。 */
+  async listActive(userId: string, limit = 10): Promise<InspectionRow[]> {
+    return this.db.query<InspectionRow>(
+      `SELECT * FROM inspections
+       WHERE user_id = ? AND status IN ('queued', 'indexing', 'searching', 'analyzing')
+       ORDER BY created_at DESC LIMIT ?`,
+      [userId, limit]
+    );
+  }
+
   async updateStatus(id: string, userId: string, status: string): Promise<void> {
     await this.db.exec(
       `UPDATE inspections SET status = ? WHERE id = ? AND user_id = ?`,
@@ -316,10 +326,10 @@ export class HealingRunRepository {
     await this.db.exec(`UPDATE healing_runs SET ${sets.join(", ")} WHERE id = ?`, params);
   }
 
-  async recent(limit = 50): Promise<HealingRunRow[]> {
+  async recent(limit = 50, offset = 0): Promise<HealingRunRow[]> {
     return this.db.query<HealingRunRow>(
-      `SELECT * FROM healing_runs ORDER BY created_at DESC LIMIT ?`,
-      [limit]
+      `SELECT * FROM healing_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
   }
 
@@ -329,6 +339,16 @@ export class HealingRunRepository {
       [id]
     );
     return rows[0];
+  }
+
+  /** 進行中（queued/scanning/analyzing/fixing/running）の修復実行。通知欄用。 */
+  async listActive(limit = 10): Promise<HealingRunRow[]> {
+    return this.db.query<HealingRunRow>(
+      `SELECT * FROM healing_runs
+       WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+       ORDER BY created_at DESC LIMIT ?`,
+      [limit]
+    );
   }
 }
 
@@ -384,6 +404,16 @@ export class CodeSessionRepository {
   async listByUser(userId: string, limit = 30): Promise<CodeSessionRow[]> {
     return this.db.query<CodeSessionRow>(
       `SELECT * FROM code_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
+      [userId, limit]
+    );
+  }
+
+  /** 進行中（initializing/generating/applying）のセッション。通知欄用。 */
+  async listActive(userId: string, limit = 10): Promise<CodeSessionRow[]> {
+    return this.db.query<CodeSessionRow>(
+      `SELECT * FROM code_sessions
+       WHERE user_id = ? AND status IN ('initializing', 'generating', 'applying')
+       ORDER BY created_at DESC LIMIT ?`,
       [userId, limit]
     );
   }

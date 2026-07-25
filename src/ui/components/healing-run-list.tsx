@@ -5,6 +5,10 @@ interface HealingRunListProps {
   runs: HealingRunRow[];
   /** true にすると hx-swap-oob 付きで出力され、別レスポンスに同梱してリストを差し替えられる */
   oob?: boolean;
+  /** 現在ページ（1 始まり）。1 ページ目のみ 5 秒ポーリングで自動更新する */
+  page?: number;
+  /** 次ページが存在するか（ページングボタンの活性制御） */
+  hasNext?: boolean;
 }
 
 interface HealingSummaryPr {
@@ -47,22 +51,64 @@ const TRIGGER_LABELS: Record<string, string> = {
   cron: "スケジュール",
 };
 
-/** 自己修復の実行履歴テーブル。 */
-export const HealingRunList: FC<HealingRunListProps> = ({ runs, oob }) => {
+/**
+ * 自己修復の実行履歴テーブル（ページング付き）。
+ * ルート要素自身が hx-get を持ち、1 ページ目のみ 5 秒間隔で自動リフレッシュする
+ * （2 ページ目以降はページ位置が勝手に戻らないようポーリングしない）。
+ */
+export const HealingRunList: FC<HealingRunListProps> = ({ runs, oob, page = 1, hasNext = false }) => {
+  const wrapperAttrs = {
+    id: "healing-runs-list",
+    "hx-swap-oob": oob ? "true" : undefined,
+    "hx-get": `/ui/fragments/healing/runs?page=${page}`,
+    "hx-trigger": page === 1 ? "every 5s" : undefined,
+    "hx-swap": "outerHTML",
+  };
+
+  const pager = (
+    <div class="flex items-center justify-between mt-4 px-1">
+      <span class="text-xs opacity-60">ページ {page}</span>
+      <div class="flex gap-2">
+        <button
+          class="btn btn-sm btn-outline rounded-lg border-[var(--glass-border)] hover:bg-base-200"
+          disabled={page <= 1}
+          hx-get={`/ui/fragments/healing/runs?page=${page - 1}`}
+          hx-target="#healing-runs-list"
+          hx-swap="outerHTML"
+        >
+          <i data-lucide="chevron-left" class="w-4 h-4" />
+          <span>前へ</span>
+        </button>
+        <button
+          class="btn btn-sm btn-outline rounded-lg border-[var(--glass-border)] hover:bg-base-200"
+          disabled={!hasNext}
+          hx-get={`/ui/fragments/healing/runs?page=${page + 1}`}
+          hx-target="#healing-runs-list"
+          hx-swap="outerHTML"
+        >
+          <span>次へ</span>
+          <i data-lucide="chevron-right" class="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+
   if (runs.length === 0) {
     return (
-      <div id="healing-runs-list" hx-swap-oob={oob ? "true" : undefined}>
+      <div {...wrapperAttrs}>
         <div class="card card-glass p-8 text-center text-base-content/50">
           <i data-lucide="wrench" class="w-12 h-12 mx-auto text-base-content/30 mb-3" />
           <p class="font-bold">修復実行履歴はありません</p>
           <p class="text-xs opacity-75 mt-1">手動トリガーまたはスケジュール実行されるとここに表示されます。</p>
         </div>
+        {page > 1 && pager}
       </div>
     );
   }
 
   return (
-    <div class="card card-glass shadow-lg overflow-x-auto" id="healing-runs-list" hx-swap-oob={oob ? "true" : undefined}>
+    <div {...wrapperAttrs}>
+      <div class="card card-glass shadow-lg overflow-x-auto">
       <table class="table-modern w-full text-left text-sm">
         <thead>
           <tr class="text-base-content/60 font-semibold border-b border-[var(--glass-border)]">
@@ -145,6 +191,8 @@ export const HealingRunList: FC<HealingRunListProps> = ({ runs, oob }) => {
           })}
         </tbody>
       </table>
+      </div>
+      {pager}
       <dialog id="healing-log-modal" class="modal">
         <div class="modal-box max-w-3xl">
           <h3 class="font-bold text-lg mb-4">修復実行ログ</h3>

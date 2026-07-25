@@ -126,9 +126,13 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
     }
 
     // 3. analyzing — 対象ファイルの本文を取得して AI 解析
+    // （tarball 1 リクエストで広めに取得してから検索ヒットしたパスに絞る。
+    //   以前は先頭 MAX_ANALYSIS_FILES 件しか取得せず、検索結果とほぼ交差しなかった）
     await push("analyzing", "AI によるコード解析を実行しています…", "analyzing");
-    const allFiles = await vcs.getRepoFiles(MAX_ANALYSIS_FILES);
-    let files = targetPaths.length > 0 ? allFiles.filter((f) => targetPaths.includes(f.path)) : [];
+    const allFiles = await vcs.getRepoFiles(200);
+    let files = targetPaths.length > 0
+      ? allFiles.filter((f) => targetPaths.includes(f.path)).slice(0, MAX_ANALYSIS_FILES)
+      : [];
     if (files.length === 0) files = allFiles.slice(0, MAX_ANALYSIS_FILES);
 
     await analyzeAndStore({ ctx, inspections, inspectionId, userId, instruction, files, steps });
