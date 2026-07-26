@@ -62,13 +62,12 @@ src/
 | `AiProvider`   | Workers AI（唯一の AI ゲートウェイ）|
 | `Mailer`       | MailChannels / CF Email Routing  |
 | `VcsProvider`  | GitHub (fetch)                   |
-| `HealingRunner`| `RpcRunner`(Service Binding) / `DispatchRunner`(HTTP) → CF Worker runner |
+| `HealingRunner`| `RepoRunner`（同一 Worker 内、GitHub REST API） |
 | `RateLimiter`  | Workers Rate Limiting API        |
-| `VectorizePort`| Cloudflare Vectorize（適応的重み付け）|
+| `VectorizePort`| Cloudflare Vectorize（コードインデックス RAG）|
 
-注記: Workers にはファイルシステム/git/コンパイラが無いため、パッチ適用＋commit＋push は
-`ouroboros-runner` Worker（GitHub API ベース）へ **Service Binding または HTTP で委譲**します。
-未設定時は NoopRunner により修正ステップがスキップされます。
+注記: スキャン・修正・コミット・PR 作成は **同一 Worker の `RepoRunner`** が GitHub REST API で実行します
+（旧 `ouroborous-runner` への Service Binding 委譲は廃止済み）。
 **Cloudflare Workflow** が「スキャン → 解析 → 修正 → PR」という永続的なライフサイクルを駆動します。
 
 ---
@@ -87,19 +86,19 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migrations/
 
-# Vectorize インデックス（適応的重み付け用、任意）
-wrangler vectorize create ouroboros-weight-profiles --dimensions=32 --metric=cosine
+# Vectorize インデックス（コード RAG 用）
+wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+wrangler queues create ouroboros-dlq                 # 失敗イベントの DLQ
 
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo（省略時はトークンから自動検出）
-wrangler secret put RUNNER_SHARED_SECRET            # （任意）委譲先 runner の認証用
 
 wrangler deploy                                      # または: wrangler dev
 ```
 
 `wrangler.toml` が D1・R2・Queues・Workflows・Workers AI・Vectorize・レート制限バインディング・
-日次 cron トリガー・静的 GUI アセットを配線します。
+毎時 cron トリガーを配線します（runner Service Binding は不要）。
 
 ### 管理者アカウント
 

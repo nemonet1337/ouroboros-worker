@@ -5,7 +5,6 @@ compatibility_flags = ["nodejs_compat"]
 
 # Workers Observability — console.log/warn/error とリクエストトレースを
 # Cloudflare ダッシュボード（Workers & Pages → ログ）で確認できる。
-# head_sampling_rate = 1 は全リクエストをサンプリング（本番安定後は下げてよい）。
 [observability]
 enabled = true
 head_sampling_rate = 1
@@ -18,8 +17,6 @@ invocation_logs = true
 enabled = true
 
 # Workers AI — Cloudflare デプロイで唯一許可される AI ゲートウェイ。
-# 外部ゲートウェイ（Anthropic API など）はこのターゲットでは一切使用されない。
-# 利用可能なモデルは GET /api/v1/models（env.AI.models()）で動的に検出される。
 [ai]
 binding = "AI"
 
@@ -36,14 +33,18 @@ binding = "LOGS"
 bucket_name = "ouroboros-logs"
 
 # Queues — GUI イベントの非同期取り込み
+# 重イベント（inspection / codeindex / codegen）が 1 invocation に複数入ると
+# subrequest 予算を共有して枯渇するため batch size は 1。
 [[queues.producers]]
 binding = "GUI_EVENTS"
 queue = "ouroboros-gui-events"
 
 [[queues.consumers]]
 queue = "ouroboros-gui-events"
-max_batch_size = 10
+max_batch_size = 1
 max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "ouroboros-dlq"
 
 # Workflows — 永続的な自己修復ライフサイクルのオーケストレーション
 [[workflows]]
@@ -51,22 +52,11 @@ binding = "HEALING_WORKFLOW"
 name = "ouroboros-healing"
 class_name = "HealingWorkflow"
 
-# Vectorize — コードチャンク埋め込みインデックス。リポジトリのコードを
-# bge-base-en-v1.5（768 次元）で埋め込み、自己修復解析時の RAG コンテキストに使う。
+# Vectorize — コードチャンク埋め込みインデックス
 # インデックス作成: wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "ouroboros-code-index"
-
-# Worker Loader（Dynamic Workers、オープンベータ）— RUNNER / RUNNER_URL が未設定の
-# 場合に、タスク実行時へ動的に runner Worker（Dynamic Worker）を生成するフォールバック
-# 実行基盤。Workers の有料プランが必要（無料プランでは deploy が
-# code 10195 "you must switch to a paid plan" で拒否されるため既定では無効）。
-# 有料プランへ移行したら以下 2 行のコメントを解除する
-# （現状は RUNNER の Service Binding が設定済みのため本番機能に影響なし。
-# 無効の間、RUNNER/RUNNER_URL 共に未設定なら UnconfiguredRunner が明示エラーを返す）。
-# [[worker_loaders]]
-# binding = "LOADER"
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
@@ -75,51 +65,35 @@ type = "ratelimit"
 namespace_id = "1001"
 simple = { limit = 100, period = 60 }
 
-# Worker-to-Worker service binding — 同アカウントの runner を直接呼び出す
-# runner は別リポジトリ (ouroborous-runner) で管理・デプロイされる。
-# runner Worker (ouroborous-runner) がデプロイされていない場合、Service Binding 未解決で
-# Worker デプロイが code 10143 エラーになります。runner を先にデプロイしてください。
-[[services]]
-binding = "RUNNER"
-service = "ouroborous-runner"
-
-# ビルド済み Tailwind CSS（src/ui/styles/tailwind.generated.css）を文字列として
-# import し、Worker が /assets/tailwind.css として配信する
+# ビルド済み Tailwind CSS を文字列として import し /assets/tailwind.css として配信
 [[rules]]
 type = "Text"
 globs = ["**/*.css"]
 fallthrough = true
 
 # 毎時実行し、app_settings.schedule.time（UTC の HH:MM）と現在時刻を照合して
-# 一致時のみ自己修復をトリガーする（cron 式はデプロイ時固定のため DB 照合方式）
+# 一致時のみ自己修復をトリガーする
 [triggers]
 crons = ["0 * * * *"]
 
 [vars]
 # OURO_REGISTRATION_ENABLED: ops レベルの強制オーバーライド（任意）。
-# 未設定 = DB 側のトグル（管理者パネル /settings）に従う（推奨・デフォルト動作）。
-# "false" を設定すると管理者パネルの設定に関わらず新規登録を常に拒否（初回管理者作成は可）。
-# "true" を設定すると常に新規登録を許可する。
+# 未設定 = DB 側のトグルに従う。
 # OURO_REGISTRATION_ENABLED = "false"
 MAIL_FROM = "ouroboros@nemonet.work"
-OURO_PLAN_MODEL = "minimax/m3"
-# RUNNER_URL: CF Worker runner（GitHub API ベース）の URL。Service Binding 未設定時のフォールバック
-RUNNER_URL = ""
 
 # シークレット（`wrangler secret put <NAME>` で設定）:
-#   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用の Cloudflare API トークン。
-#                            CLOUDFLARE_ACCOUNT_ID と併用すると REST API 経由で
-#                            推論。未設定なら AI バインディングを直接使用。
+#   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用 Cloudflare API トークン。
+#                            無効なトークンを設定すると 2021 エラーになるため、
+#                            不要なら `wrangler secret delete WORKERS_AI_API_TOKEN` で削除し
+#                            AI バインディング直接使用に戻すこと。
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
 #   GITHUB_TOKEN             PR/Issue 作成。owner/repo はこのトークンから自動検出される
 #   GITHUB_REPOSITORY        （非推奨）owner/repo を手動指定する場合のみ
-#   GITHUB_REPOSITORY_OWNER  （非推奨）owner を手動指定する場合のみ
-#   RUNNER_SHARED_SECRET     委譲先 runner の認証用
 #   OURO_ALERT_EMAILS        アラート通知先（カンマ区切り）
+#   OURO_ENCRYPTION_KEY      Webhook secret 暗号化キー
 #
 # 管理者アカウント: 初回リクエスト時（ユーザーが 0 人のとき）に /register から
 # 最初に登録したアカウントが自動的に管理者になります。
-# ADMIN_EMAIL / ADMIN_PASSWORD は使用しません。
 #
 # 注意: Ouroboros が接続する LLM は Workers AI 上のモデルに限定される。
-# ANTHROPIC_API_KEY 等の外部 AI ゲートウェイのキーは一切受け付けない。

@@ -59,10 +59,15 @@ describe("CodeIndexer", () => {
     const lines = Array.from({ length: 120 }, (_, i) => `line ${i + 1}`);
     const chunks = indexer.chunk({ path: "src/a.ts", content: lines.join("\n") });
 
-    expect(chunks[0]).toMatchObject({ id: "src/a.ts#1", startLine: 1, endLine: 50 });
-    expect(chunks[1]).toMatchObject({ id: "src/a.ts#41", startLine: 41, endLine: 90 });
-    expect(chunks[2]).toMatchObject({ id: "src/a.ts#81", startLine: 81, endLine: 120 });
+    // id は 64 バイト制限のためハッシュ化（metadata に path/line を保持）
+    expect(chunks[0]).toMatchObject({ startLine: 1, endLine: 50 });
+    expect(chunks[0].id).toHaveLength(32);
+    expect(chunks[1]).toMatchObject({ startLine: 41, endLine: 90 });
+    expect(chunks[2]).toMatchObject({ startLine: 81, endLine: 120 });
     expect(chunks).toHaveLength(3);
+    // 同一入力は同一 id
+    const again = indexer.chunk({ path: "src/a.ts", content: lines.join("\n") });
+    expect(again[0].id).toBe(chunks[0].id);
   });
 
   it("reindex embeds chunks, upserts with metadata, and persists done status", async () => {
@@ -79,7 +84,7 @@ describe("CodeIndexer", () => {
     expect(status.status).toBe("done");
     expect(status.files).toBe(1);
     expect(status.chunks).toBe(1);
-    expect(upserted[0].id).toBe("src/a.ts#1");
+    expect(upserted[0].id).toHaveLength(32);
     expect(upserted[0].metadata).toMatchObject({ file: "src/a.ts", startLine: 1 });
     expect(JSON.parse(store.get(CODE_INDEX_STATUS_KEY)!).status).toBe("done");
   });

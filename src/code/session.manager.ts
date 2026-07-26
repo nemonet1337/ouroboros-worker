@@ -87,19 +87,44 @@ export class CodeSessionManager {
     return id;
   }
 
+  private static readonly STALE_MS = 10 * 60 * 1000; // 10 分
+
+  /** generating/applying が 10 分超なら failed に自己回復させる */
+  private async recoverStale(row: CodeSessionRow): Promise<CodeSessionRow> {
+    if (
+      (row.status === "generating" || row.status === "applying") &&
+      row.updated_at < Date.now() - CodeSessionManager.STALE_MS
+    ) {
+      await this.db.exec(
+        `UPDATE code_sessions SET status = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+        [
+          "failed",
+          "生成がタイムアウトしました。再実行してください",
+          Date.now(),
+          row.id,
+          row.user_id,
+        ]
+      );
+      return { ...row, status: "failed", error_message: "生成がタイムアウトしました。再実行してください" };
+    }
+    return row;
+  }
+
   async get(id: string, userId: string): Promise<CodeSessionRow | undefined> {
     const rows = (await this.db.query<CodeSessionRow>(
       `SELECT * FROM code_sessions WHERE id = ? AND user_id = ?`,
       [id, userId]
     )) as CodeSessionRow[];
-    return rows[0];
+    if (!rows[0]) return undefined;
+    return this.recoverStale(rows[0]);
   }
 
   async list(userId: string): Promise<CodeSessionRow[]> {
-    return (this.db.query<CodeSessionRow>(
+    const rows = (await this.db.query<CodeSessionRow>(
       `SELECT * FROM code_sessions WHERE user_id = ? ORDER BY created_at DESC`,
       [userId]
-    )) as Promise<CodeSessionRow[]>;
+    )) as CodeSessionRow[];
+    return Promise.all(rows.map((r) => this.recoverStale(r)));
   }
 
   async generate(
@@ -110,12 +135,15 @@ export class CodeSessionManager {
     const row = await this.get(id, userId);
     if (!row) throw new Error("code session not found");
 
-    if (row.status !== "ready" && row.status !== "failed") {
+    // ready/failed から開始。Queue 経由では既に generating に遷移済みの場合もある。
+    if (row.status !== "ready" && row.status !== "failed" && row.status !== "generating") {
       throw new Error(`cannot generate from status: ${row.status}`);
     }
 
     const mode: "plan_code" | "code_only" = opts.mode ?? "plan_code";
-    await this.updateStatus(id, userId, "generating");
+    if (row.status !== "generating") {
+      await this.updateStatus(id, userId, "generating");
+    }
 
     // Plan フェーズ: plan_code モードのみ planModel で実装計画を先に生成する
     const plan = mode === "plan_code"

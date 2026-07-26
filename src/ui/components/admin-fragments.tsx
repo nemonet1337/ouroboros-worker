@@ -60,11 +60,14 @@ interface LogFileListProps {
 export const LogFileList: FC<LogFileListProps> = ({ files }) => {
   return (
     <div class="space-y-3">
+      <p class="text-xs opacity-50 px-1">
+        システムログは UTC 日付ごとに別ファイル（例: <code class="font-mono">ouroboros-2026-07-26.log</code>）へ保存されます。新しい日付が上です。
+      </p>
       {files.length === 0 ? (
         <div class="card card-glass p-8 text-center text-base-content/50">
           <i data-lucide="file-text" class="w-12 h-12 mx-auto text-base-content/30 mb-3" />
           <p class="font-bold">ログファイルはありません</p>
-          <p class="text-xs opacity-75 mt-1">システムが稼働するとログが R2 バケットに保存されます。</p>
+          <p class="text-xs opacity-75 mt-1">システムが稼働するとログが R2 バケットに日次ファイルとして保存されます。</p>
         </div>
       ) : (
         <ul class="space-y-2">

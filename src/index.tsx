@@ -3,11 +3,23 @@
 import { jsx } from "hono/jsx";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { mountApi } from "./http/api";
 import { runMigrations } from "./db";
-import { HealingRunRepository, SettingsRepository, CodeSessionRepository } from "./db/repositories";
+import {
+  HealingRunRepository,
+  SettingsRepository,
+  CodeSessionRepository,
+  InspectionRepository,
+} from "./db/repositories";
 import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
-import { SELECTED_REPO_KEY, parseSelectedRepo, areWebhooksEnabled, getFeatureFlags } from "./config/settings.keys";
+import {
+  SELECTED_REPO_KEY,
+  parseSelectedRepo,
+  areWebhooksEnabled,
+  getFeatureFlags,
+  DEFAULT_APP_SETTINGS,
+} from "./config/settings.keys";
 import type { GuiEvent } from "./ports/queue";
 import type { Env, EmailMessage } from "./env";
 import { buildContext, type WorkerContext } from "./context";
@@ -34,13 +46,7 @@ export { HealingWorkflow } from "./workflows/healing";
 let migrated = false;
 let cachedApp: Awaited<ReturnType<typeof buildApp>> | undefined;
 
-// 設定画面のデフォルト（app_settings 未設定時のフォールバック）
-const DEFAULT_APP_SETTINGS = {
-  weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
-  gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
-  schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo", time: "" },
-  notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
-};
+const SESSION_COOKIE = "ouro_session";
 
 async function ensureMigrated(env: Env): Promise<void> {
   if (migrated) return;
@@ -77,16 +83,40 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
   };
 }
 
+function makeCancelHealing(env: Env, ctx: WorkerContext) {
+  const runs = new HealingRunRepository(ctx.ports.db);
+  return async (runId: string): Promise<{ ok: boolean; error?: string }> => {
+    const run = await runs.find(runId);
+    if (!run) return { ok: false, error: "run not found" };
+    const active = ["queued", "scanning", "analyzing", "fixing", "running"];
+    if (!active.includes(run.status)) {
+      return { ok: false, error: `cannot cancel status: ${run.status}` };
+    }
+    if (run.workflow_id) {
+      try {
+        const instance = await env.HEALING_WORKFLOW.get(run.workflow_id);
+        await instance.terminate();
+      } catch (err) {
+        // instance が既に終了している場合もある
+        console.warn("[cancelHealing] terminate failed:", err instanceof Error ? err.message : err);
+      }
+    }
+    await runs.update(runId, {
+      status: "canceled",
+      summary: JSON.stringify({ canceled: true, at: Date.now() }),
+    });
+    return { ok: true };
+  };
+}
 
 async function buildApp(env: Env): Promise<Hono> {
   const ctx = await buildContext(env);
   const triggerHealing = makeTriggerHealing(env, ctx);
+  const cancelHealing = makeCancelHealing(env, ctx);
   const app = new Hono();
 
   app.use("*", async (c, next) => {
     await ensureMigrated(env);
-    // 選択リポジトリ（settings.selected_repo）を毎リクエスト反映する。
-    // cachedApp がアイソレート単位で再利用されても常に最新の選択を使う。
     try {
       const raw = await new SettingsRepository(ctx.ports.db).get(SELECTED_REPO_KEY);
       const parsed = parseSelectedRepo(raw);
@@ -94,30 +124,36 @@ async function buildApp(env: Env): Promise<Hono> {
         ctx.refreshRepo(parsed.owner, parsed.repo);
       }
     } catch {
-      // 設定読み取り失敗は致命的ではない（既存の解決値を使う）
+      // 設定読み取り失敗は致命的ではない
     }
     await next();
   });
 
-  mountApi(app, { ...ctx, triggerHealing });
-
-  // htmx 用 HTML フラグメント（GUI ウィジェットは JSON API ではなくこちらを読む）
-  app.route("/ui/fragments", createFragments({ ...ctx, triggerHealing }));
+  const apiDeps = {
+    ...ctx,
+    triggerHealing,
+    cancelHealing,
+    encryptionKey: ctx.encryptionKey,
+  };
+  mountApi(app, apiDeps);
+  app.route("/ui/fragments", createFragments(apiDeps));
 
   const requireAuthMiddleware = async (c: Context<EnvWithIdentity>, next: Next) => {
-    const sid = c.req.header("cookie")?.match(/ouro_session=([^;]+)/)?.[1];
+    const sid = getCookie(c, SESSION_COOKIE);
     if (!sid) {
-      const next_ = c.req.path !== "/login"
-        ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
-        : "";
+      const next_ =
+        c.req.path !== "/login"
+          ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
+          : "";
       const redirect = next_ ? `/login?next=${encodeURIComponent(next_)}` : "/login";
       return c.redirect(redirect, 302);
     }
     const user = await ctx.auth.resolveSession(sid);
     if (!user) {
-      const next_ = c.req.path !== "/login"
-        ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
-        : "";
+      const next_ =
+        c.req.path !== "/login"
+          ? c.req.path + (c.req.query() ? "?" + new URLSearchParams(c.req.query()).toString() : "")
+          : "";
       const redirect = next_ ? `/login?next=${encodeURIComponent(next_)}` : "/login";
       return c.redirect(redirect, 302);
     }
@@ -125,7 +161,6 @@ async function buildApp(env: Env): Promise<Hono> {
     await next();
   };
 
-  // ビルド済み Tailwind v4 + daisyUI 5 CSS（npm run build:css で再生成）
   app.get("/assets/tailwind.css", (c) => {
     return c.body(tailwindCss, 200, {
       "content-type": "text/css; charset=utf-8",
@@ -134,7 +169,6 @@ async function buildApp(env: Env): Promise<Hono> {
   });
 
   app.get("/login", async (c) => {
-    // アカウントが 1 件も無い初回起動時は登録画面へ誘導する
     if ((await ctx.auth.userCount()) === 0) {
       return c.redirect("/register?first=1", 302);
     }
@@ -177,8 +211,9 @@ async function buildApp(env: Env): Promise<Hono> {
   app.get("/code/sessions/:id", requireAuthMiddleware, async (c) => {
     const identity = c.get("identity");
     const sessionId = c.req.param("id")!;
-    const sessions = new CodeSessionRepository(ctx.ports.db);
-    const session = await sessions.get(sessionId, identity!.user.id);
+    const { CodeSessionManager } = await import("./code/session.manager");
+    const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner, ctx.ports.ai);
+    const session = await manager.get(sessionId, identity!.user.id);
     return c.html(
       <CodeSessionPage sessionId={sessionId} user={identity?.user} session={session as any} />
     );
@@ -194,7 +229,7 @@ async function buildApp(env: Env): Promise<Hono> {
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
 
-    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags] =
+    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags, modelsEffective] =
       await Promise.all([
         ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
         ctx.auth.getModel(user.id),
@@ -202,6 +237,14 @@ async function buildApp(env: Env): Promise<Hono> {
         settingsRepo.get("app_settings"),
         areWebhooksEnabled(settingsRepo),
         getFeatureFlags(settingsRepo),
+        ctx.auth.getModeModels(user.id).then(async (modes) => {
+          const global = await ctx.auth.getModel(user.id);
+          const effective: Record<string, string> = {};
+          for (const mode of ["coding", "plan", "refactor", "healing", "inspection"] as const) {
+            effective[mode] = modes[mode] ?? global ?? DEFAULT_WORKERS_AI_MODEL;
+          }
+          return effective;
+        }),
       ]);
 
     let appSettings: Record<string, unknown> = { ...DEFAULT_APP_SETTINGS };
@@ -216,6 +259,7 @@ async function buildApp(env: Env): Promise<Hono> {
         globalModel={globalModel}
         modeModels={modeModels}
         defaultModel={DEFAULT_WORKERS_AI_MODEL}
+        effectiveModels={modelsEffective}
         appSettings={appSettings}
         webhooksEnabled={webhooksEnabled}
         featureFlags={featureFlags}
@@ -267,10 +311,19 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env);
     const wctx = await buildContext(env);
-    // セッションクリーンアップは毎時実行
     await wctx.auth.cleanupExpiredSessions();
-    // 自己修復は app_settings.schedule.time（UTC の HH:MM）の時（HH）が
-    // 現在の UTC 時と一致する場合のみトリガーする（毎時 cron + DB 照合方式）
+
+    // スタック検出: 長時間進行中のままのジョブを failed にする
+    const inspections = new InspectionRepository(wctx.ports.db);
+    const runs = new HealingRunRepository(wctx.ports.db);
+    const sessions = new CodeSessionRepository(wctx.ports.db);
+    const nInsp = await inspections.failStale(30 * 60 * 1000);
+    const nHeal = await runs.failStale(60 * 60 * 1000);
+    const nCode = await sessions.failStale(10 * 60 * 1000);
+    if (nInsp || nHeal || nCode) {
+      console.log(`[scheduled] stale sweep: inspections=${nInsp} healing=${nHeal} code=${nCode}`);
+    }
+
     if (await shouldRunScheduledHealing(wctx, new Date())) {
       const trigger = makeTriggerHealing(env, wctx);
       await trigger({ trigger: "cron", dryRun: false });
@@ -280,7 +333,6 @@ export default {
 
 /**
  * app_settings.schedule.time（"HH:MM" UTC）の時（HH）が現在の UTC 時と一致するか判定する。
- * 未設定・不正な形式のときは false（スケジュール実行なし）。
  */
 export async function shouldRunScheduledHealing(
   wctx: WorkerContext,
@@ -302,7 +354,6 @@ export async function shouldRunScheduledHealing(
   const hour = Number(match[1]);
   if (!Number.isFinite(hour) || hour < 0 || hour > 23) return false;
   if (now.getUTCHours() !== hour) return false;
-  // 曜日指定が無い（undefined/空）場合は毎日実行。指定ありは一致時のみ。
   if (daysOfWeek && daysOfWeek.length > 0 && !daysOfWeek.includes(now.getUTCDay())) return false;
   return true;
 }

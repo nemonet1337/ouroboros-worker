@@ -8,7 +8,7 @@ import {
   type DeployTarget,
 } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
-import { hasScope, newId, type Scope } from "../auth/tokens";
+import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
 import {
   InspectionRepository,
@@ -19,6 +19,7 @@ import {
 } from "../db/repositories";
 import type { InspectionRequest } from "../types";
 import { validateWebhookUrl } from "../webhook/url.guard";
+import { sendWebhookTest } from "../webhook/test-send";
 import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
@@ -41,7 +42,8 @@ import {
 } from "./validation";
 import { MODEL_MODES, type ModelMode } from "../config/model.modes";
 import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
-import { getSelectedRepo } from "../config/settings.keys";
+import { DEFAULT_APP_SETTINGS, getSelectedRepo } from "../config/settings.keys";
+import { encrypt } from "../utils/crypto";
 import {
   buildMetricsData,
   loadPublicConfig,
@@ -55,13 +57,7 @@ import {
 const SESSION_COOKIE = "ouro_session";
 const API_VERSION = "v1";
 const SETTINGS_KEY = "app_settings";
-
-const DEFAULT_SETTINGS = {
-  weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
-  gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
-  schedule: { mode: "cron", cronExpr: "0 3 * * *", cronTimezone: "Asia/Tokyo", time: "" },
-  notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
-};
+const DEFAULT_SETTINGS = DEFAULT_APP_SETTINGS;
 
 export interface TriggerHealingResult {
   runId: string;
@@ -73,23 +69,17 @@ export interface ApiDeps {
   config: HealingConfig;
   auth: AuthService;
   logger: Logger;
-  /** Platform-specific kickoff: inline cycle (server) or Workflow instance (worker). */
+  /** Platform-specific kickoff: Workflow instance (worker). */
   triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
+  /** Healing workflow terminate */
+  cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
   cookieSecure?: boolean;
-  /** Always "cloudflare": ONLY the Workers AI binding (ports.ai) is accepted —
-   * external gateway tokens are rejected and models are discovered from the
-   * binding. */
   deployTarget?: DeployTarget;
-  /**
-   * When explicitly set, overrides the DB-persisted registration toggle.
-   * true = open registration; false = closed (first-user bootstrap still allowed).
-   * Unset = fall back to the DB setting managed via the settings API.
-   */
   registrationEnabled?: boolean;
-  /** Whether GITHUB_TOKEN is set as a CF Secret. Used by GET /config for read-only display. */
   githubTokenSet?: boolean;
   flags?: FlagService;
   versionMetadata?: VersionMetadata;
+  encryptionKey?: string;
 }
 
 interface Identity {
@@ -142,6 +132,14 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     await next();
   });
 
+  const heavyLimit = async (c: Context<Env>, next: Next) => {
+    const identity = c.get("identity");
+    const key = identity ? `heavy:${identity.user.id}` : `heavy:ip:${clientIp(c)}`;
+    const { success } = await ports.rateLimiter.limit(key);
+    if (!success) return c.json({ error: { code: "rate_limited", message: "rate limit exceeded" } }, 429);
+    await next();
+  };
+
   // ── Identity resolution (cookie session only) ─────────────────────────────
   app.use("*", async (c: Context<Env>, next: Next) => {
     const sid = getCookie(c, SESSION_COOKIE);
@@ -152,13 +150,15 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     await next();
   });
 
-  const requireAuth = (scope?: Scope) => async (c: Context<Env>, next: Next) => {
+  const requireAuth = () => async (c: Context<Env>, next: Next) => {
     const identity = c.get("identity");
     if (!identity) return c.json({ error: { code: "unauthorized", message: "authentication required" } }, 401);
-    if (scope && !hasScope(identity.scopes, scope)) {
-      return c.json({ error: { code: "forbidden", message: `missing scope: ${scope}` } }, 403);
-    }
     await next();
+  };
+
+  const makeProposalManager = () => {
+    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    return new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
   };
   const requireAdmin = async (c: Context<Env>, next: Next) => {
     const identity = c.get("identity");
@@ -232,9 +232,8 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     } catch (err) {
       if (err instanceof AuthError) {
         if (c.req.header("HX-Request")) {
-          return c.html(
-            `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
-          );
+          // テンプレート文字列で HTML を組み立てず、text として返す（XSS 防止）
+          return c.text(err.message, 400);
         }
         if (isNativeFormPost(c)) {
           return c.redirect(`/register?error=${encodeURIComponent(err.message)}`, 302);
@@ -260,9 +259,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     } catch (err) {
       if (err instanceof AuthError) {
         if (c.req.header("HX-Request")) {
-          return c.html(
-            `<div class="alert bg-rose-600 text-white border border-rose-700"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${err.message}</span></div><script>lucide.createIcons()</script>`
-          );
+          return c.text(err.message, 400);
         }
         if (isNativeFormPost(c)) {
           const params = new URLSearchParams({ error: err.message });
@@ -399,7 +396,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   // ── コードインデックス（Vectorize RAG）────────────────────────────────────
-  app.post("/code-index/reindex", requireAdmin, async (c) => {
+  app.post("/code-index/reindex", requireAdmin, heavyLimit, async (c) => {
     if (!ports.vectorize) {
       return c.json(
         { error: { code: "not_configured", message: "VECTORIZE binding is not configured" } },
@@ -433,7 +430,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   // ── Inspection ─────────────────────────────────────────────────────────────
-  app.post("/inspect", requireAuth("inspect"), validateBody(inspectSchema), async (c) => {
+  app.post("/inspect", requireAuth(), heavyLimit, validateBody(inspectSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     const req = c.get("body") as InspectionRequest;
     const outcome = await runUserInspection({ ports, inspections, auth, log, userId, req });
@@ -441,6 +438,19 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: outcome.code, message: outcome.message } }, outcome.status);
     }
     return c.json(outcome.result);
+  });
+
+  app.post("/inspect/:id/cancel", requireAuth(), async (c) => {
+    const userId = c.get("identity")!.user.id;
+    const id = c.req.param("id")!;
+    const row = await inspections.find(id, userId);
+    if (!row) return c.json({ error: { code: "not_found", message: "inspection not found" } }, 404);
+    const active = ["queued", "indexing", "searching", "analyzing"];
+    if (!active.includes(row.status)) {
+      return c.json({ error: { code: "not_active", message: `cannot cancel status: ${row.status}` } }, 400);
+    }
+    await inspections.updateStatus(id, userId, "canceled");
+    return c.json({ ok: true, status: "canceled" });
   });
 
   app.get("/inspect/:id", requireAuth(), async (c) => {
@@ -464,12 +474,19 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.post("/webhooks", requireAuth(), validateBody(webhookCreateSchema), async (c) => {
     const body = c.get("body") as any;
     const id = newId();
-    
+    try {
+      validateWebhookUrl(body.url);
+    } catch (err) {
+      return c.json({ error: { code: "invalid_url", message: (err as Error).message } }, 400);
+    }
+
+    const encKey = deps.encryptionKey ?? "ouroboros-default-secret-key-change-me";
+    const secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
     const configData = {
       name: body.name || "webhook",
       adapter: body.adapter || body.type || "generic",
       events: body.events || ["inspection.completed"],
-      secret: body.secret || "",
+      secret,
       scoreThresholds: body.scoreThresholds || { overall: 70 },
     };
 
@@ -490,13 +507,21 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const hookId = c.req.param("id")!;
     const userId = c.get("identity")!.user.id;
 
+    if (body.url !== undefined) {
+      try {
+        validateWebhookUrl(body.url);
+      } catch (err) {
+        return c.json({ error: { code: "invalid_url", message: (err as Error).message } }, 400);
+      }
+    }
+
     if (body.enabled !== undefined) {
       await webhooks.setEnabled(hookId, userId, body.enabled);
     }
 
     const rows = await webhooks.listByUser(userId);
-    const existing = rows.find(r => r.id === hookId);
-    
+    const existing = rows.find((r) => r.id === hookId);
+
     if (existing) {
       let cfg: any = {};
       try {
@@ -508,13 +533,22 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       if (body.url !== undefined) cfg.url = body.url;
       if (body.events !== undefined) cfg.events = body.events;
       if (body.scoreThresholds !== undefined) cfg.scoreThresholds = body.scoreThresholds;
-      if (body.secret !== undefined) cfg.secret = body.secret;
+      if (body.secret !== undefined) {
+        const encKey = deps.encryptionKey ?? "ouroboros-default-secret-key-change-me";
+        cfg.secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
+      }
 
       const updates: string[] = [];
       const params: any[] = [];
-      if (body.url !== undefined) { updates.push("url = ?"); params.push(body.url); }
-      if (body.type !== undefined) { updates.push("type = ?"); params.push(body.type); }
-      
+      if (body.url !== undefined) {
+        updates.push("url = ?");
+        params.push(body.url);
+      }
+      if (body.type !== undefined) {
+        updates.push("type = ?");
+        params.push(body.type);
+      }
+
       updates.push("config = ?");
       params.push(JSON.stringify(cfg));
 
@@ -530,31 +564,19 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // Test ping — runtime-agnostic fetch send with SSRF protection.
   app.post("/webhooks/:id/test", requireAuth(), async (c) => {
     const list = await webhooks.listByUser(c.get("identity")!.user.id);
     const hook = list.find((w) => w.id === c.req.param("id"));
     if (!hook) return c.json({ error: { code: "not_found", message: "webhook not found" } }, 404);
-    try {
-      validateWebhookUrl(hook.url);
-    } catch (err) {
-      return c.json({ success: false, error: (err as Error).message }, 400);
+    const result = await sendWebhookTest(hook.url);
+    if (result.error && result.status === undefined) {
+      return c.json({ success: false, error: result.error }, result.ok ? 200 : 400);
     }
-    try {
-      const res = await fetch(hook.url, {
-        method: "POST",
-        headers: { "content-type": "application/json", "user-agent": "ouroboros-webhook-test" },
-        body: JSON.stringify({ event: "test", message: "Ouroboros webhook test", at: new Date().toISOString() }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      return c.json({ success: res.ok, statusCode: res.status });
-    } catch (err) {
-      return c.json({ success: false, error: (err as Error).message });
-    }
+    return c.json({ success: result.ok, statusCode: result.status, error: result.error });
   });
 
   // ── Self-healing ─────────────────────────────────────────────────────────
-  app.post("/healing", requireAuth("heal"), async (c) => {
+  app.post("/healing", requireAuth(), heavyLimit, async (c) => {
     const body = await c.req.json<{ dryRun?: boolean }>().catch(() => ({ dryRun: false }));
     const out = await deps.triggerHealing({
       trigger: "api",
@@ -562,6 +584,18 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       dryRun: body.dryRun ?? false,
     });
     return c.json(out, 202);
+  });
+
+  app.post("/healing/:runId/cancel", requireAuth(), async (c) => {
+    const runId = c.req.param("runId")!;
+    if (!deps.cancelHealing) {
+      return c.json({ error: { code: "not_supported", message: "cancel not available" } }, 503);
+    }
+    const result = await deps.cancelHealing(runId);
+    if (!result.ok) {
+      return c.json({ error: { code: "cancel_failed", message: result.error ?? "cancel failed" } }, 400);
+    }
+    return c.json({ ok: true, status: "canceled" });
   });
 
   app.get("/healing", requireAuth(), async (c) => c.json({ runs: await runs.recent(50) }));
@@ -592,7 +626,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ session: row });
   });
 
-  app.post("/code/sessions", requireAuth("inspect"), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionCreateSchema), async (c) => {
+  app.post("/code/sessions", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionCreateSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
     const body = c.get("body") as { repoUrl?: string; branch?: string; baseBranch?: string; title: string; instruction: string };
     let repoUrl = body.repoUrl;
@@ -614,13 +648,35 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ id }, 201);
   });
 
-  app.post("/code/sessions/:id/generate", requireAuth(), requireFlag(FLAGS.CODE_NEEDS_FIX, true), validateBody(codeSessionActionSchema), async (c) => {
-    const userId = c.get("identity")!.user.id;
-    const model = await auth.resolveModel(userId, "coding");
-    const planModel = await auth.resolveModel(userId, "plan");
-    await codeManager.generate(c.req.param("id")!, userId, { model, planModel });
-    return c.json({ ok: true });
-  });
+  app.post(
+    "/code/sessions/:id/generate",
+    requireAuth(),
+    heavyLimit,
+    requireFlag(FLAGS.CODE_NEEDS_FIX, true),
+    validateBody(codeSessionActionSchema),
+    async (c) => {
+      const userId = c.get("identity")!.user.id;
+      const sessionId = c.req.param("id")!;
+      const row = await codeManager.get(sessionId, userId);
+      if (!row) return c.json({ error: { code: "not_found", message: "session not found" } }, 404);
+      if (row.status !== "ready" && row.status !== "failed") {
+        return c.json({ error: { code: "invalid_status", message: `cannot generate from status: ${row.status}` } }, 400);
+      }
+      // 同期 AI 呼び出しを避け、Queue で非同期実行
+      await ports.db.exec(
+        `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+        ["generating", Date.now(), sessionId, userId]
+      );
+      await ports.queue.send({
+        id: newId(),
+        type: "codegen.requested",
+        userId,
+        payload: { sessionId, mode: "plan_code" },
+        enqueuedAt: Date.now(),
+      });
+      return c.json({ ok: true, status: "generating" }, 202);
+    }
+  );
 
   app.post("/code/sessions/:id/apply", requireAuth(), requireFlag(FLAGS.CODE_FIX_COMPLETE, true), validateBody(codeSessionActionSchema), async (c) => {
     const userId = c.get("identity")!.user.id;
@@ -646,8 +702,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/refactor/:inspectionId/propose", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = makeProposalManager();
     const model = await auth.resolveModel(userId, "refactor");
     await manager.generateProposal(c.req.param("inspectionId")!, userId, model);
     return c.json({ ok: true });
@@ -655,8 +710,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/refactor/proposals/:inspectionId/apply", requireAuth(), requireFlag(FLAGS.REFACTOR_APPLIED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = makeProposalManager();
     const model = await auth.resolveModel(userId, "refactor");
     const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner, model);
     return c.json(result);
@@ -664,8 +718,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   app.post("/refactor/proposals/:inspectionId/dismiss", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
-    const repoUrl = `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = makeProposalManager();
     await manager.dismissProposal(c.req.param("inspectionId")!, userId);
     return c.json({ ok: true });
   });
@@ -690,8 +743,9 @@ function setSession(c: Context, sessionId: string, secure?: boolean): void {
  * so the unified error handlers are (re)applied to the root here.
  */
 export function mountApi(root: Hono, deps: ApiDeps): void {
-  root.route("/api/v1", createApi(deps));
-  root.route("/api", createApi(deps));
+  const api = createApi(deps);
+  root.route("/api/v1", api);
+  root.route("/api", api);
 
   // Unmatched API routes must return a JSON 404, not fall through to the SPA
   // static fallback. Registered after the API routes (so defined routes win)

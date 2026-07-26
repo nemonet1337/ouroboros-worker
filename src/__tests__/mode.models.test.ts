@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { modeModelsSchema } from "../http/validation";
-import { UnconfiguredRunner } from "../ports/runner";
+import { NoopRunner } from "../ports/runner";
 import { normalizeAllFindings } from "../utils/findings.normalize";
 
 describe("modeModelsSchema", () => {
@@ -37,14 +37,15 @@ describe("modeModelsSchema", () => {
   });
 });
 
-describe("UnconfiguredRunner", () => {
-  it("throws an explicit error from scan instead of returning empty findings", async () => {
-    const runner = new UnconfiguredRunner();
-    await expect(runner.scan()).rejects.toThrow("no runner configured");
+describe("NoopRunner", () => {
+  it("returns empty findings from scan", async () => {
+    const runner = new NoopRunner();
+    const r = await runner.scan();
+    expect(r.findings.staticAnalysis).toEqual([]);
   });
 
   it("returns explicit failure from applyFix", async () => {
-    const runner = new UnconfiguredRunner();
+    const runner = new NoopRunner();
     const result = await runner.applyFix({
       group: {
         id: "g",
@@ -67,10 +68,22 @@ describe("normalizeAllFindings", () => {
   it("passes through new-format staticAnalysis findings", () => {
     const findings = normalizeAllFindings({
       staticAnalysis: [
-        { id: "eval-usage/a.ts", ruleId: "eval-usage", title: "t", message: "m", severity: "critical", file: "a.ts", line: 5 },
+        {
+          id: "eval-usage/a.ts",
+          ruleId: "eval-usage",
+          title: "t",
+          message: "m",
+          severity: "critical",
+          file: "a.ts",
+          line: 5,
+        },
       ],
     });
-    expect(findings.staticAnalysis[0]).toMatchObject({ ruleId: "eval-usage", severity: "critical", line: 5 });
+    expect(findings.staticAnalysis[0]).toMatchObject({
+      ruleId: "eval-usage",
+      severity: "critical",
+      line: 5,
+    });
   });
 
   it("maps legacy severities error/warning/note to high/medium/info", () => {

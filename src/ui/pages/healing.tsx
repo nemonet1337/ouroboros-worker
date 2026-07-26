@@ -64,8 +64,11 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
           <i data-lucide="history" class="w-5 h-5 text-secondary" />
           <span>修復実行履歴</span>
         </h2>
+        <p class="text-xs opacity-50 px-1 -mt-2">
+          ステータスで絞り込みできます。実行 ID をクリックすると詳細ログを表示します。
+        </p>
 
-        {/* 履歴一覧のHTMX動的読み込み（フラグメント側がページングと自動更新を持つ） */}
+        {/* 履歴一覧のHTMX動的読み込み（フラグメント側がフィルタ・ページング・自動更新を持つ） */}
         <div hx-get="/ui/fragments/healing/runs" hx-trigger="load" hx-swap="outerHTML">
           {/* ローディング時スケルトン */}
           <div class="card card-glass p-6 space-y-4">
@@ -78,6 +81,42 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
           </div>
         </div>
       </div>
+
+      {/* 実行ログモーダル（リストのポーリングで消えないようページに固定） */}
+      <dialog id="healing_log_modal" class="modal">
+        <div class="modal-box max-w-3xl">
+          <form method="dialog">
+            <button
+              type="submit"
+              class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+              aria-label="閉じる"
+            >
+              ✕
+            </button>
+          </form>
+          <h3 class="font-bold text-lg mb-1 flex items-center gap-2">
+            <i data-lucide="scroll-text" class="w-5 h-5 text-primary" />
+            修復実行ログ
+          </h3>
+          <p class="text-xs opacity-50 mb-4">実行 ID をクリックした修復の詳細とログ出力です。</p>
+          <div id="healing-log-modal-loading" class="htmx-indicator text-xs opacity-60 mb-2">
+            読み込み中…
+          </div>
+          <div id="healing-log-modal-body" class="min-h-24">
+            <p class="text-sm opacity-50">実行 ID をクリックするとログが表示されます。</p>
+          </div>
+          <div class="modal-action">
+            <form method="dialog">
+              <button type="submit" class="btn btn-sm rounded-lg">
+                閉じる
+              </button>
+            </form>
+          </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button type="submit">閉じる</button>
+        </form>
+      </dialog>
     </Layout>
   );
 };

@@ -7,8 +7,7 @@ export interface MailMessage {
 
 /**
  * Outbound email for alert/warning notifications.
- * Implementations:
- * MailChannelsMailer (fetch, Cloudflare — MailChannels or SendGrid).
+ * Implementations: CfEmailMailer (Workers Email Routing), NoopMailer.
  */
 export type MailerKind = "smtp" | "mailchannels" | "sendgrid" | "cf-email" | "noop";
 

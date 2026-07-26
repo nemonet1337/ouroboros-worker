@@ -63,13 +63,12 @@ src/
 | `AiProvider`   | Workers AI (the only AI gateway)        |
 | `Mailer`       | MailChannels / CF Email Routing         |
 | `VcsProvider`  | GitHub (fetch)                          |
-| `HealingRunner`| `RpcRunner`(Service Binding) / `DispatchRunner`(HTTP) → CF Worker runner |
+| `HealingRunner`| `RepoRunner` (in-process, GitHub REST API) |
 | `RateLimiter`  | Workers Rate Limiting API               |
-| `VectorizePort`| Cloudflare Vectorize (adaptive weighting)|
+| `VectorizePort`| Cloudflare Vectorize (code-index RAG)   |
 
-Note: Workers lack a filesystem/git/compilers, so patch application, commit, and push are
-**delegated via Service Binding or HTTP** to the `ouroboros-runner` Worker (GitHub API-based).
-When no runner is configured, the fix step is skipped via `NoopRunner`.
+Note: scan, fix, commit, and PR creation run **in-process via `RepoRunner`** using the GitHub REST API
+(the old Service Binding to `ouroborous-runner` has been removed).
 A **Cloudflare Workflow** drives the durable scan → analyze → fix → PR lifecycle.
 
 ---
@@ -87,19 +86,19 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from src/db/migrations/
 
-# Vectorize index (for adaptive weighting, optional)
-wrangler vectorize create ouroboros-weight-profiles --dimensions=32 --metric=cosine
+# Vectorize index (code RAG)
+wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+wrangler queues create ouroboros-dlq                 # dead-letter queue for failed events
 
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
 wrangler secret put GITHUB_REPOSITORY               # owner/repo (auto-detected from token if omitted)
-wrangler secret put RUNNER_SHARED_SECRET            # (optional) auth for the dispatched runner
 
 wrangler deploy                                      # or: wrangler dev
 ```
 
 `wrangler.toml` wires D1, R2, Queues, Workflows, Workers AI, Vectorize, the Rate Limiting binding,
-the daily cron trigger, and the static GUI assets.
+and the hourly cron trigger (no runner Service Binding required).
 
 ### Admin account
 

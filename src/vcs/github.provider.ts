@@ -313,4 +313,101 @@ export class GitHubProvider implements VcsProvider {
     }
     return results;
   }
+
+  // ── Git object write APIs（RepoRunner が PR ブランチ作成に使用）────────────
+
+  async getDefaultBranch(): Promise<string> {
+    const result = await this.api<{ default_branch: string }>(``);
+    return result.default_branch;
+  }
+
+  /** ブランチ HEAD の commit SHA を返す。 */
+  async getRef(branch: string): Promise<string> {
+    const result = await this.api<{ object: { sha: string } }>(
+      `/git/refs/heads/${encodeURIComponent(branch)}`
+    );
+    return result.object.sha;
+  }
+
+  /** commit SHA から tree SHA を取る（createTree の base_tree 用）。 */
+  async getCommitTreeSha(commitSha: string): Promise<string> {
+    const result = await this.api<{ tree: { sha: string } }>(`/git/commits/${commitSha}`);
+    return result.tree.sha;
+  }
+
+  /** 単一ファイルの contents API 取得（RepoRunner 用）。VcsProvider の optional とは別シグネチャ。 */
+  async readFileContent(
+    path: string,
+    ref?: string
+  ): Promise<{ path: string; content: string; sha: string } | null> {
+    try {
+      const q = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+      const result = await this.api<{ content: string; sha: string; encoding: string }>(
+        `/contents/${path.split("/").map(encodeURIComponent).join("/")}${q}`
+      );
+      if (result.encoding !== "base64") throw new Error("unexpected encoding");
+      return { path, content: atob(result.content.replace(/\n/g, "")), sha: result.sha };
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes("404")) return null;
+      throw e;
+    }
+  }
+
+  async createBlob(content: string): Promise<string> {
+    const result = await this.api<{ sha: string }>(`/git/blobs`, {
+      method: "POST",
+      body: JSON.stringify({ content, encoding: "utf-8" }),
+    });
+    return result.sha;
+  }
+
+  async createTree(
+    baseTreeSha: string,
+    entries: { path: string; mode?: string; type?: "blob" | "tree"; sha: string }[]
+  ): Promise<string> {
+    const tree = entries.map((e) => ({
+      path: e.path,
+      mode: e.mode ?? "100644",
+      type: e.type ?? "blob",
+      sha: e.sha,
+    }));
+    const result = await this.api<{ sha: string }>(`/git/trees`, {
+      method: "POST",
+      body: JSON.stringify({ base_tree: baseTreeSha, tree }),
+    });
+    return result.sha;
+  }
+
+  async createCommit(message: string, treeSha: string, parents: string[]): Promise<string> {
+    const result = await this.api<{ sha: string }>(`/git/commits`, {
+      method: "POST",
+      body: JSON.stringify({ message, tree: treeSha, parents }),
+    });
+    return result.sha;
+  }
+
+  /**
+   * 新規ブランチは POST /git/refs、既存は PATCH。
+   * 旧 runner は PATCH のみで新規ブランチ作成が常に失敗していた。
+   */
+  async createOrUpdateRef(branch: string, sha: string): Promise<void> {
+    const createRes = await fetch(`${this.base}/git/refs`, {
+      method: "POST",
+      headers: this.ghHeaders(true),
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (createRes.ok) return;
+    // 422 = ref already exists → update
+    if (createRes.status === 422) {
+      await this.api(`/git/refs/heads/${encodeURIComponent(branch)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sha, force: false }),
+      });
+      return;
+    }
+    throw new Error(
+      `GitHub API POST /git/refs -> ${createRes.status}: ${(await createRes.text()).slice(0, 300)}`
+    );
+  }
 }

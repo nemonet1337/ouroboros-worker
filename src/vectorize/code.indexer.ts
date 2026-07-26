@@ -47,7 +47,9 @@ export class CodeIndexer {
     private readonly settings: SettingsRepository
   ) {}
 
-  /** ~50 行の窓 + 10 行オーバーラップでチャンク化する */
+  /** ~50 行の窓 + 10 行オーバーラップでチャンク化する。
+   * Vectorize の vector id は最大 64 バイトのため、パス#line を SHA-256 先頭 32 hex にハッシュする。
+   */
   chunk(file: { path: string; content: string }): Array<{ id: string; startLine: number; endLine: number; text: string }> {
     const lines = file.content.split("\n");
     const chunks: Array<{ id: string; startLine: number; endLine: number; text: string }> = [];
@@ -56,7 +58,7 @@ export class CodeIndexer {
       const text = lines.slice(start, end).join("\n").slice(0, CHUNK_MAX_CHARS);
       if (text.trim().length > 0) {
         chunks.push({
-          id: `${file.path}#${start + 1}`,
+          id: chunkId(file.path, start + 1),
           startLine: start + 1,
           endLine: end,
           text,
@@ -163,4 +165,24 @@ export class CodeIndexer {
   private async saveStatus(status: CodeIndexStatus): Promise<void> {
     await this.settings.set(CODE_INDEX_STATUS_KEY, JSON.stringify(status));
   }
+}
+
+/** Vectorize id は 64 バイト上限。パス#line を SHA-256 hex 先頭 32 文字にする。 */
+function chunkId(path: string, startLine: number): string {
+  // 同期 digest は WebCrypto に無いため、簡易 FNV-1a + パス短縮で 32 hex 相当を生成。
+  // 衝突耐性より長さ制限の遵守を優先。メタデータに path/line を保存済み。
+  const input = `${path}#${startLine}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5 ^ 0x9e3779b9;
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ (c + i), 0x01000193);
+  }
+  return (
+    (h1 >>> 0).toString(16).padStart(8, "0") +
+    (h2 >>> 0).toString(16).padStart(8, "0") +
+    Math.imul(h1 ^ h2, 0x85ebca6b).toString(16).padStart(8, "0").slice(0, 8) +
+    Math.imul(h1 + h2, 0xc2b2ae35).toString(16).padStart(8, "0").slice(0, 8)
+  );
 }

@@ -52,6 +52,20 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
           </span>
         </div>
 
+        {/* 生成中ポーリング */}
+        {(session.status === "generating" || session.status === "ready" || session.status === "failed") && (
+          <div
+            id="code-session-status"
+            hx-get={
+              session.status === "generating"
+                ? `/ui/fragments/code/sessions/${sessionId}/status`
+                : undefined
+            }
+            hx-trigger={session.status === "generating" ? "every 5s" : undefined}
+            hx-swap="outerHTML"
+          />
+        )}
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div class="lg:col-span-2 space-y-4">
             {/* 指示 */}

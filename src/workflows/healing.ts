@@ -21,6 +21,19 @@ export interface HealingParams {
 
 const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low", "info"];
 
+const STEP_OPTS_SCAN = {
+  retries: { limit: 2, delay: "30 seconds" as const, backoff: "exponential" as const },
+  timeout: "10 minutes" as const,
+};
+const STEP_OPTS_ANALYZE = {
+  retries: { limit: 2, delay: "30 seconds" as const, backoff: "exponential" as const },
+  timeout: "10 minutes" as const,
+};
+const STEP_OPTS_FIX = {
+  retries: { limit: 2, delay: "30 seconds" as const, backoff: "exponential" as const },
+  timeout: "15 minutes" as const,
+};
+
 /**
  * Vectorize コードインデックスから findings に関連するスニペットを検索し、
  * AIAnalyzer のプロンプトへ渡す追加コンテキストを組み立てる。エラーは非致命。
@@ -38,7 +51,7 @@ async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Prom
     const indexer = new CodeIndexer(
       ctx.ports.vectorize,
       ctx.ports.ai,
-      ctx.ports.vcs as GitHubProvider,
+      ctx.ports.vcs as unknown as GitHubProvider,
       new SettingsRepository(ctx.ports.db)
     );
     const snippets = await indexer.search(query, 8);
@@ -53,9 +66,8 @@ async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Prom
 }
 
 /**
- * Durable, resumable self-healing lifecycle on Cloudflare. Each phase is a
- * Workflow step (retried independently); heavy git/compiler work is dispatched
- * to the self-hosted runner via the DispatchRunner inside the fix step.
+ * Durable, resumable self-healing lifecycle on Cloudflare.
+ * scan / analyze / fix は同一 Worker 内の RepoRunner で実行する。
  */
 export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
   async run(event: WorkflowEvent<HealingParams>, step: WorkflowStep): Promise<void> {
@@ -68,9 +80,12 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
     try {
       await this.execute(event, step, ctx, runs);
     } catch (err) {
-      // 失敗を healing_runs に記録して UI に表示させる（従来は findings 0 件の偽成功だった）
       const message = err instanceof Error ? err.message : String(err);
-      await runs.update(runId, { status: "failed", summary: JSON.stringify({ error: message }) });
+      // キャンセル済みなら上書きしない
+      const current = await runs.find(runId);
+      if (current?.status !== "canceled") {
+        await runs.update(runId, { status: "failed", summary: JSON.stringify({ error: message }) });
+      }
       await log.error("workflow failed", { runId, reason: message });
       await runLog.error("workflow failed", { reason: message });
       throw err;
@@ -87,18 +102,23 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
     const log = ctx.logger.child("workflow");
     const runLog = ctx.logger.child(`healing/${runId}`);
 
-    const findings = await step.do("scan", async (): Promise<AllFindings> => {
+    const findings = await step.do("scan", STEP_OPTS_SCAN, async (): Promise<AllFindings> => {
+      const current = await runs.find(runId);
+      if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "scanning", workflow_id: event.instanceId });
       await runLog.info("scan: 開始");
       const r = await ctx.ports.runner.scan();
-      await runLog.info("scan: 完了", { groups: r.findings.staticAnalysis.length + r.findings.secrets.length });
+      await runLog.info("scan: 完了", {
+        groups: r.findings.staticAnalysis.length + r.findings.secrets.length,
+      });
       return r.findings;
     });
 
-    const analysis = await step.do("analyze", async () => {
+    const analysis = await step.do("analyze", STEP_OPTS_ANALYZE, async () => {
+      const current = await runs.find(runId);
+      if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "analyzing" });
       await runLog.info("analyze: 開始");
-      // healing モードのモデルをトリガーしたユーザー設定から解決（cron 等はデフォルト）
       const run = await runs.find(runId);
       const model = await ctx.auth.resolveModel(run?.user_id, "healing");
       const config = { ...ctx.config, ai: { ...ctx.config.ai, model } };
@@ -110,7 +130,9 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       return result;
     });
 
-    await step.do("fix", async () => {
+    await step.do("fix", STEP_OPTS_FIX, async () => {
+      const current = await runs.find(runId);
+      if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "fixing" });
       await runLog.info("fix: 開始");
       const dedup = new PRDeduplicator(ctx.config, ctx.ports.vcs);
@@ -120,6 +142,9 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       const alerts = new AlertService(ctx.ports.mailer, ctx.alertRecipients);
 
       if (!dryRun) await Promise.allSettled([dedup.loadOpenPRs(), cache.load()]);
+
+      const run = await runs.find(runId);
+      const healingModel = await ctx.auth.resolveModel(run?.user_id, "healing");
 
       const sorted = [...analysis.groups].sort(
         (a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority)
@@ -139,6 +164,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
           baseBranch: ctx.config.vcs.baseBranch,
           branchPrefix: ctx.config.vcs.branchPrefix,
           dryRun,
+          model: healingModel,
         });
 
         if (dryRun) continue;

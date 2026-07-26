@@ -1,6 +1,6 @@
 import type { AllFindings, FindingGroup, Patch } from "../types";
 
-export type RunnerKind = "local" | "dispatch" | "rpc" | "noop";
+export type RunnerKind = "local" | "noop";
 
 export interface RunnerScanResult {
   findings: AllFindings;
@@ -19,6 +19,8 @@ export interface RunFixOptions {
   baseBranch: string;
   branchPrefix: string;
   dryRun: boolean;
+  /** healing モードで解決した Workers AI モデル ID */
+  model?: string;
 }
 
 export interface HealingRunner {
@@ -82,71 +84,9 @@ export interface CodeRunner {
   generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult>;
 }
 
-const UNCONFIGURED_MESSAGE =
-  "no runner configured: bind RUNNER (service binding), set RUNNER_URL, or enable the LOADER worker_loaders binding";
-
 /**
- * runner が一切構成されていない場合の明示的エラー。旧 NoopRunner は黙って空結果を
- * 返し「実行されたのに何も起きない」偽成功を生んでいたため、本番配線では使わない。
+ * テスト用の空ランナー。本番の context では RepoRunner を使う。
  */
-export class UnconfiguredRunner implements HealingRunner, CodeRunner {
-  readonly kind: RunnerKind = "noop";
-
-  private fail(): never {
-    throw new Error(UNCONFIGURED_MESSAGE);
-  }
-
-  async scan(): Promise<RunnerScanResult> {
-    return this.fail();
-  }
-
-  // workflow は validationOutput を notifier/escalator 経由で表面化できるため、
-  // applyFix のみ throw ではなく失敗結果を返す。
-  async applyFix(_opts: RunFixOptions): Promise<RunnerFixResult> {
-    return { success: false, patches: [], validationOutput: UNCONFIGURED_MESSAGE, iterations: 0 };
-  }
-
-  async init(_opts: CodeInitOptions): Promise<CodeInitResult> {
-    return this.fail();
-  }
-
-  async status(_opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }> {
-    return this.fail();
-  }
-
-  async read(_opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult> {
-    return this.fail();
-  }
-
-  async search(_opts: { sessionId: string; query: string; type: "grep" | "glob" }): Promise<CodeSearchResult> {
-    return this.fail();
-  }
-
-  async write(_opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult> {
-    return this.fail();
-  }
-
-  async deleteFiles(_opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
-    return this.fail();
-  }
-
-  async diff(_opts: { sessionId: string }): Promise<CodeDiffResult> {
-    return this.fail();
-  }
-
-  async commit(_opts: { sessionId: string; message: string }): Promise<CodeCommitResult> {
-    return this.fail();
-  }
-
-  async push(_opts: { sessionId: string; branch: string }): Promise<{ success: boolean }> {
-    return this.fail();
-  }
-
-  async generate(_opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
-    return this.fail();
-  }
-}
-
 export class NoopRunner implements HealingRunner, CodeRunner {
   readonly kind: RunnerKind = "noop";
 
@@ -194,7 +134,7 @@ export class NoopRunner implements HealingRunner, CodeRunner {
     return { success: false, files: [] };
   }
 
-  async deleteFiles(opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
+  async deleteFiles(_opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
     return { success: false };
   }
 

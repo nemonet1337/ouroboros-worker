@@ -112,7 +112,7 @@ export const defaultInspectionConfig: InspectionConfig = {
   ai: {
     model: DEFAULT_WORKERS_AI_MODEL,
     maxTokens: 8192,
-    maxRetries: 2,
+    maxRetries: 1,
   },
   preprocessing: {
     maxFileSizeBytes: 50_000,

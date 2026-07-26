@@ -11,6 +11,8 @@ interface SettingsPageProps {
   globalModel?: string | null;
   modeModels?: Record<string, string>;
   defaultModel?: string;
+  /** モード別の実効モデル（placeholder 表示用） */
+  effectiveModels?: Record<string, string>;
   appSettings?: Record<string, unknown>;
   webhooksEnabled?: boolean;
   featureFlags?: Record<string, boolean>;
@@ -60,6 +62,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   globalModel = null,
   modeModels = {},
   defaultModel = "",
+  effectiveModels = {},
   appSettings = {},
   webhooksEnabled = true,
   featureFlags = {},
@@ -193,7 +196,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   <ModelInput
                     name={mode}
                     label={MODEL_MODE_LABELS[mode]}
-                    hint="グローバル設定に従う"
+                    hint={`実効: ${effectiveModels[mode] ?? defaultModel}`}
                     selected={modeModels[mode] ?? null}
                   />
                 ))}

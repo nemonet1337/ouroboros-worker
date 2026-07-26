@@ -10,6 +10,15 @@ import type { SettingsRepository } from "../db/repositories";
 export const SELECTED_REPO_KEY = "selected_repo";
 export const FEATURE_FLAGS_KEY = "feature_flags";
 export const WEBHOOKS_ENABLED_KEY = "webhooks_enabled";
+export const APP_SETTINGS_KEY = "app_settings";
+
+/** 設定画面 / API の共通デフォルト（schedule は UTC HH:MM + 曜日） */
+export const DEFAULT_APP_SETTINGS = {
+  weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
+  gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
+  schedule: { time: "03:00", daysOfWeek: [] as number[] },
+  notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
+};
 
 export interface SelectedRepo {
   owner: string;

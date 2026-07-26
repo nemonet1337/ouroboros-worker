@@ -1,15 +1,17 @@
 import { createHmac } from "node:crypto";
 import { WebhookEndpoint } from "../types";
 import { validateWebhookUrl } from "./url.guard";
+import { decrypt } from "../utils/crypto";
 
 const MAX_ATTEMPTS = 3;
 const TIMEOUT_MS = 10_000;
-
 
 export interface DispatchOptions {
   body: Record<string, unknown>;
   endpoint: WebhookEndpoint;
   event: string;
+  /** Webhook secret 復号キー（未設定時はレガシー平文として扱う） */
+  encryptionKey?: string;
 }
 
 export interface DispatchResult {
@@ -38,7 +40,10 @@ export async function dispatch(options: DispatchOptions): Promise<DispatchResult
   };
 
   if (endpoint.secret) {
-    const sig = createHmac("sha256", endpoint.secret).update(bodyJson).digest("hex");
+    const plainSecret = options.encryptionKey
+      ? await decrypt(endpoint.secret, options.encryptionKey)
+      : endpoint.secret;
+    const sig = createHmac("sha256", plainSecret).update(bodyJson).digest("hex");
     headers["X-Ouroboros-Signature"] = `sha256=${sig}`;
   }
 

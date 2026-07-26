@@ -34,6 +34,7 @@ import {
   shapeWebhookRow,
 } from "../http/data";
 import { validateWebhookUrl } from "../webhook/url.guard";
+import { sendWebhookTest } from "../webhook/test-send";
 import { webhookCreateSchema, codeSessionCreateSchema } from "../http/validation";
 import { newId } from "../auth/tokens";
 import { CodeSessionManager } from "../code/session.manager";
@@ -73,6 +74,8 @@ export interface FragmentDeps {
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
   triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
+  cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
+  encryptionKey?: string;
 }
 
 type Env = { Variables: { identity: { user: AuthedUser } } };
@@ -124,6 +127,14 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const codeSessions = new CodeSessionRepository(ports.db);
   const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
   const log = deps.logger.child("fragments");
+
+  const makeProposalManager = async () => {
+    const selected = await getSelectedRepo(settingsRepo);
+    const repoUrl = selected
+      ? `https://github.com/${selected.owner}/${selected.repo}`
+      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
+    return new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+  };
 
   // 失敗時も生の JSON/スタックではなく alert フラグメントを返す。
   // Hono はハンドラの例外を最内フレームで即座に onError へ渡すため、
@@ -374,19 +385,66 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
 
   app.post("/code/sessions/:id/generate", requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
     const userId = c.get("identity").user.id;
-    const model = await auth.resolveModel(userId, "coding");
-    const planModel = await auth.resolveModel(userId, "plan");
+    const sessionId = c.req.param("id")!;
     const body = await c.req.parseBody();
     const mode = body.codeMode === "code_only" ? "code_only" : "plan_code";
-    await codeManager.generate(c.req.param("id")!, userId, { model, planModel, mode });
-    const updated = await codeManager.get(c.req.param("id")!, userId);
-    if (updated && updated.status === "failed") {
+    const row = await codeManager.get(sessionId, userId);
+    if (!row) return c.html(<Alert type="error" message="セッションが見つかりません。" />);
+    if (row.status !== "ready" && row.status !== "failed") {
+      return c.html(<Alert type="error" message={`現在の状態では生成できません: ${row.status}`} />);
+    }
+    await ports.db.exec(
+      `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["generating", Date.now(), sessionId, userId]
+    );
+    await ports.queue.send({
+      id: newId(),
+      type: "codegen.requested",
+      userId,
+      payload: { sessionId, mode },
+      enqueuedAt: Date.now(),
+    });
+    return c.html(
+      <Alert type="info" message="生成を開始しました。完了まで自動更新されます。" />
+    );
+  });
+
+  /** 生成中ポーリング用ステータスフラグメント */
+  app.get("/code/sessions/:id/status", requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
+    const userId = c.get("identity").user.id;
+    const row = await codeManager.get(c.req.param("id")!, userId);
+    if (!row) return c.html(<Alert type="error" message="セッションが見つかりません。" />);
+    if (row.status === "generating") {
       return c.html(
-        <Alert type="error" message={`パッチ生成に失敗しました: ${updated.error_message ?? "不明なエラー"}`} />
+        <div
+          id="code-session-status"
+          hx-get={`/ui/fragments/code/sessions/${row.id}/status`}
+          hx-trigger="every 5s"
+          hx-swap="outerHTML"
+        >
+          <Alert type="info" message="生成中…（自動更新）" />
+        </div>
+      );
+    }
+    if (row.status === "failed") {
+      return c.html(
+        <div id="code-session-status">
+          <Alert type="error" message={`パッチ生成に失敗しました: ${row.error_message ?? "不明なエラー"}`} />
+        </div>
+      );
+    }
+    if (row.status === "generated") {
+      return c.html(
+        <div id="code-session-status">
+          <Alert type="success" message="パッチを生成しました。ページを再読み込みして内容を確認してください。" />
+          <meta http-equiv="refresh" content="1" />
+        </div>
       );
     }
     return c.html(
-      <Alert type="success" message="パッチを生成しました。「状態を更新」を押して内容を確認してください。" />
+      <div id="code-session-status">
+        <span class="badge badge-ghost">{row.status}</span>
+      </div>
     );
   });
 
@@ -419,11 +477,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   app.post("/refactor/:id/propose", requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity").user.id;
     const inspectionId = c.req.param("id")!;
-    const selected = await getSelectedRepo(settingsRepo);
-    const repoUrl = selected
-      ? `https://github.com/${selected.owner}/${selected.repo}`
-      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = await makeProposalManager();
     const model = await auth.resolveModel(userId, "refactor");
     await manager.generateProposal(inspectionId, userId, model);
     return renderInspectionDetail(c, inspectionId);
@@ -432,11 +486,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   app.post("/refactor/:id/apply", requireFlag(FLAGS.REFACTOR_APPLIED, true), async (c) => {
     const userId = c.get("identity").user.id;
     const inspectionId = c.req.param("id")!;
-    const selected = await getSelectedRepo(settingsRepo);
-    const repoUrl = selected
-      ? `https://github.com/${selected.owner}/${selected.repo}`
-      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = await makeProposalManager();
     const model = await auth.resolveModel(userId, "refactor");
     await manager.applyProposal(inspectionId, userId, ports.codeRunner, model);
     return renderInspectionDetail(c, inspectionId);
@@ -445,11 +495,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   app.post("/refactor/:id/dismiss", requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity").user.id;
     const inspectionId = c.req.param("id")!;
-    const selected = await getSelectedRepo(settingsRepo);
-    const repoUrl = selected
-      ? `https://github.com/${selected.owner}/${selected.repo}`
-      : `https://github.com/${deps.config.vcs.owner}/${deps.config.vcs.repo}`;
-    const manager = new ProposalManager(ports.ai, ports.db, ports.vcs, repoUrl);
+    const manager = await makeProposalManager();
     await manager.dismissProposal(inspectionId, userId);
     return renderInspectionDetail(c, inspectionId);
   });
@@ -470,6 +516,11 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       return c.html(<Alert type="error" message={`入力内容を確認してください: ${check.errors.join(", ")}`} />);
     }
     const v = check.value as Record<string, unknown>;
+    try {
+      validateWebhookUrl(v.url as string);
+    } catch (err) {
+      return c.html(<Alert type="error" message={`宛先 URL が不正です: ${(err as Error).message}`} />);
+    }
     const configData = {
       name: (typeof v.name === "string" && v.name) || "webhook",
       adapter: (typeof v.adapter === "string" && v.adapter) || "generic",
@@ -511,38 +562,49 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const userId = c.get("identity").user.id;
     const hook = (await webhooks.listByUser(userId)).find((w) => w.id === c.req.param("id"));
     if (!hook) return c.html(<Alert type="error" message="Webhook が見つかりません。" />);
-    try {
-      validateWebhookUrl(hook.url);
-    } catch (err) {
-      return c.html(<Alert type="error" message={`宛先 URL が不正です: ${(err as Error).message}`} />);
+    const result = await sendWebhookTest(hook.url);
+    if (result.ok) {
+      return c.html(<Alert type="success" message={`テスト送信に成功しました (HTTP ${result.status})。`} />);
     }
-    try {
-      const res = await fetch(hook.url, {
-        method: "POST",
-        headers: { "content-type": "application/json", "user-agent": "ouroboros-webhook-test" },
-        body: JSON.stringify({ event: "test", message: "Ouroboros webhook test", at: new Date().toISOString() }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      return res.ok ? (
-        c.html(<Alert type="success" message={`テスト送信に成功しました (HTTP ${res.status})。`} />)
-      ) : (
-        c.html(<Alert type="error" message={`テスト送信が拒否されました (HTTP ${res.status})。`} />)
-      );
-    } catch (err) {
-      return c.html(<Alert type="error" message={`テスト送信に失敗しました: ${(err as Error).message}`} />);
+    if (result.status !== undefined) {
+      return c.html(<Alert type="error" message={`テスト送信が拒否されました (HTTP ${result.status})。`} />);
     }
+    return c.html(<Alert type="error" message={`テスト送信に失敗しました: ${result.error}`} />);
   });
 
   // ── 自己修復 ──────────────────────────────────────────────────────────────
   const HEALING_RUNS_PER_PAGE = 10;
-  const renderHealingRuns = async (page: number, oob = false) => {
+  const ALLOWED_STATUS_FILTERS = new Set([
+    "",
+    "active",
+    "queued",
+    "scanning",
+    "analyzing",
+    "fixing",
+    "running",
+    "done",
+    "failed",
+    "canceled",
+  ]);
+
+  const parseStatusFilter = (raw: string | undefined): string => {
+    const s = (raw ?? "").trim();
+    return ALLOWED_STATUS_FILTERS.has(s) ? s : "";
+  };
+
+  const renderHealingRuns = async (page: number, statusFilter = "", oob = false) => {
     // perPage+1 件取得して次ページ有無を判定する
-    const rows = await runs.recent(HEALING_RUNS_PER_PAGE + 1, (page - 1) * HEALING_RUNS_PER_PAGE);
+    const rows = await runs.recent(
+      HEALING_RUNS_PER_PAGE + 1,
+      (page - 1) * HEALING_RUNS_PER_PAGE,
+      statusFilter || undefined
+    );
     return (
       <HealingRunList
         runs={rows.slice(0, HEALING_RUNS_PER_PAGE)}
         page={page}
         hasNext={rows.length > HEALING_RUNS_PER_PAGE}
+        statusFilter={statusFilter}
         oob={oob}
       />
     );
@@ -550,7 +612,8 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
 
   app.get("/healing/runs", async (c) => {
     const page = Math.max(1, Number.parseInt(c.req.query("page") ?? "1", 10) || 1);
-    return c.html(await renderHealingRuns(page));
+    const statusFilter = parseStatusFilter(c.req.query("status"));
+    return c.html(await renderHealingRuns(page, statusFilter));
   });
 
   // 修復実行のログ（R2 の healing/<runId>.log をモーダル表示用に取得）
@@ -565,22 +628,98 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     } catch {
       content = "";
     }
-    const summary = run.summary ? JSON.parse(run.summary as string) : null;
+    let summary: unknown = null;
+    if (run.summary) {
+      try {
+        summary = JSON.parse(run.summary);
+      } catch {
+        summary = run.summary;
+      }
+    }
+    const statusLabel =
+      (
+        {
+          queued: "待機中",
+          scanning: "スキャン中",
+          analyzing: "解析中",
+          fixing: "修復中",
+          running: "実行中",
+          done: "完了",
+          failed: "失敗",
+          canceled: "キャンセル",
+        } as Record<string, string>
+      )[run.status] ?? run.status;
+    const triggerLabel =
+      ({ api: "API", gui: "GUI", cron: "スケジュール" } as Record<string, string>)[run.trigger] ??
+      run.trigger;
+    const startedAt = new Date(run.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+    const updatedAt = new Date(run.updated_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+
     return c.html(
-      <div class="space-y-3">
-        <div class="flex items-center justify-between gap-2">
-          <div class="text-sm font-semibold">実行ログ</div>
-          <div class="badge badge-sm">{run.status}</div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">実行 ID</div>
+            <div class="font-mono text-xs break-all">{run.id}</div>
+          </div>
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">ステータス</div>
+            <div class="badge badge-sm">{statusLabel}</div>
+          </div>
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">トリガー</div>
+            <div>{triggerLabel}</div>
+          </div>
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">バージョン</div>
+            <div class="font-mono text-xs">{run.tag ?? "—"}</div>
+          </div>
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">開始</div>
+            <div class="text-xs">{startedAt}</div>
+          </div>
+          <div>
+            <div class="text-xs opacity-50 mb-0.5">更新</div>
+            <div class="text-xs">{updatedAt}</div>
+          </div>
         </div>
-        {summary && (
-          <div class="text-xs opacity-60 font-mono whitespace-pre-wrap break-words">
-            {JSON.stringify(summary, null, 2)}
+
+        {summary != null && (
+          <div>
+            <div class="text-xs font-semibold opacity-70 mb-1">サマリ (JSON)</div>
+            <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-3 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
+              {typeof summary === "string" ? summary : JSON.stringify(summary, null, 2)}
+            </pre>
           </div>
         )}
-        <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
-          {content || "（ログはまだ出力されていません）"}
-        </pre>
+
+        <div>
+          <div class="text-xs font-semibold opacity-70 mb-1 flex items-center gap-1">
+            <i data-lucide="file-text" class="w-3.5 h-3.5" />
+            ログ出力
+          </div>
+          <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
+            {content || "（ログはまだ出力されていません）"}
+          </pre>
+        </div>
       </div>
+    );
+  });
+
+  app.post("/healing/:runId/cancel", async (c) => {
+    const runId = c.req.param("runId")!;
+    if (!deps.cancelHealing) {
+      return c.html(<Alert type="error" message="キャンセル機能が利用できません。" />);
+    }
+    const result = await deps.cancelHealing(runId);
+    if (!result.ok) {
+      return c.html(<Alert type="error" message={result.error ?? "キャンセルに失敗しました。"} />);
+    }
+    return c.html(
+      <>
+        <Alert type="success" message="自己修復をキャンセルしました。" />
+        {await renderHealingRuns(1, "", true)}
+      </>
     );
   });
 
@@ -599,7 +738,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
               : `自己修復サイクルを開始しました (実行 ID: ${out.runId.slice(0, 8)})。`
           }
         />
-        {await renderHealingRuns(1, true)}
+        {await renderHealingRuns(1, "", true)}
       </>
     );
   });

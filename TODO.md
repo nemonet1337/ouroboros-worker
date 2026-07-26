@@ -1,168 +1,47 @@
-# Ouroboros Dual-Mode — Remaining TODO
+# TODO — 問題点分析と修正方法
 
-## 1. External Runner (RUNNER_URL) — Complete
+調査日: 2026-07-26。修正完了: 2026-07-26。
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/internal/code/init` | POST | Clone repo, checkout branch, set up workspace for session |
-| `/internal/code/status` | POST | Get workspace status (branch, changed files) |
-| `/internal/code/read` | POST | Read file contents by path |
-| `/internal/code/search` | POST | Search codebase (grep/glob) |
-| `/internal/code/write` | POST | Write files to workspace |
-| `/internal/code/delete` | POST | Delete files from workspace |
-| `/internal/code/diff` | POST | Get unified diff of working tree |
-| `/internal/code/commit` | POST | Commit changes |
-| `/internal/code/push` | POST | Push branch to remote |
-| `/internal/code/generate` | POST | AI code generation (Code Mode patches) |
+## 実施済みサマリ
 
-**Current status:** All Code Mode endpoints implemented in runner (`runner/src/index.ts`). Worker-side adapters (`RpcRunner`, `DispatchRunner`, `NoopRunner`, `DynamicRunner`) all implement `CodeRunner.generate()`.
+### §A runner 統合（単一 Worker）
+- [x] GitHubProvider に git object 書き込み（createOrUpdateRef / getCommitTreeSha 等）を追加し §3-4/§3-5 を修正
+- [x] `RepoRunner`（`src/healing/repo.runner.ts`）で HealingRunner + CodeRunner をプロセス内実装
+- [x] scanner / prompt.templates を worker へ移植
+- [x] context の 4 分岐（Rpc/Dispatch/Dynamic/Unconfigured）を RepoRunner 1 本に置換
+- [x] wrangler.toml から `[[services]]` / `[[worker_loaders]]` / `RUNNER_URL` を削除
+- [x] CLAUDE.md を単一 Worker 構成に更新
 
----
+### §0 最重要
+- [x] (A) 対象リポジトリが scan に伝わる（ctx.currentRepo → RepoRunner）
+- [x] (B) 新規ブランチ createOrUpdateRef
+- [x] (C) inspection subrequest（batch=1, 同期 reindex 廃止, maxRetries=1, AI binding 優先）
+- [x] (D) REST を chat/completions へ + 401/403 時 binding フォールバック（無効トークンは運用で delete）
 
-## 2. Port & Adapter Extension — Complete
+### §1–8 残り
+- [x] デッドコード空洞化（orchestrator / 旧 runner adapters / browser.tester 等）
+- [x] mountApi の createApi 1 回化
+- [x] DEFAULT_APP_SETTINGS 共通化
+- [x] requireAuth の getCookie 統一（index も hono/cookie）
+- [x] webhook テスト送信の共通化
+- [x] refactor makeProposalManager
+- [x] scope 形骸化の撤去（requireAuth 引数なし）
+- [x] XSS（HTML 直挿入）修正
+- [x] webhook URL 作成時バリデーション + secret 暗号化
+- [x] heavy エンドポイントのレートリミット
+- [x] Queue max_batch_size=1 / max_retries / DLQ
+- [x] schedule を time + daysOfWeek に簡素化（デフォルト 03:00 UTC）
+- [x] MailChannels 廃止 → NoopMailer
+- [x] OURO_PLAN_MODEL 削除（DEFAULT_WORKERS_AI_MODEL 一本）
+- [x] partner model datalist / 実効モデル placeholder
+- [x] healing/inspection cancel + スタック sweep
+- [x] Workflow step timeout/retries
+- [x] AI 120s タイムアウト
+- [x] Code generate の Queue 化 + ポーリング + スタック回復
+- [x] max_tokens 8192 + JSON フェンス除去
+- [x] Vectorize id ハッシュ化 / INDEX_STALE 24h
 
-The new Cloudflare-native binding types have been added to `src/env.ts`:
-
-- [x] New binding types: `AnalyticsEngineDataset`, `BrowserBinding`, `FlagshipBinding`, `DynamicWorkerLoader`, `SecretsStoreSecret`, `ServiceBinding`, `SendEmailBinding`, `EmailMessage`, `VersionMetadata`
-- [x] Wire new bindings through `src/context.ts` into `Ports` object
-- [x] `RunnerKind` and `CodeRunner` interfaces defined in `src/ports/runner.ts`
-- [x] `NoopRunner` fallback implemented in `src/ports/runner.ts`
-- [x] `RpcRunner` (Service Binding) implemented in `src/adapters/rpc.runner.ts`
-- [x] `DispatchRunner` implements `CodeRunner` interface
-- [x] Export new types from `src/ports/index.ts`
-
----
-
-## 3. Runner Fallback Chain — Complete
-
-- [x] Define `RunnerKind = "local" | "dispatch" | "rpc" | "noop"`
-- [x] `src/context.ts` selects runner in priority order: Service Binding → RUNNER_URL → NoopRunner
-- [x] `Env.RUNNER` binding type added
-- [x] Healing workflow calls `runner.applyFix()` via `HealingRunner` interface
-
----
-
-## 4. Self-Healing Workflow — Complete
-
-- [x] `ports/runner.ts` has `HealingRunner` + `CodeRunner` interfaces
-- [x] `src/context.ts` chooses `HealingRunner` via fallback chain
-- [x] `src/workflows/healing.ts` calls `runner.applyFix()` directly when runner configured
-- [x] Workflow remains available as the default when neither binding is configured
-
----
-
-## 5. Secrets Store — Not Started
-
-Currently using `env.WORKERS_AI_API_TOKEN` / `env.GITHUB_TOKEN` directly.
-
-- [ ] Define `SecretsStoreSecret.get()` async resolution helper
-- [ ] Add `GITHUB_TOKEN_SECRET` and `WORKERS_AI_TOKEN_SECRET` to `src/env.ts`
-- [ ] Refactor `src/context.ts` to resolve secrets at startup via `SecretsStore`
-- [ ] Document that only Cloudflare Secrets are accepted (external gateways rejected)
-
----
-
-## 6. Email Workers (cf-email) — Not Started
-
-- [x] `SendEmailBinding` type added to `src/env.ts`
-- [ ] Create `src/adapters/cfemail.mailer.ts` implementing `Mailer` with `kind: "cf-email"`
-- [ ] Update `Mailer.kind` union type in `src/ports/mailer.ts`
-- [ ] Wire `env.EMAIL` (SendEmailBinding) as primary, fall back to `MailChannelsMailer`
-- [ ] Enable `email()` handler on Worker when `env.EMAIL` is present
-
----
-
-## 7. Version Metadata (CF_VERSION_METADATA) — Not Started
-
-- [x] `VersionMetadata` type added to `src/env.ts`
-- [ ] Expose `CF_VERSION_METADATA` via `GET /api/v1/version` endpoint
-- [ ] Display version info in WebUI header
-- [ ] Use `tag` for deployment tracking in healing run records
-
----
-
-## 8. Flagship Flags — Not Started
-
-- [x] `FlagshipBinding` type added to `src/env.ts`
-- [ ] Create `src/flags/flag.service.ts`
-- [ ] Wire `env.FLAGS` into feature flags for:
-  - `code-needs-fix`
-  - `code-fix-complete`
-  - `code-pr-ready`
-  - `code-review-required`
-  - `browser-test-enabled`
-  - `analytics-enabled`
-- [ ] Update API routes to check flags before performing actions
-
----
-
-## 9. Code Mode Complete Flow — Complete
-
-- [x] Database migration: `code_sessions` table (status, patches, PR info)
-- [x] `src/code/session.manager.ts` — session CRUD + state machine
-- [x] AI generation delegated to runner (`CodeRunner.generate()`) — no local `CodeAgent`
-- [x] `src/code/prompt.templates.ts` — Worker-side copy deleted; prompt logic moved to runner
-- [x] Runner `codeGenerate` uses `AI.run()` with `OURO_CODE_MODEL` (default: `@cf/meta/llama-3.1-8b-instruct`)
-- [x] API endpoints:
-  - `POST /api/v1/code/sessions`
-  - `GET /api/v1/code/sessions`
-  - `GET /api/v1/code/sessions/:id`
-  - `POST /api/v1/code/sessions/:id/generate` (passes user model pref to runner)
-  - `POST /api/v1/code/sessions/:id/apply`
-  - `DELETE /api/v1/code/sessions/:id`
-- [ ] Frontend: Code sessions list + detail pages
-
----
-
-## 10. Refactor Mode — Complete
-
-- [x] `src/refactor/proposal.manager.ts` — parse `InspectionResult`, generate proposals
-- [x] Wire proposal status transitions (`proposed` → `approved` → `applied/dismissed`)
-- [x] `applyProposal` uses `runner.generate()` instead of `CodeAgent`
-- [x] `generateProposal` (summary generation) uses Worker `ai.complete()` (plan model)
-- [x] `RefactorRepository` queries via `DbAdapter`
-- [x] API endpoints for proposals CRUD
-- [ ] Frontend refactor page improvements
-
----
-
-## 11. Tests
-
-| File | What to test | Status |
-|------|--------------|--------|
-| `src/adapters/rpc.runner.ts` | Request signing, error handling | Not started |
-| `src/adapters/dispatch.runner.ts` | HTTP dispatch, timeout behavior | Not started |
-| `src/ports/runner.ts` | `NoopRunner` fallback behavior | Not started |
-| `src/code/session.manager.ts` | Session lifecycle, state transitions | Partial |
-| `src/db/repositories.ts` (new repos) | All repository methods | Not started |
-| `src/http/api.ts` (new code endpoints) | Auth, validation, error responses | Partial |
-| `runner/src/__tests__/routes.test.ts` | All internal endpoints (codeGenerate included) | Done |
-
----
-
-## 12. TypeScript
-
-**Current status:** `npm run typecheck` passes with 0 errors on both `src/` and `runner/`.
-
----
-
-## 13. Runner デプロイ (GH Actions)
-
-- [x] `.github/workflows/deploy-runner.yml` — `push` to `main` (`runner/**` 変更時) + `workflow_dispatch`
-- [x] Secrets Store `ouroboros-secrets` (`github-token`) 参照済み (`runner/wrangler.toml`)
-- [x] Service Binding `[[services]]` 再有効化 (`wrangler.toml:61-65`)
-- [ ] 初回デプロイ: runner を先にデプロイし、その後に Worker を再デプロイ
-- [ ] `CLOUDFLARE_API_TOKEN` GitHub secret の設定 (前提)
-- [ ] `RUNNER_SHARED_SECRET` の `wrangler secret put` 設定 (前提)
-
----
-
-## 14. AI モデル分離
-
-- [x] Worker: `OURO_PLAN_MODEL` 環境変数 (`wrangler.toml` + `src/env.ts`)、デフォルト `minimax/m3`
-- [x] Worker: `src/context.ts` の `WorkersAiProvider` が `OURO_PLAN_MODEL` 優先
-- [x] Worker: `AIAnalyzer`/`ProposalManager.generateProposal`/`InspectionEngine` がプランモデル使用
-- [x] Runner: `OURO_CODE_MODEL` 環境変数 (`runner/wrangler.toml` + `runner/src/env.ts`)、デフォルト `@cf/meta/llama-3.1-8b-instruct`
-- [x] Runner: `codeGenerate` が `OURO_CODE_MODEL` + 実行時 override 対応
-- [x] Runner: `applyFix` のハードコードモデルを `OURO_CODE_MODEL` に変更
-- [x] Worker: `/code/sessions/:id/generate` がユーザー設定モデルを runner に転送
+### 運用メモ
+- `wrangler queues create ouroboros-dlq` を初回のみ実行
+- 無効な `WORKERS_AI_API_TOKEN` がある場合: `wrangler secret delete WORKERS_AI_API_TOKEN`
+- 旧 `ouroborous-runner` は worker から `[[services]]` を消したデプロイ成功後にアーカイブ可

@@ -2,6 +2,7 @@ export type GuiEventType =
   | "inspection.requested"
   | "healing.requested"
   | "codeindex.requested"
+  | "codegen.requested"
   | "webhook.test"
   | "alert.dispatch";
 
@@ -15,7 +16,7 @@ export interface GuiEvent {
 
 /**
  * Async ingestion of GUI-originated events.
- * Implementations: InProcessQueue (self-hosted), CfQueueAdapter (Cloudflare Queues).
+ * Implementation: CfQueueAdapter (Cloudflare Queues).
  */
 export interface QueueAdapter {
   readonly kind: "in-process" | "cf-queue";

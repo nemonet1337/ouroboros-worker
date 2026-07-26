@@ -240,6 +240,28 @@ export class InspectionRepository {
     );
   }
 
+  /** 30 分以上進行中のままの検査を failed にする（スタック検出）。 */
+  async failStale(olderThanMs: number): Promise<number> {
+    const cutoff = Date.now() - olderThanMs;
+    const rows = await this.db.query<{ id: string; user_id: string }>(
+      `SELECT id, user_id FROM inspections
+       WHERE status IN ('queued', 'indexing', 'searching', 'analyzing') AND created_at < ?`,
+      [cutoff]
+    );
+    for (const r of rows) {
+      await this.db.exec(
+        `UPDATE inspections SET status = ?, progress = ? WHERE id = ? AND user_id = ?`,
+        [
+          "failed",
+          JSON.stringify([{ step: "failed", message: "タイムアウト", at: Date.now() }]),
+          r.id,
+          r.user_id,
+        ]
+      );
+    }
+    return rows.length;
+  }
+
   async updateStatus(id: string, userId: string, status: string): Promise<void> {
     await this.db.exec(
       `UPDATE inspections SET status = ? WHERE id = ? AND user_id = ?`,
@@ -326,7 +348,25 @@ export class HealingRunRepository {
     await this.db.exec(`UPDATE healing_runs SET ${sets.join(", ")} WHERE id = ?`, params);
   }
 
-  async recent(limit = 50, offset = 0): Promise<HealingRunRow[]> {
+  /**
+   * 実行履歴を新しい順で取得。
+   * status を渡すと一致するものだけ。`active` は進行中（queued/scanning/analyzing/fixing/running）の別名。
+   */
+  async recent(limit = 50, offset = 0, status?: string): Promise<HealingRunRow[]> {
+    if (status === "active") {
+      return this.db.query<HealingRunRow>(
+        `SELECT * FROM healing_runs
+         WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+         ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        [limit, offset]
+      );
+    }
+    if (status) {
+      return this.db.query<HealingRunRow>(
+        `SELECT * FROM healing_runs WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        [status, limit, offset]
+      );
+    }
     return this.db.query<HealingRunRow>(
       `SELECT * FROM healing_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -349,6 +389,24 @@ export class HealingRunRepository {
        ORDER BY created_at DESC LIMIT ?`,
       [limit]
     );
+  }
+
+  /** 60 分以上進行中のままの修復を failed にする。 */
+  async failStale(olderThanMs: number): Promise<number> {
+    const cutoff = Date.now() - olderThanMs;
+    const rows = await this.db.query<{ id: string }>(
+      `SELECT id FROM healing_runs
+       WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+         AND updated_at < ?`,
+      [cutoff]
+    );
+    for (const r of rows) {
+      await this.update(r.id, {
+        status: "failed",
+        summary: JSON.stringify({ error: "タイムアウト" }),
+      });
+    }
+    return rows.length;
   }
 }
 
@@ -416,6 +474,23 @@ export class CodeSessionRepository {
        ORDER BY created_at DESC LIMIT ?`,
       [userId, limit]
     );
+  }
+
+  /** 10 分以上 generating/applying のセッションを failed にする。 */
+  async failStale(olderThanMs: number): Promise<number> {
+    const cutoff = Date.now() - olderThanMs;
+    const rows = await this.db.query<{ id: string; user_id: string }>(
+      `SELECT id, user_id FROM code_sessions
+       WHERE status IN ('generating', 'applying') AND updated_at < ?`,
+      [cutoff]
+    );
+    for (const r of rows) {
+      await this.db.exec(
+        `UPDATE code_sessions SET status = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+        ["failed", "生成がタイムアウトしました。再実行してください", Date.now(), r.id, r.user_id]
+      );
+    }
+    return rows.length;
   }
 
   async updateStatus(id: string, userId: string, status: string): Promise<void> {

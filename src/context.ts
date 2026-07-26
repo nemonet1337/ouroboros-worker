@@ -10,18 +10,15 @@ import { D1Adapter } from "./adapters/d1.adapter";
 import { R2LogStore } from "./adapters/r2.logstore";
 import { CfQueueAdapter } from "./adapters/cf.queue";
 import { WorkersAiProvider } from "./adapters/workers-ai.provider";
-import { MailChannelsMailer } from "./adapters/mailchannels.mailer";
-import { RpcRunner } from "./adapters/rpc.runner";
-import { DispatchRunner } from "./adapters/dispatch.runner";
-import { DynamicRunner } from "./adapters/dynamic.runner";
-import { UnconfiguredRunner, type CodeRunner, type HealingRunner } from "./ports/runner";
 import { CfEmailMailer } from "./adapters/cf.email.mailer";
+import { NoopMailer } from "./adapters/noop.mailer";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 import { FlagService } from "./flags/flag.service";
-import { AiUsageTracker, CostEstimator } from "./analytics/ai.usage.tracker";
+import { AiUsageTracker } from "./analytics/ai.usage.tracker";
 import { SettingsRepository } from "./db/repositories";
 import { getSelectedRepo } from "./config/settings.keys";
+import { RepoRunner } from "./healing/repo.runner";
 
 export interface WorkerContext {
   ports: Ports;
@@ -30,18 +27,16 @@ export interface WorkerContext {
   logger: Logger;
   deployTarget: DeployTarget;
   alertRecipients: string[];
-  /** OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
-   *
-   * When explicitly set via the OURO_REGISTRATION_ENABLED env var, overrides
-   * the DB-persisted registration toggle (see AuthService.isRegistrationEnabled).
-   * true = force-open; false = force-closed (first-user bootstrap still allowed).
-   * Unset = fall back to the DB setting managed via the settings API/admin panel.
+  /**
+   * OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
    */
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
   flags?: FlagService;
   analytics?: AiUsageTracker;
   versionMetadata?: VersionMetadata;
+  /** Webhook secret 暗号化キー（OURO_ENCRYPTION_KEY） */
+  encryptionKey: string;
   /** 現在の対象リポジトリ（settings.selected_repo 優先で解決済み）。 */
   currentRepo: { owner: string; repo: string };
   /** 対象リポジトリを実行時に差し替える（vcs provider と config.vcs をミューテート）。 */
@@ -51,16 +46,17 @@ export interface WorkerContext {
 export async function buildContext(env: Env): Promise<WorkerContext> {
   const db = new D1Adapter(env.DB);
   const logs = new R2LogStore(env.LOGS);
-  const logger = new Logger(logs, { file: "ouroboros.log", minLevel: "info" });
+  // ベース名のみ指定。Logger が UTC 日付付きファイル（ouroboros-YYYY-MM-DD.log）へ日次切替する
+  const logger = new Logger(logs, { file: "ouroboros", minLevel: "info" });
 
-  // Workers AI is the sole AI gateway — no external fallback, by design. The
-  // only AI credential is the WORKERS_AI_API_TOKEN secret (REST path).
+  // WORKERS_AI_API_TOKEN が無効だと REST が 2021 で落ち subrequest を食い潰す。
+  // トークンが有効な場合のみ REST を試し、401/403 時は binding にフォールバック（WorkersAiProvider 内）。
   const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET
     ? await env.WORKERS_AI_TOKEN_SECRET.get()
     : env.WORKERS_AI_API_TOKEN;
 
   const ai = new WorkersAiProvider(env.AI, {
-    model: env.OURO_PLAN_MODEL ?? DEFAULT_WORKERS_AI_MODEL,
+    model: DEFAULT_WORKERS_AI_MODEL,
     apiToken: workersAiApiToken,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
   });
@@ -97,28 +93,12 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     repo,
   });
 
-  // Runner priority: Service Binding (RPC) → HTTP dispatch (RUNNER_URL)
-  //   → Worker Loader（動的 Worker 生成）→ UnconfiguredRunner（明示エラー）
-  const runnerSecret = env.RUNNER_SHARED_SECRET ?? "";
-  const runner: HealingRunner & CodeRunner = env.RUNNER
-    ? new RpcRunner(env.RUNNER)
-    : env.RUNNER_URL
-      ? new DispatchRunner(env.RUNNER_URL, runnerSecret)
-      : env.LOADER && githubToken && owner && repo
-        ? new DynamicRunner(env.LOADER, {
-            ai: env.AI,
-            db,
-            githubToken,
-            repository: `${owner}/${repo}`,
-            codeModel: env.OURO_PLAN_MODEL ?? DEFAULT_WORKERS_AI_MODEL,
-          })
-        : new UnconfiguredRunner();
-
-  const codeRunner = runner as CodeRunner;
+  // 単一 Worker 内の RepoRunner（旧 runner Service Binding は廃止）
+  const runner = new RepoRunner(vcs, ai, db);
 
   const mailer = env.EMAIL
     ? new CfEmailMailer(env.EMAIL, env.MAIL_FROM ?? "ouroboros@example.com")
-    : new MailChannelsMailer(env.MAIL_FROM ?? "ouroboros@example.com");
+    : new NoopMailer();
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
   const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
@@ -133,7 +113,18 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     },
   };
 
-  const ports: Ports = { ai, vcs, db, logs, queue, mailer, runner, codeRunner, rateLimiter, vectorize };
+  const ports: Ports = {
+    ai,
+    vcs,
+    db,
+    logs,
+    queue,
+    mailer,
+    runner,
+    codeRunner: runner,
+    rateLimiter,
+    vectorize,
+  };
   const auth = new AuthService(db);
   const flags = env.FLAGS ? new FlagService(env.FLAGS) : undefined;
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
@@ -154,8 +145,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     logger,
     deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    // 未設定なら undefined のまま渡し、API/GUI は DB の登録トグルへフォールバックする
-    // （常に boolean 化すると env 未設定時に登録が恒久的に無効化されてしまう）
     registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined
         ? undefined
@@ -164,6 +153,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     flags,
     analytics,
     versionMetadata: env.CF_VERSION_METADATA,
+    encryptionKey: env.OURO_ENCRYPTION_KEY ?? "ouroboros-default-secret-key-change-me",
     currentRepo,
     refreshRepo,
   };
