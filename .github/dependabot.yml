@@ -1,20 +1,78 @@
+# Cloudflare Workers + Hono + Tailwind/DaisyUI + Vitest
 version: 2
-registries:
-  npm-github:
-    type: npm-registry
-    url: https://npm.pkg.github.com
-    replaces-base: false
-
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    registries: "*"
+  - package-ecosystem: npm
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+    groups:
+      cloudflare:
+        patterns:
+          - "@cloudflare/*"
+          - "wrangler"
+        update-types:
+          - minor
+          - patch
+      hono:
+        patterns:
+          - "hono"
+          - "@hono/*"
+        update-types:
+          - minor
+          - patch
+      schema:
+        patterns:
+          - "ajv"
+          - "ajv-formats"
+          - "diff"
+        update-types:
+          - minor
+          - patch
+      ui:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "daisyui"
+        update-types:
+          - minor
+          - patch
+      test:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - minor
+          - patch
+      typescript-tooling:
+        patterns:
+          - "typescript"
+          - "@types/*"
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
