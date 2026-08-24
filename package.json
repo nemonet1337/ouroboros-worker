@@ -20,7 +20,7 @@
     "hono": "^4.13.2"
   },
   "devDependencies": {
-        "@cloudflare/workers-types": "^5.20260813.1",
+        "@cloudflare/workers-types": "^5.20260820.1",
         "@tailwindcss/cli": "^4.3.3",
         "@types/diff": "^8.0.0",
         "@types/node": "^26.2.0",
@@ -28,6 +28,6 @@
         "daisyui": "^5.7.16",
         "tailwindcss": "^4.3.2",
         "vitest": "^4.1.10",
-        "wrangler": "^4.123.0"
+        "wrangler": "^4.125.0"
   }
 }
