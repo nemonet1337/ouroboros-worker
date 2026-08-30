@@ -4,7 +4,7 @@ import { Logger } from "./logging/logger";
 import { defaultHealingConfig } from "./config/healing.config";
 import type { Ports } from "./ports";
 import type { HealingConfig } from "./config/healing.config";
-import { DEFAULT_WORKERS_AI_MODEL, type DeployTarget } from "./config/deployment";
+import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
 import type { Env, VersionMetadata } from "./env";
 import { D1Adapter } from "./adapters/d1.adapter";
 import { R2LogStore } from "./adapters/r2.logstore";
@@ -14,7 +14,6 @@ import { CfEmailMailer } from "./adapters/cf.email.mailer";
 import { NoopMailer } from "./adapters/noop.mailer";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
-import { FlagService } from "./flags/flag.service";
 import { AiUsageTracker } from "./analytics/ai.usage.tracker";
 import { SettingsRepository } from "./db/repositories";
 import { getSelectedRepo } from "./config/settings.keys";
@@ -25,14 +24,12 @@ export interface WorkerContext {
   config: HealingConfig;
   auth: AuthService;
   logger: Logger;
-  deployTarget: DeployTarget;
   alertRecipients: string[];
   /**
    * OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
    */
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
-  flags?: FlagService;
   analytics?: AiUsageTracker;
   versionMetadata?: VersionMetadata;
   /** Webhook secret 暗号化キー（OURO_ENCRYPTION_KEY） */
@@ -49,16 +46,19 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   // ベース名のみ指定。Logger が UTC 日付付きファイル（ouroboros-YYYY-MM-DD.log）へ日次切替する
   const logger = new Logger(logs, { file: "ouroboros", minLevel: "info" });
 
-  // WORKERS_AI_API_TOKEN が無効だと REST が 2021 で落ち subrequest を食い潰す。
-  // トークンが有効な場合のみ REST を試し、401/403 時は binding にフォールバック（WorkersAiProvider 内）。
+  // カタログモデルは AI binding。パートナーモデルのみ REST（401/403 後は isolate 内で binding 固定）。
   const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET
     ? await env.WORKERS_AI_TOKEN_SECRET.get()
     : env.WORKERS_AI_API_TOKEN;
 
+  const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
   const ai = new WorkersAiProvider(env.AI, {
     model: DEFAULT_WORKERS_AI_MODEL,
     apiToken: workersAiApiToken,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
+    onUsage: analytics
+      ? (event) => analytics.record(event)
+      : undefined,
   });
 
   const githubToken = env.GITHUB_TOKEN_SECRET
@@ -126,8 +126,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     vectorize,
   };
   const auth = new AuthService(db);
-  const flags = env.FLAGS ? new FlagService(env.FLAGS) : undefined;
-  const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
 
   const currentRepo = { owner, repo };
   const refreshRepo = (nextOwner: string, nextRepo: string): void => {
@@ -143,17 +141,15 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     config,
     auth,
     logger,
-    deployTarget: "cloudflare",
     alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined
         ? undefined
         : env.OURO_REGISTRATION_ENABLED === "true",
     githubTokenSet: !!githubToken,
-    flags,
     analytics,
     versionMetadata: env.CF_VERSION_METADATA,
-    encryptionKey: env.OURO_ENCRYPTION_KEY ?? "ouroboros-default-secret-key-change-me",
+    encryptionKey: env.OURO_ENCRYPTION_KEY ?? "",
     currentRepo,
     refreshRepo,
   };

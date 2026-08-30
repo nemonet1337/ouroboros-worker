@@ -29,7 +29,7 @@ export function dailyLogFile(base: string, now = new Date()): string {
 export class Logger {
   constructor(
     private readonly store: LogStore,
-    private readonly opts: { file?: string; scope?: string; minLevel?: LogLevel } = {}
+    private readonly opts: { file?: string; scope?: string; minLevel?: LogLevel; persistLevel?: LogLevel } = {}
   ) {}
 
   child(scope: string): Logger {
@@ -56,7 +56,10 @@ export class Logger {
     const consoleFn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
     consoleFn(line);
 
-    // 書き込み時点の UTC 日付でファイルを決定（日跨ぎで自動切替）
+    // info は Workers Logs（console）のみ。R2 は warn/error（管理画面用）。
+    const persistLevel = this.opts.persistLevel ?? "warn";
+    if (LEVEL_ORDER[level] < LEVEL_ORDER[persistLevel]) return;
+
     const file = dailyLogFile(this.opts.file ?? "ouroboros.log");
     try {
       await this.store.append(file, line);

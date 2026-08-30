@@ -16,10 +16,9 @@ describe("preprocessFiles", () => {
 
   it("truncates files that exceed the byte limit", () => {
     const large = makeFile("src/large.ts", 1000);
-    const maxBytes = Buffer.byteLength(
-      Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n"),
-      "utf8"
-    );
+    const maxBytes = new TextEncoder().encode(
+      Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join("\n")
+    ).byteLength;
     const result = preprocessFiles([large], maxBytes);
     expect(result[0].content).toContain("TRUNCATED");
     expect(result[0].content.split("\n").length).toBeLessThan(1000);
@@ -39,25 +38,25 @@ describe("preprocessFiles", () => {
 });
 
 describe("computeContentHash", () => {
-  it("produces a sha256: prefixed string", () => {
-    const hash = computeContentHash([makeFile("a.ts", 5)]);
+  it("produces a sha256: prefixed string", async () => {
+    const hash = await computeContentHash([makeFile("a.ts", 5)]);
     expect(hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
-  it("returns the same hash for identical input", () => {
+  it("returns the same hash for identical input", async () => {
     const files = [makeFile("a.ts", 5)];
-    expect(computeContentHash(files)).toBe(computeContentHash(files));
+    expect(await computeContentHash(files)).toBe(await computeContentHash(files));
   });
 
-  it("returns different hashes when content changes", () => {
+  it("returns different hashes when content changes", async () => {
     const f1 = [{ path: "a.ts", content: "hello" }];
     const f2 = [{ path: "a.ts", content: "world" }];
-    expect(computeContentHash(f1)).not.toBe(computeContentHash(f2));
+    expect(await computeContentHash(f1)).not.toBe(await computeContentHash(f2));
   });
 
-  it("returns different hashes when path changes", () => {
+  it("returns different hashes when path changes", async () => {
     const f1 = [{ path: "a.ts", content: "same" }];
     const f2 = [{ path: "b.ts", content: "same" }];
-    expect(computeContentHash(f1)).not.toBe(computeContentHash(f2));
+    expect(await computeContentHash(f1)).not.toBe(await computeContentHash(f2));
   });
 });

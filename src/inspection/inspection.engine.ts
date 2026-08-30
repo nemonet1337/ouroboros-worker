@@ -71,147 +71,19 @@ interface AIInspectionOutput {
 
 // ─── Tool definition ──────────────────────────────────────────────────────────
 
-const CATEGORY_NAMES = [
-  "security",
-  "performance",
-  "redundancy",
-  "readability",
-  "design",
-  "correctness",
-];
+const ASPECT_LIST = ASPECTS.join(", ");
 
-const ASPECT_NAMES: string[] = ASPECTS;
+const COMPACT_JSON_SHAPE = `{
+  "summary": "2-4文の日本語サマリー",
+  "files": [{
+    "path": "file.ts",
+    "scoreBreakdown": { "<aspectId>": { "score": 0-100, "summary": "一文" } },
+    "findings": [{ "id": "string", "category": "security|performance|redundancy|readability|design|correctness", "severity": "critical|high|medium|low|info", "title": "string", "description": "string", "startLine": 1, "endLine": 1, "snippet": "string", "impact": "string", "scorePenalty": 0-30 }],
+    "recommendations": [{ "findingId": "string", "title": "string", "before": "string", "after": "string", "rationale": "string", "impactDescription": "string", "effort": "trivial|minor|moderate|major" }]
+  }]
+}`;
 
-const scoreDimSchema = {
-  type: "object",
-  required: ["score", "summary"],
-  properties: {
-    score: { type: "number", minimum: 0, maximum: 100 },
-    summary: { type: "string" },
-  },
-};
-
-const scoreBreakdownSchema = {
-  type: "object",
-  required: ASPECT_NAMES,
-  properties: Object.fromEntries(ASPECT_NAMES.map((a) => [a, scoreDimSchema])),
-};
-
-const findingsSchema = {
-  type: "array",
-  items: {
-    type: "object",
-    required: [
-      "id",
-      "category",
-      "severity",
-      "title",
-      "description",
-      "startLine",
-      "endLine",
-      "snippet",
-      "impact",
-      "scorePenalty",
-    ],
-    properties: {
-      id: { type: "string" },
-      category: { type: "string", enum: CATEGORY_NAMES },
-      severity: {
-        type: "string",
-        enum: ["critical", "high", "medium", "low", "info"],
-      },
-      title: { type: "string" },
-      description: { type: "string" },
-      startLine: { type: "integer", minimum: 1 },
-      endLine: { type: "integer", minimum: 1 },
-      snippet: { type: "string" },
-      impact: { type: "string" },
-      scorePenalty: { type: "number", minimum: 0, maximum: 30 },
-    },
-  },
-};
-
-const recommendationsSchema = {
-  type: "array",
-  items: {
-    type: "object",
-    required: [
-      "findingId",
-      "title",
-      "before",
-      "after",
-      "rationale",
-      "impactDescription",
-      "effort",
-    ],
-    properties: {
-      findingId: { type: "string" },
-      title: { type: "string" },
-      before: { type: "string" },
-      after: { type: "string" },
-      rationale: { type: "string" },
-      impactDescription: { type: "string" },
-      effort: {
-        type: "string",
-        enum: ["trivial", "minor", "moderate", "major"],
-      },
-    },
-  },
-};
-
-const INSPECTION_TOOL = {
-  name: "submit_inspection",
-  description:
-    "コードインスペクションの完全な分析結果を提出します。すべてのファイルの分析が完了したら必ず呼び出してください。",
-  input_schema: {
-    type: "object",
-    required: ["summary", "files"],
-    properties: {
-      summary: {
-        type: "string",
-        description: "2〜4文の総合評価サマリー（日本語）",
-      },
-      files: {
-        type: "array",
-        description: "各ファイルの分析結果",
-        items: {
-          type: "object",
-          required: ["path", "scoreBreakdown", "findings", "recommendations"],
-          properties: {
-            path: { type: "string" },
-            scoreBreakdown: scoreBreakdownSchema,
-            findings: findingsSchema,
-            recommendations: recommendationsSchema,
-            functions: {
-              type: "array",
-              description:
-                "粒度が function のときのみ: 関数・メソッド・クラス単位の分析結果",
-              items: {
-                type: "object",
-                required: [
-                  "name",
-                  "startLine",
-                  "endLine",
-                  "scoreBreakdown",
-                  "findings",
-                  "recommendations",
-                ],
-                properties: {
-                  name: { type: "string" },
-                  startLine: { type: "integer", minimum: 1 },
-                  endLine: { type: "integer", minimum: 1 },
-                  scoreBreakdown: scoreBreakdownSchema,
-                  findings: findingsSchema,
-                  recommendations: recommendationsSchema,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-};
+const BATCH_CHAR_BUDGET = 24_000;
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
@@ -248,7 +120,7 @@ export class InspectionEngine {
       request.files.slice(0, this.config.preprocessing.maxFiles),
       this.config.preprocessing.maxFileSizeBytes
     );
-    const contentHash = computeContentHash(processedFiles);
+    const contentHash = await computeContentHash(processedFiles);
 
     const weights = this.config.scoring.weights;
 
@@ -382,18 +254,26 @@ export class InspectionEngine {
   }
 
   private async callAI(request: InspectionRequest): Promise<AIInspectionOutput> {
-    // ファイル単位で小さな JSON スキーマの解析を複数回に分割する。
-    // （32 観点 × 全ファイルの巨大 JSON を一発生成すると弱いモデルで parse に失敗するため）
+    const totalChars = request.files.reduce((n, f) => n + f.content.length, 0);
+    const tryBatch = request.files.length > 1 && totalChars <= BATCH_CHAR_BUDGET;
+
+    if (tryBatch || request.files.length === 1) {
+      try {
+        return await this.callAIOnce(request);
+      } catch (err) {
+        if (request.files.length === 1) throw err;
+        console.warn("[InspectionEngine] batched analysis failed, falling back per-file:", err);
+      }
+    }
+
     const files: AIFileAnalysis[] = [];
     const summaries: string[] = [];
     let lastError: unknown;
 
     for (const file of request.files) {
       try {
-        const fileOut = await this.callAIForFile({ ...request, files: [file] }, file.path);
-        if (fileOut.files.length > 0) {
-          files.push(...fileOut.files);
-        }
+        const fileOut = await this.callAIOnce({ ...request, files: [file] });
+        if (fileOut.files.length > 0) files.push(...fileOut.files);
         if (fileOut.summary) summaries.push(fileOut.summary);
       } catch (err) {
         lastError = err;
@@ -411,38 +291,47 @@ export class InspectionEngine {
     };
   }
 
-  private async callAIForFile(request: InspectionRequest, path: string): Promise<AIInspectionOutput> {
+  private async callAIOnce(request: InspectionRequest): Promise<AIInspectionOutput> {
     const userPrompt = buildUserPrompt(request);
+    const granularity = request.options?.granularity ?? "file";
+    const functionsHint =
+      granularity === "function"
+        ? `\nInclude a "functions" array per file with name, startLine, endLine, scoreBreakdown, findings, recommendations.`
+        : "";
     const system = `${SYSTEM_PROMPT}
 
-You are analyzing a SINGLE file (${path}).
-You MUST respond with ONLY a single valid JSON object (no markdown fences, no preamble)
-matching this JSON schema:
-${JSON.stringify(INSPECTION_TOOL.input_schema)}
-The "files" array MUST contain exactly one entry for this file.`;
-    let lastError: unknown;
+Respond with ONLY a JSON object matching this shape:
+${COMPACT_JSON_SHAPE}
+scoreBreakdown MUST include every aspect id: ${ASPECT_LIST}
+files.length MUST be ${request.files.length}.${functionsHint}`;
 
+    const maxTokens = Math.min(
+      this.config.ai.maxTokens,
+      2048 + Math.ceil(request.files.reduce((n, f) => n + f.content.length, 0) / 2)
+    );
+
+    let lastError: unknown;
     for (let attempt = 0; attempt <= this.config.ai.maxRetries; attempt++) {
       if (attempt > 0) {
         await sleep(1000 * attempt);
-        console.warn(`[InspectionEngine] retry ${attempt}/${this.config.ai.maxRetries} for ${path}`);
+        console.warn(`[InspectionEngine] retry ${attempt}/${this.config.ai.maxRetries}`);
       }
-
       try {
         const text = await this.ai.complete({
           model: this.config.ai.model,
-          maxTokens: this.config.ai.maxTokens,
+          maxTokens,
           system,
           prompt: userPrompt,
         });
         const cleaned = (text || "").replace(/```json|```/g, "").trim();
-        return JSON.parse(cleaned) as AIInspectionOutput;
+        const parsed = JSON.parse(cleaned) as AIInspectionOutput;
+        if (!parsed.files?.length) throw new Error("AI analysis produced no file results");
+        return parsed;
       } catch (err) {
         lastError = err;
-        console.error(`[InspectionEngine] attempt ${attempt + 1} failed for ${path}:`, err);
+        console.error(`[InspectionEngine] attempt ${attempt + 1} failed:`, err);
       }
     }
-
     throw lastError;
   }
 }

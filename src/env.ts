@@ -22,13 +22,6 @@ export interface EmailMessage {
   forward(dest: string): Promise<void>;
 }
 
-export interface FlagshipBinding {
-  getBooleanValue(flag: string, defaultValue: boolean, opts?: Record<string, unknown>): Promise<boolean>;
-  getStringValue(flag: string, defaultValue: string, opts?: Record<string, unknown>): Promise<string>;
-  getNumberValue(flag: string, defaultValue: number, opts?: Record<string, unknown>): Promise<number>;
-  getJSONValue<T = unknown>(flag: string, defaultValue: T, opts?: Record<string, unknown>): Promise<T>;
-}
-
 export interface SecretsStoreSecret {
   get(): Promise<string>;
 }
@@ -51,7 +44,6 @@ export interface Env {
   VECTORIZE?: VectorizeIndex;
   AI_ANALYTICS?: AnalyticsEngineDataset;
   EMAIL?: SendEmailBinding;
-  FLAGS?: FlagshipBinding;
   CF_VERSION_METADATA?: VersionMetadata;
 
   // secrets（Secrets Store）

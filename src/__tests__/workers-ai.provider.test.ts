@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { extractCompletionText, WorkersAiProvider } from "../adapters/workers-ai.provider";
+import { extractCompletionText, isPartnerModelId, WorkersAiProvider } from "../adapters/workers-ai.provider";
 
 describe("extractCompletionText", () => {
   it("reads OpenAI choices content", () => {
@@ -23,6 +23,13 @@ describe("extractCompletionText", () => {
   });
 });
 
+describe("isPartnerModelId", () => {
+  it("treats vendor/model ids as partner and catalog ids as binding", () => {
+    expect(isPartnerModelId("minimax/m3")).toBe(true);
+    expect(isPartnerModelId("@cf/zai-org/glm-5.3-flash")).toBe(false);
+  });
+});
+
 describe("WorkersAiProvider.complete via binding", () => {
   it("extracts OpenAI-shaped binding results", async () => {
     const run = vi.fn().mockResolvedValue({ choices: [{ message: { content: "ok" } }] });
@@ -35,5 +42,18 @@ describe("WorkersAiProvider.complete via binding", () => {
     const run = vi.fn().mockResolvedValue({ response: "legacy" });
     const provider = new WorkersAiProvider({ run, models: vi.fn() } as never);
     expect(await provider.complete({ system: "s", prompt: "p" })).toBe("legacy");
+  });
+
+  it("uses binding for catalog models even when REST credentials are set", async () => {
+    const run = vi.fn().mockResolvedValue({ response: "bound" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const provider = new WorkersAiProvider({ run, models: vi.fn() } as never, {
+      apiToken: "tok",
+      accountId: "acc",
+    });
+    expect(await provider.complete({ system: "s", prompt: "p", model: "@cf/zai-org/glm-5.3-flash" })).toBe("bound");
+    expect(run).toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

@@ -3,7 +3,7 @@ import type { AnalysisResult, FindingGroup } from "../types";
 
 /**
  * Email-based warning/alert notifications. Backed by the Mailer port
- * (SMTP self-hosted, MailChannels/SendGrid on Cloudflare).
+ * (Workers Email binding, or NoopMailer).
  */
 export class AlertService {
   constructor(

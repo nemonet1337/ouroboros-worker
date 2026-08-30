@@ -2,6 +2,7 @@ import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployme
 import type { AiProvider, AiCompletionRequest, AiModelInfo } from "../ports";
 
 const AI_TIMEOUT_MS = 120_000;
+const MODELS_TTL_MS = 60 * 60 * 1000;
 
 /** カタログに出ない／出にくいモデルを datalist に載せる。 */
 const PARTNER_MODELS: AiModelInfo[] = [
@@ -35,27 +36,40 @@ export function extractCompletionText(result: unknown): string {
   return "";
 }
 
+function extractUsage(result: unknown): { promptTokens: number; completionTokens: number } | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const usage = (result as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+  if (!usage) return undefined;
+  return {
+    promptTokens: Number(usage.prompt_tokens ?? 0),
+    completionTokens: Number(usage.completion_tokens ?? 0),
+  };
+}
+
+export interface AiUsageEvent {
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  durationMs: number;
+}
+
 export interface WorkersAiProviderOptions {
-  /** Default model when a request does not override it. */
   model?: string;
-  /**
-   * Cloudflare API token scoped to Workers AI (secret WORKERS_AI_API_TOKEN).
-   * When set together with accountId, inference goes through the Workers AI
-   * REST API first; on 401/403 falls back to the AI binding.
-   */
   apiToken?: string;
   accountId?: string;
+  onUsage?: (event: AiUsageEvent) => void;
 }
 
 /**
- * AiProvider backed by Cloudflare Workers AI — the ONLY AI gateway Ouroboros
- * connects to. There is deliberately no fallback to external APIs (Anthropic,
- * OpenAI, ...). Every model served by the AI binding is discoverable via
- * listModels() and selectable from the GUI settings screen.
+ * Workers AI binding が既定。パートナーモデル（`vendor/model`、`@` なし）だけ
+ * REST `/ai/v1/chat/completions` を試す。REST が 401/403 なら isolate 内では再試行しない。
  */
 export class WorkersAiProvider implements AiProvider {
   readonly name = "workers-ai";
   private readonly model: string;
+  /** isolate 寿命。トークン腐敗時に毎 complete で REST を踏まない。 */
+  #restAuthFailed = false;
+  #modelsCache: { at: number; models: AiModelInfo[] } | undefined;
 
   constructor(
     private readonly ai: Ai,
@@ -71,43 +85,67 @@ export class WorkersAiProvider implements AiProvider {
       { role: "user" as const, content: req.prompt },
     ];
     const maxTokens = req.maxTokens ?? 4096;
+    const started = Date.now();
 
-    if (this.opts.apiToken && this.opts.accountId) {
+    const useRest =
+      !this.#restAuthFailed &&
+      !!this.opts.apiToken &&
+      !!this.opts.accountId &&
+      isPartnerModelId(model);
+
+    let text: string;
+    let usage: { promptTokens: number; completionTokens: number } | undefined;
+    if (useRest) {
       try {
-        return await this.completeViaRest(model, messages, maxTokens);
+        const rest = await this.completeViaRest(model, messages, maxTokens);
+        text = rest.text;
+        usage = rest.usage;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // トークン腐敗時はバインディングへフォールバック
         if (/\b401\b|\b403\b|Invalid User Credentials|2021/.test(msg)) {
-          console.warn("[workers-ai] REST auth failed, falling back to AI binding:", msg.slice(0, 200));
-          return this.completeViaBinding(model, messages, maxTokens);
+          this.#restAuthFailed = true;
+          console.warn("[workers-ai] REST auth failed, binding only for this isolate:", msg.slice(0, 200));
+          const bound = await this.completeViaBinding(model, messages, maxTokens);
+          text = bound.text;
+          usage = bound.usage;
+        } else {
+          throw err;
         }
-        throw err;
       }
+    } else {
+      const bound = await this.completeViaBinding(model, messages, maxTokens);
+      text = bound.text;
+      usage = bound.usage;
     }
-    return this.completeViaBinding(model, messages, maxTokens);
+
+    this.opts.onUsage?.({
+      model,
+      promptTokens: usage?.promptTokens ?? 0,
+      completionTokens: usage?.completionTokens ?? 0,
+      durationMs: Date.now() - started,
+    });
+    return text;
   }
 
   private async completeViaBinding(
     model: string,
     messages: Array<{ role: string; content: string }>,
     maxTokens: number
-  ): Promise<string> {
+  ): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number } }> {
     const payload = { messages, max_tokens: maxTokens };
     const run = this.ai.run(model as keyof AiModels, payload as never) as Promise<unknown>;
     const result = await withTimeout(run, AI_TIMEOUT_MS, `Workers AI binding timed out after ${AI_TIMEOUT_MS}ms`);
-    return extractCompletionText(result);
+    return { text: extractCompletionText(result), usage: extractUsage(result) };
   }
 
   /**
-   * OpenAI 互換エンドポイント `/ai/v1/chat/completions`。
-   * パートナーモデル（minimax/m3 等）は旧 `/ai/run/<model>` では動かない。
+   * パートナーモデル用。`@cf/...` カタログモデルは binding の方が subrequest を食わない。
    */
   private async completeViaRest(
     model: string,
     messages: Array<{ role: string; content: string }>,
     maxTokens: number
-  ): Promise<string> {
+  ): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number } }> {
     const url = `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/ai/v1/chat/completions`;
     const res = await fetch(url, {
       method: "POST",
@@ -121,17 +159,18 @@ export class WorkersAiProvider implements AiProvider {
     if (!res.ok) {
       throw new Error(`Workers AI REST request failed: ${res.status} ${await res.text()}`);
     }
-    return extractCompletionText(await res.json());
+    const json: unknown = await res.json();
+    return { text: extractCompletionText(json), usage: extractUsage(json) };
   }
 
   /**
    * テキスト埋め込み。VECTORIZE インデックス（768 次元）と揃えるため
-   * モデルは bge-base-en-v1.5 固定。バッチ上限 100 件ずつ分割して呼び出す。
-   * 埋め込みはバインディング優先（REST の外部 subrequest 枠を消費しない）。
+   * モデルは bge-base-en-v1.5 固定。バッチ上限 100 件ずつ。binding のみ。
    */
   async embed(texts: string[]): Promise<number[][]> {
     const model = "@cf/baai/bge-base-en-v1.5";
     const out: number[][] = [];
+    const started = Date.now();
     for (let i = 0; i < texts.length; i += 100) {
       const batch = texts.slice(i, i + 100);
       const run = this.ai.run(model as keyof AiModels, { text: batch } as never) as Promise<{
@@ -144,11 +183,20 @@ export class WorkersAiProvider implements AiProvider {
       }
       out.push(...data);
     }
+    this.opts.onUsage?.({
+      model,
+      promptTokens: texts.reduce((n, t) => n + t.length, 0),
+      completionTokens: 0,
+      durationMs: Date.now() - started,
+    });
     return out;
   }
 
-  /** Enumerate the text-generation models the Workers AI binding serves (paged). */
   async listModels(): Promise<AiModelInfo[]> {
+    const now = Date.now();
+    if (this.#modelsCache && now - this.#modelsCache.at < MODELS_TTL_MS) {
+      return this.#modelsCache.models;
+    }
     const models: AiModelInfo[] = [];
     const perPage = 100;
     for (let page = 1; ; page++) {
@@ -166,7 +214,6 @@ export class WorkersAiProvider implements AiProvider {
       }
       if (batch.length < perPage) break;
     }
-    // パートナーモデルを先頭にマージ（カタログに含まれないことがある）
     const merged = [
       ...PARTNER_MODELS.filter((p) => !models.some((m) => m.value === p.value)).map((p) => ({
         ...p,
@@ -174,8 +221,14 @@ export class WorkersAiProvider implements AiProvider {
       })),
       ...models,
     ];
+    this.#modelsCache = { at: now, models: merged };
     return merged;
   }
+}
+
+/** `@cf/...` カタログ以外（`minimax/m3` 等）は REST が必要なことがある。 */
+export function isPartnerModelId(id: string): boolean {
+  return !id.startsWith("@") && id.includes("/");
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

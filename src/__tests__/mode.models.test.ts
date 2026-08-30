@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { modeModelsSchema } from "../http/validation";
 import { NoopRunner } from "../ports/runner";
-import { normalizeAllFindings } from "../utils/findings.normalize";
 
 describe("modeModelsSchema", () => {
   it("accepts valid per-mode model ids and empty string (reset)", () => {
@@ -61,46 +60,5 @@ describe("NoopRunner", () => {
     });
     expect(result.success).toBe(false);
     expect(result.validationOutput).toContain("no runner configured");
-  });
-});
-
-describe("normalizeAllFindings", () => {
-  it("passes through new-format staticAnalysis findings", () => {
-    const findings = normalizeAllFindings({
-      staticAnalysis: [
-        {
-          id: "eval-usage/a.ts",
-          ruleId: "eval-usage",
-          title: "t",
-          message: "m",
-          severity: "critical",
-          file: "a.ts",
-          line: 5,
-        },
-      ],
-    });
-    expect(findings.staticAnalysis[0]).toMatchObject({
-      ruleId: "eval-usage",
-      severity: "critical",
-      line: 5,
-    });
-  });
-
-  it("maps legacy severities error/warning/note to high/medium/info", () => {
-    const findings = normalizeAllFindings({
-      codeql: [
-        { ruleId: "a", severity: "error", message: "", location: { file: "f", startLine: 1 } },
-        { ruleId: "b", severity: "warning", message: "", location: { file: "f", startLine: 2 } },
-        { ruleId: "c", severity: "note", message: "", location: { file: "f", startLine: 3 } },
-      ],
-    });
-    expect(findings.staticAnalysis.map((f) => f.severity)).toEqual(["high", "medium", "info"]);
-  });
-
-  it("tolerates missing keys", () => {
-    const findings = normalizeAllFindings({});
-    expect(findings.staticAnalysis).toEqual([]);
-    expect(findings.dependency).toEqual([]);
-    expect(findings.commitHash).toBe("");
   });
 });

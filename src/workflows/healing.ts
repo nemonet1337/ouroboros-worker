@@ -71,74 +71,64 @@ async function buildCodeContext(ctx: WorkerContext, findings: AllFindings): Prom
  */
 export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
   async run(event: WorkflowEvent<HealingParams>, step: WorkflowStep): Promise<void> {
-    const ctx = await buildContext(this.env);
-    const runs = new HealingRunRepository(ctx.ports.db);
     const { runId } = event.payload;
-    const log = ctx.logger.child("workflow");
-    const runLog = ctx.logger.child(`healing/${runId}`);
-
     try {
-      await this.execute(event, step, ctx, runs);
+      await this.execute(event, step);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // キャンセル済みなら上書きしない
+      const ctx = await buildContext(this.env);
+      const runs = new HealingRunRepository(ctx.ports.db);
       const current = await runs.find(runId);
       if (current?.status !== "canceled") {
         await runs.update(runId, { status: "failed", summary: JSON.stringify({ error: message }) });
       }
-      await log.error("workflow failed", { runId, reason: message });
-      await runLog.error("workflow failed", { reason: message });
+      console.error(`[workflow] failed runId=${runId}`, message);
       throw err;
     }
   }
 
   private async execute(
     event: WorkflowEvent<HealingParams>,
-    step: WorkflowStep,
-    ctx: Awaited<ReturnType<typeof buildContext>>,
-    runs: HealingRunRepository
+    step: WorkflowStep
   ): Promise<void> {
     const { runId, dryRun } = event.payload;
-    const log = ctx.logger.child("workflow");
-    const runLog = ctx.logger.child(`healing/${runId}`);
 
     const findings = await step.do("scan", STEP_OPTS_SCAN, async (): Promise<AllFindings> => {
+      const ctx = await buildContext(this.env);
+      const runs = new HealingRunRepository(ctx.ports.db);
       const current = await runs.find(runId);
       if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "scanning", workflow_id: event.instanceId });
-      await runLog.info("scan: 開始");
       const r = await ctx.ports.runner.scan();
-      await runLog.info("scan: 完了", {
-        groups: r.findings.staticAnalysis.length + r.findings.secrets.length,
-      });
       return r.findings;
     });
 
     const analysis = await step.do("analyze", STEP_OPTS_ANALYZE, async () => {
+      const ctx = await buildContext(this.env);
+      const runs = new HealingRunRepository(ctx.ports.db);
       const current = await runs.find(runId);
       if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "analyzing" });
-      await runLog.info("analyze: 開始");
       const run = await runs.find(runId);
       const model = await ctx.auth.resolveModel(run?.user_id, "healing");
       const config = { ...ctx.config, ai: { ...ctx.config.ai, model } };
       const codeContext = await buildCodeContext(ctx, findings);
       const result = await new AIAnalyzer(config, ctx.ports.ai).analyze(findings, codeContext);
-      await new Notifier(ctx.config).notifyScanComplete(result);
+      await new Notifier().notifyScanComplete(result);
       await new AlertService(ctx.ports.mailer, ctx.alertRecipients).scanRisk(result);
-      await runLog.info("analyze: 完了", { riskScore: result.riskScore });
       return result;
     });
 
     await step.do("fix", STEP_OPTS_FIX, async () => {
+      const ctx = await buildContext(this.env);
+      const runs = new HealingRunRepository(ctx.ports.db);
       const current = await runs.find(runId);
       if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "fixing" });
-      await runLog.info("fix: 開始");
       const dedup = new PRDeduplicator(ctx.config, ctx.ports.vcs);
       const cache = new FixCache(ctx.config, ctx.ports.vcs);
       const escalator = new Escalator(ctx.config, ctx.ports.vcs);
-      const notifier = new Notifier(ctx.config);
+      const notifier = new Notifier();
       const alerts = new AlertService(ctx.ports.mailer, ctx.alertRecipients);
 
       if (!dryRun) await Promise.allSettled([dedup.loadOpenPRs(), cache.load()]);
@@ -165,6 +155,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
           branchPrefix: ctx.config.vcs.branchPrefix,
           dryRun,
           model: healingModel,
+          contextLines: ctx.config.ai.contextLines,
         });
 
         if (dryRun) continue;
@@ -198,8 +189,6 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
         status: "done",
         summary: JSON.stringify({ riskScore: analysis.riskScore, prsCreated, prs }),
       });
-      await log.info("workflow cycle done", { runId, prsCreated });
-      await runLog.info("fix: 完了", { prsCreated });
     });
   }
 }

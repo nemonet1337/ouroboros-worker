@@ -21,7 +21,7 @@ ${(repoStructure ?? []).join("\n") || "(no structure provided)"}
 ## File context
 ${fileContext
   ? Object.entries(fileContext)
-      .map(([path, content]) => `### ${path}\n\`\`\`\n${content.slice(0, 4000)}\n\`\`\``)
+      .map(([path, content]) => `### ${path}\n\`\`\`\n${content.slice(0, 2000)}\n\`\`\``)
       .join("\n")
   : "(no file context provided)"}
 

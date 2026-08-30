@@ -18,7 +18,7 @@ import type { AuthService, AuthedUser } from "../auth/service";
 import type { Logger } from "../logging/logger";
 import type { TriggerHealingResult } from "../http/api";
 import type { InspectionRequest, InspectionResult, Language } from "../types";
-import { FlagService, FLAGS } from "../flags/flag.service";
+import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
 import {
   InspectionRepository,
   WebhookRepository,
@@ -50,7 +50,6 @@ import { HealingRunList } from "./components/healing-run-list";
 import { RepoSelector } from "./components/repo-selector";
 import { NotificationBell, type NotificationItem } from "./components/notification-bell";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
-import { resolveFeatureFlag } from "../flags/flag.service";
 import { getSelectedRepo, setSelectedRepo, setWebhooksEnabled, setFeatureFlags } from "../config/settings.keys";
 
 const SESSION_COOKIE = "ouro_session";
@@ -69,7 +68,6 @@ export interface FragmentDeps {
   config: HealingConfig;
   auth: AuthService;
   logger: Logger;
-  flags?: FlagService;
   /** 環境変数 OURO_REGISTRATION_ENABLED による上書き。未設定なら DB 設定に従う。 */
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
@@ -165,7 +163,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   };
 
   const requireFlag = (flagName: string, defaultValue: boolean) => async (c: Context<Env>, next: Next) => {
-    const enabled = await resolveFeatureFlag(settingsRepo, deps.flags, flagName, defaultValue);
+    const enabled = await resolveFeatureFlag(settingsRepo, flagName, defaultValue);
     if (!enabled) {
       return c.html(<Alert type="info" message="この機能は現在無効化されています。" />);
     }

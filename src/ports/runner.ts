@@ -21,6 +21,8 @@ export interface RunFixOptions {
   dryRun: boolean;
   /** healing モードで解決した Workers AI モデル ID */
   model?: string;
+  /** 指摘行の前後に送る行数。未指定ならファイル先頭 8k 文字。 */
+  contextLines?: number;
 }
 
 export interface HealingRunner {

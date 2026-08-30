@@ -148,12 +148,16 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
 
     // 3. analyzing
     if (!(await push("analyzing", "AI によるコード解析を実行しています…", "analyzing"))) return;
-    const allFiles = await vcs.getRepoFiles(200);
-    let files =
-      targetPaths.length > 0
-        ? allFiles.filter((f) => targetPaths.includes(f.path)).slice(0, MAX_ANALYSIS_FILES)
-        : [];
-    if (files.length === 0) files = allFiles.slice(0, MAX_ANALYSIS_FILES);
+    let files: Array<{ path: string; content: string }> = [];
+    if (targetPaths.length > 0) {
+      for (const path of targetPaths.slice(0, MAX_ANALYSIS_FILES)) {
+        const file = await vcs.readFileContent(path);
+        if (file) files.push({ path: file.path, content: file.content });
+      }
+    }
+    if (files.length === 0) {
+      files = (await vcs.getRepoFiles(MAX_ANALYSIS_FILES)).slice(0, MAX_ANALYSIS_FILES);
+    }
 
     if (await isCanceled()) return;
     await analyzeAndStore({ ctx, inspections, inspectionId, userId, instruction, files, steps });

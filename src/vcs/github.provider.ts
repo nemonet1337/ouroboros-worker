@@ -321,6 +321,11 @@ export class GitHubProvider implements VcsProvider {
     return result.default_branch;
   }
 
+  async getHeadSha(ref?: string): Promise<string> {
+    const branch = ref || (await this.getDefaultBranch());
+    return this.getRef(branch);
+  }
+
   /** ブランチ HEAD の commit SHA を返す。 */
   async getRef(branch: string): Promise<string> {
     const result = await this.api<{ object: { sha: string } }>(

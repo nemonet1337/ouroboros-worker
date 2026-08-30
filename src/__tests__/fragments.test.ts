@@ -43,12 +43,9 @@ function buildDeps(overrides: Partial<FragmentDeps> = {}): FragmentDeps {
     } as any,
     config: {
       ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
-      targets: {} as any,
       vcs: { owner: "test", repo: "test", baseBranch: "main", branchPrefix: "ouro-fix" },
-      notifications: {},
-      autoMerge: { enabled: false, requireCIPass: false },
       dryRun: false,
-      scan: { maxPRsPerRun: 5, secretScanEnabled: true, licenseCheckEnabled: true },
+      scan: { maxPRsPerRun: 5 },
     },
     auth: {
       resolveSession: vi.fn().mockResolvedValue({ id: "user-1", email: "test@test.com", role: "admin", model: null }),
@@ -137,8 +134,12 @@ describe("UI fragments", () => {
   });
 
   it("returns an info alert when a feature flag disables the widget", async () => {
-    const deps = buildDeps({
-      flags: { get: vi.fn().mockResolvedValue(false) } as any,
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (String(sql).includes("SELECT value FROM settings") && params[0] === "feature_flags") {
+        return [{ value: JSON.stringify({ "code-needs-fix": false }) }];
+      }
+      return [];
     });
     const app = createFragments(deps);
     const res = await app.request("/code/sessions", authed);

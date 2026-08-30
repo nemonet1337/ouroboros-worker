@@ -43,7 +43,7 @@ describe("Logger daily rotation", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-15T12:00:00.000Z"));
     const store = mockStore();
-    const log = new Logger(store, { file: "ouroboros" });
+    const log = new Logger(store, { file: "ouroboros", persistLevel: "info" });
     await log.info("hello");
     expect(store.files).toEqual(["ouroboros-2026-03-15.log"]);
     vi.useRealTimers();
@@ -52,7 +52,7 @@ describe("Logger daily rotation", () => {
   it("switches file after UTC midnight", async () => {
     vi.useFakeTimers();
     const store = mockStore();
-    const log = new Logger(store, { file: "ouroboros.log" });
+    const log = new Logger(store, { file: "ouroboros.log", persistLevel: "info" });
 
     vi.setSystemTime(new Date("2026-03-15T23:59:00.000Z"));
     await log.info("before");

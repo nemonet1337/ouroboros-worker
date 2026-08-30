@@ -10,6 +10,7 @@ export interface CodeIndexStatus {
   chunks: number;
   updatedAt: number;
   error?: string;
+  commitSha?: string;
 }
 
 export interface CodeSnippet {
@@ -22,6 +23,7 @@ export interface CodeSnippet {
 
 interface RepoFileSource {
   getRepoFiles(maxFiles?: number, ref?: string): Promise<Array<{ path: string; content: string }>>;
+  getHeadSha?(): Promise<string>;
 }
 
 const CHUNK_LINES = 50;
@@ -82,7 +84,13 @@ export class CodeIndexer {
       return status;
     }
 
-    await this.saveStatus({ status: "indexing", files: 0, chunks: 0, updatedAt: Date.now() });
+    const commitSha = await this.vcs.getHeadSha?.().catch(() => undefined);
+    const prev = await this.getStatus();
+    if (commitSha && prev?.status === "done" && prev.commitSha === commitSha) {
+      return prev;
+    }
+
+    await this.saveStatus({ status: "indexing", files: 0, chunks: 0, updatedAt: Date.now(), commitSha });
 
     try {
       const files = await this.vcs.getRepoFiles(MAX_INDEX_FILES);
@@ -121,6 +129,7 @@ export class CodeIndexer {
         files: files.length,
         chunks: allChunks.length,
         updatedAt: Date.now(),
+        commitSha,
       };
       await this.saveStatus(status);
       return status;

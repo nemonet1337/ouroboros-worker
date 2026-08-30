@@ -31,6 +31,7 @@ export interface Ports {
   queue: QueueAdapter;
   mailer: Mailer;
   runner: HealingRunner;
+  /** 本番では `runner` と同じ RepoRunner。テストだけ別インスタンス可。 */
   codeRunner: CodeRunner;
   rateLimiter: RateLimiter;
   /** コード埋め込み検索用インデックス（ouroboros-code-index） */

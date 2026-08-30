@@ -19,15 +19,30 @@ export class ProposalManager {
     if (!rows.length) throw new Error("inspection not found");
 
     const inspectionResult = rows[0].result;
-    const prompt = `Based on the following inspection result, summarise the findings as a refactor proposal.
-Return ONLY a valid JSON object matching this schema:
-{
-  "summary": "a description of the proposed refactoring",
-  "priority": "low" | "medium" | "high"
-}
+    let compact = inspectionResult.slice(0, 4_000);
+    try {
+      const parsed = JSON.parse(inspectionResult) as {
+        summary?: string;
+        scoreCard?: { overall?: number; grade?: string };
+        findings?: Array<{ title?: string; severity?: string; location?: { file?: string } }>;
+      };
+      compact = JSON.stringify({
+        summary: parsed.summary,
+        overall: parsed.scoreCard?.overall,
+        grade: parsed.scoreCard?.grade,
+        findings: (parsed.findings ?? []).slice(0, 8).map((f) => ({
+          title: f.title,
+          severity: f.severity,
+          file: f.location?.file,
+        })),
+      });
+    } catch {
+      // keep truncated raw
+    }
+    const prompt = `Summarise these inspection findings as a refactor proposal.
+Return ONLY JSON: {"summary":"string","priority":"low"|"medium"|"high"}
 
-Inspection Result:
-${inspectionResult}`;
+${compact}`;
 
     const aiRes = await this.ai.complete({
       model,

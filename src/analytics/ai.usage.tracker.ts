@@ -24,16 +24,3 @@ export class AiUsageTracker {
     });
   }
 }
-
-export class CostEstimator {
-  private readonly COST_PER_1K_TOKENS: Record<string, { prompt: number; completion: number }> = {
-    "moonshotai/kimi-k2": { prompt: 0.001, completion: 0.002 },
-    "minimax/m3": { prompt: 0.001, completion: 0.002 },
-  };
-
-  estimate(model: string, promptTokens: number, completionTokens: number): number {
-    const c = this.COST_PER_1K_TOKENS[model];
-    if (!c) return 0;
-    return (promptTokens * c.prompt + completionTokens * c.completion) / 1000;
-  }
-}

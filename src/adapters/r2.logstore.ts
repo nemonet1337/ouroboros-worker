@@ -27,7 +27,7 @@ export class R2LogStore implements LogStore {
     let cursor: string | undefined;
     // ページネーションで全プレフィックスを拾う（日次ファイルが増えても漏れないように）
     do {
-      const listed = await this.bucket.list({ cursor, limit: 1000 });
+      const listed = await this.bucket.list({ prefix: "ouroboros-", cursor, limit: 1000 });
       for (const obj of listed.objects) {
         const slash = obj.key.indexOf(".log/");
         if (slash >= 0) files.add(obj.key.slice(0, slash + 4));

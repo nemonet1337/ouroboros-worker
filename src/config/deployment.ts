@@ -5,8 +5,6 @@
  * binding. The Workers AI REST API token (when used) lives solely in the
  * WORKERS_AI_API_TOKEN secret — never in the GUI config store.
  */
-export type DeployTarget = "cloudflare";
-
 /** Default Workers AI model used for every AI task unless overridden in the GUI. */
 export const DEFAULT_WORKERS_AI_MODEL = "@cf/zai-org/glm-5.3-flash";
 

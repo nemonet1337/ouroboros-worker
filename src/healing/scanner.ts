@@ -20,17 +20,15 @@ interface ScanRule {
 }
 
 const STATIC_ANALYSIS_RULES: ScanRule[] = [
-  { id: "any-type", title: "any型の使用", pattern: /:\s*any\b|as\s+any\b/g, message: "any型の使用は型安全性を低下させます", severity: "medium" },
-  { id: "non-null-assertion", title: "非nullアサーション", pattern: /\w+!\./g, message: "非nullアサーション(!)は実行時エラーの原因になりえます", severity: "medium" },
-  { id: "console-log", title: "console.logの残存", pattern: /console\.(log|debug|info)\s*\(/g, message: "本番コードにconsole出力が残っています", severity: "low" },
-  { id: "eval-usage", title: "evalの使用", pattern: /\beval\s*\(/g, message: "evalの使用は任意コード実行のリスクがあります", severity: "critical" },
-  { id: "innerHTML-xss", title: "innerHTML XSS", pattern: /\.innerHTML\s*=/g, message: "innerHTMLへの代入はXSS脆弱性の原因になります", severity: "high" },
-  { id: "unsafe-regex", title: "安全でない正規表現", pattern: /\(\.\*\)\{/g, message: "爆発的なバックトラックを引き起こす可能性のある正規表現", severity: "high" },
-  { id: "unhandled-promise", title: "未処理のPromise", pattern: /\.catch\s*\(/g, message: "catch処理のない非同期呼び出し", severity: "medium" },
-  { id: "sql-injection", title: "SQLインジェクションリスク", pattern: /execute\s*\(\s*["'`].*\$|query\s*\(\s*["'`].*\+/g, message: "文字列連結によるSQLクエリ構築はインジェクションリスクがあります", severity: "critical" },
-  { id: "hardcoded-secret", title: "ハードコードされた認証情報", pattern: /(password|secret|token|api[_-]?key)\s*[:=]\s*["'][^"']{8,}["']/gi, message: "ソースコードにハードコードされた認証情報があります", severity: "critical" },
-  { id: "unused-import", title: "未使用インポート", pattern: /^import\s+.*\bfrom\b/mg, message: "未使用のインポートが存在する可能性があります", severity: "low" },
-  { id: "any-assertion", title: "型アサーションの乱用", pattern: /\bas\s+(any|unknown)\b/g, message: "any/unknown型へのアサーションは型安全性を損ないます", severity: "medium" },
+  { id: "any-type", title: "any型の使用", pattern: /:\s*any\b|as\s+any\b/, message: "any型の使用は型安全性を低下させます", severity: "medium" },
+  { id: "non-null-assertion", title: "非nullアサーション", pattern: /\w+!\./, message: "非nullアサーション(!)は実行時エラーの原因になりえます", severity: "medium" },
+  { id: "console-log", title: "console.logの残存", pattern: /console\.(log|debug|info)\s*\(/, message: "本番コードにconsole出力が残っています", severity: "low" },
+  { id: "eval-usage", title: "evalの使用", pattern: /\beval\s*\(/, message: "evalの使用は任意コード実行のリスクがあります", severity: "critical" },
+  { id: "innerHTML-xss", title: "innerHTML XSS", pattern: /\.innerHTML\s*=/, message: "innerHTMLへの代入はXSS脆弱性の原因になります", severity: "high" },
+  { id: "unsafe-regex", title: "安全でない正規表現", pattern: /\(\.\*\)\{/, message: "爆発的なバックトラックを引き起こす可能性のある正規表現", severity: "high" },
+  { id: "sql-injection", title: "SQLインジェクションリスク", pattern: /execute\s*\(\s*["'`].*\$|query\s*\(\s*["'`].*\+/, message: "文字列連結によるSQLクエリ構築はインジェクションリスクがあります", severity: "critical" },
+  { id: "hardcoded-secret", title: "ハードコードされた認証情報", pattern: /(password|secret|token|api[_-]?key)\s*[:=]\s*["'][^"']{8,}["']/i, message: "ソースコードにハードコードされた認証情報があります", severity: "critical" },
+  { id: "any-assertion", title: "型アサーションの乱用", pattern: /\bas\s+(any|unknown)\b/, message: "any/unknown型へのアサーションは型安全性を損ないます", severity: "medium" },
 ];
 
 const DEPENDENCY_FILES = [

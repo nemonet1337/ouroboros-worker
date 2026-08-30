@@ -61,7 +61,7 @@ ${buildAspectGuide()}
 - scorePenalty: critical→20〜30、high→12〜20、medium→6〜12、low→2〜6、info→0〜2
 - high/criticalには必ず改善案(recommendations)を提示する
 - すべての記述は日本語（コードスニペット除く）
-- 分析完了後は必ず \`submit_inspection\` ツールを呼び出す`;
+- 応答は JSON オブジェクトのみ（markdown フェンス禁止）`;
 
 const DEFAULT_PROJECT_CONTEXT =
   "汎用コードベース。プロジェクト固有のドメイン知識は不明のため、" +
@@ -104,5 +104,5 @@ ${langGuide}
 
 ${filesSection}
 
-上記コードを詳細分析し、\`submit_inspection\` ツールで結果を提出してください。`;
+上記コードを詳細分析し、指定の JSON オブジェクトのみで応答してください。`;
 }

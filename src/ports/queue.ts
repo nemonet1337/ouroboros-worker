@@ -19,7 +19,7 @@ export interface GuiEvent {
  * Implementation: CfQueueAdapter (Cloudflare Queues).
  */
 export interface QueueAdapter {
-  readonly kind: "in-process" | "cf-queue";
+  readonly kind: "cf-queue";
   send(event: GuiEvent): Promise<void>;
 }
 

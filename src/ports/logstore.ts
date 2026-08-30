@@ -1,9 +1,9 @@
 /**
  * Append-only sink for flat `.log` telemetry files.
- * Implementations: FsLogStore (local directory), R2LogStore (Cloudflare R2).
+ * Implementation: R2LogStore (Cloudflare R2).
  */
 export interface LogStore {
-  readonly kind: "fs" | "r2";
+  readonly kind: "r2";
   /** Append one already-formatted log line (newline added by the store). */
   append(file: string, line: string): Promise<void>;
   /** List available log file names. */

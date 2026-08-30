@@ -1,6 +1,6 @@
 /**
  * Programmatic mirror of db/migrations/*.sql, used by the runtime migration
- * runner (self-hosted boot, optional D1 bootstrap).
+ * runner (Worker cold start).
  *
  * IMPORTANT: .sql ファイルは新規 DB の `wrangler d1 migrations apply` 用ミラーです。
  * 既存 DB へのマイグレーション適用はランタイム `runMigrations`（`_migrations` 追跡テーブル）

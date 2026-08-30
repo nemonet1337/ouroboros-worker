@@ -66,9 +66,8 @@ export interface FileTreeEntry {
 }
 
 /**
- * Abstraction over a version-control hosting provider (GitHub today;
- * GitLab/Gitea can be added later). API-only operations — local git
- * commit/push lives in the HealingRunner, not here.
+ * GitHub REST API for PRs, issues, and repo metadata.
+ * Git object writes (blob/tree/commit/ref) live on GitHubProvider, used by RepoRunner.
  */
 export interface VcsProvider {
   readonly name: string;

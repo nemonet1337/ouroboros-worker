@@ -25,6 +25,7 @@ import type { GitHubProvider } from "../vcs/github.provider";
 import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
 import { buildCodeGenPrompt } from "../code/prompt.templates";
 import { scanFiles } from "./scanner";
+import { createPatch } from "diff";
 
 export class RepoRunner implements HealingRunner, CodeRunner {
   readonly kind = "local" as const;
@@ -105,17 +106,33 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         });
         if (findings.length === 0) continue;
 
-        const fixedContent = await this.ai.complete({
+        const line = findings
+          .map((f) => {
+            const any = f as { line?: number; location?: { startLine?: number } };
+            return any.line ?? any.location?.startLine;
+          })
+          .find((n): n is number => typeof n === "number");
+        const contextLines = opts.contextLines ?? 20;
+        const useWindow = file.content.length > 4000 && line !== undefined;
+        const snippet = useWindow ? windowAround(file.content, line, contextLines) : file.content;
+
+        const raw = await this.ai.complete({
           model,
-          system: "You are a code fixer. Fix the following code issues. Return ONLY the fixed file content, no explanation.",
-          prompt: `Fix these issues in the file:\n${findings
+          system: useWindow
+            ? "You are a code fixer. Return ONLY the replacement for the given excerpt, no explanation."
+            : "You are a code fixer. Return ONLY the complete fixed file content, no explanation.",
+          prompt: `Fix these issues in ${path}:\n${findings
             .map((f) => {
               const any = f as { message?: string; title?: string };
               return `- ${any.message || any.title || ""}`;
             })
-            .join("\n")}\n\nOriginal file:\n\`\`\`\n${file.content}\n\`\`\``,
-          maxTokens: 8192,
+            .join("\n")}\n\n\`\`\`\n${snippet}\n\`\`\``,
+          maxTokens: Math.min(8192, 1024 + Math.ceil(snippet.length / 2)),
         });
+        const replacement = raw.trim();
+        const fixedContent = useWindow
+          ? spliceWindow(file.content, line!, contextLines, replacement)
+          : replacement;
 
         patches.push({
           file: path,
@@ -236,6 +253,9 @@ export class RepoRunner implements HealingRunner, CodeRunner {
     await this.cacheSet(opts.sessionId, "repoUrl", opts.repoUrl);
     await this.cacheSet(opts.sessionId, "branch", branch);
     await this.cacheSet(opts.sessionId, "baseBranch", opts.branch || "main");
+    if (fileList.length > 0) {
+      await this.cacheSet(opts.sessionId, "fileList", JSON.stringify(fileList));
+    }
 
     return {
       success: true,
@@ -293,9 +313,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
     if (!parsed) return { results: [] };
 
     return this.withRepo(parsed.owner, parsed.repo, async () => {
-      const files = await this.vcs.getRepoFiles(500, session.branch);
       const results: { file: string; line: number; content: string }[] = [];
-
       const globPattern =
         opts.type === "glob"
           ? new RegExp(
@@ -303,18 +321,36 @@ export class RepoRunner implements HealingRunner, CodeRunner {
             )
           : null;
 
-      const candidates = globPattern ? files.filter((f) => globPattern.test(f.path)) : files;
-
-      for (const file of candidates.slice(0, 100)) {
-        if (opts.type === "grep") {
-          const lines = file.content.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes(opts.query)) {
-              results.push({ file: file.path, line: i + 1, content: lines[i].slice(0, 200) });
-            }
+      if (globPattern) {
+        const cached = await this.db.query<{ value: string }>(
+          `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'fileList'`,
+          [opts.sessionId]
+        );
+        let paths: string[] = [];
+        if (cached[0]?.value) {
+          try {
+            paths = JSON.parse(cached[0].value) as string[];
+          } catch {
+            paths = [];
           }
-        } else {
-          results.push({ file: file.path, line: 1, content: "" });
+        }
+        if (paths.length === 0) {
+          const files = await this.vcs.getRepoFiles(80, session.branch);
+          paths = files.map((f) => f.path);
+        }
+        for (const p of paths) {
+          if (globPattern.test(p)) results.push({ file: p, line: 1, content: "" });
+        }
+        return { results: results.slice(0, 500) };
+      }
+
+      const files = await this.vcs.getRepoFiles(80, session.branch);
+      for (const file of files) {
+        const lines = file.content.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes(opts.query)) {
+            results.push({ file: file.path, line: i + 1, content: lines[i].slice(0, 200) });
+          }
         }
       }
       return { results: results.slice(0, 500) };
@@ -425,10 +461,31 @@ export class RepoRunner implements HealingRunner, CodeRunner {
       let fileList: string[] = [];
       let fileContext: Record<string, string> = {};
       try {
-        const files = await this.vcs.getRepoFiles(50, session.branch);
-        fileList = files.map((f) => f.path);
-        for (const f of files.slice(0, 10)) {
-          fileContext[f.path] = f.content;
+        const cached = await this.db.query<{ value: string }>(
+          `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'fileList'`,
+          [opts.sessionId]
+        );
+        if (cached[0]?.value) {
+          try {
+            fileList = JSON.parse(cached[0].value) as string[];
+          } catch {
+            fileList = [];
+          }
+        }
+        if (fileList.length === 0) {
+          const files = await this.vcs.getRepoFiles(80, session.branch);
+          fileList = files.map((f) => f.path);
+          await this.cacheSet(opts.sessionId, "fileList", JSON.stringify(fileList));
+        }
+        const picked = pickContextPaths(fileList, opts.instruction, 8);
+        let chars = 0;
+        for (const p of picked) {
+          if (chars >= 8_000) break;
+          const file = await this.vcs.readFileContent(p, session.branch);
+          if (!file) continue;
+          const slice = file.content.slice(0, 4_000);
+          fileContext[p] = slice;
+          chars += slice.length;
         }
       } catch {
         // proceed without file context
@@ -489,35 +546,35 @@ export function parseGeneratedPatches(raw: string): { patches: Patch[]; error?: 
 }
 
 function generateDiff(path: string, original: string, modified: string): string {
-  const origLines = original.split("\n");
-  const modLines = modified.split("\n");
-  const output: string[] = [`--- a/${path}`, `+++ b/${path}`];
-  const maxLen = Math.max(origLines.length, modLines.length);
-  let hunkHeader = false;
+  return createPatch(path, original, modified);
+}
 
-  for (let i = 0; i < maxLen; i++) {
-    if (i < origLines.length && i < modLines.length) {
-      if (origLines[i] !== modLines[i]) {
-        if (!hunkHeader) {
-          output.push(`@@ -${i + 1},${origLines.length} +${i + 1},${modLines.length} @@`);
-          hunkHeader = true;
-        }
-        output.push(`-${origLines[i]}`);
-        output.push(`+${modLines[i]}`);
-      }
-    } else if (i < origLines.length) {
-      if (!hunkHeader) {
-        output.push(`@@ -${i + 1},${origLines.length} +${i + 1},${modLines.length} @@`);
-        hunkHeader = true;
-      }
-      output.push(`-${origLines[i]}`);
-    } else {
-      if (!hunkHeader) {
-        output.push(`@@ -${i + 1},${origLines.length} +${i + 1},${modLines.length} @@`);
-        hunkHeader = true;
-      }
-      output.push(`+${modLines[i]}`);
-    }
-  }
-  return output.join("\n");
+function windowAround(content: string, line: number, contextLines: number): string {
+  const lines = content.split("\n");
+  const start = Math.max(0, line - 1 - contextLines);
+  const end = Math.min(lines.length, line + contextLines);
+  return lines.slice(start, end).join("\n");
+}
+
+function spliceWindow(content: string, line: number, contextLines: number, replacement: string): string {
+  const lines = content.split("\n");
+  const start = Math.max(0, line - 1 - contextLines);
+  const end = Math.min(lines.length, line + contextLines);
+  return [...lines.slice(0, start), ...replacement.split("\n"), ...lines.slice(end)].join("\n");
+}
+
+function pickContextPaths(fileList: string[], instruction: string, limit: number): string[] {
+  const tokens = instruction
+    .toLowerCase()
+    .split(/[^a-z0-9_./-]+/i)
+    .filter((t) => t.length > 2);
+  const scored = fileList.map((p) => {
+    const lower = p.toLowerCase();
+    const hits = tokens.reduce((n, t) => n + (lower.includes(t) ? 1 : 0), 0);
+    return { p, hits };
+  });
+  scored.sort((a, b) => b.hits - a.hits);
+  const matched = scored.filter((s) => s.hits > 0).map((s) => s.p);
+  const rest = scored.filter((s) => s.hits === 0).map((s) => s.p);
+  return [...matched, ...rest].slice(0, limit);
 }

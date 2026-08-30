@@ -4,10 +4,9 @@ export interface RateLimitResult {
 
 /**
  * Abstraction over a rate limiter keyed by an arbitrary string (IP, token, user).
- * Implementations: NoopLimiter (self-hosted default), CfRateLimiter (Workers
- * Rate Limiting API binding).
+ * Implementation: CfRateLimiter (Workers Rate Limiting API; always-allow if unbound).
  */
 export interface RateLimiter {
-  readonly kind: "noop" | "cf";
+  readonly kind: "cf";
   limit(key: string): Promise<RateLimitResult>;
 }

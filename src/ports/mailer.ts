@@ -9,7 +9,7 @@ export interface MailMessage {
  * Outbound email for alert/warning notifications.
  * Implementations: CfEmailMailer (Workers Email Routing), NoopMailer.
  */
-export type MailerKind = "smtp" | "mailchannels" | "sendgrid" | "cf-email" | "noop";
+export type MailerKind = "cf-email" | "noop";
 
 export interface Mailer {
   readonly kind: MailerKind;

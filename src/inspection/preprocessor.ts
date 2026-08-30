@@ -1,7 +1,10 @@
-import { createHash } from "node:crypto";
 import { InspectionFile } from "../types";
 
 const TRUNCATION_LINE_LIMIT = 500;
+
+function utf8Bytes(s: string): number {
+  return new TextEncoder().encode(s).byteLength;
+}
 
 /**
  * Truncate files that exceed maxSizeBytes so we don't overflow the model's context.
@@ -12,7 +15,7 @@ export function preprocessFiles(
   maxSizeBytes: number
 ): InspectionFile[] {
   return files.map((f) => {
-    if (Buffer.byteLength(f.content, "utf8") <= maxSizeBytes) return f;
+    if (utf8Bytes(f.content) <= maxSizeBytes) return f;
 
     const lines = f.content.split("\n");
     const truncated =
@@ -25,13 +28,11 @@ export function preprocessFiles(
 
 /**
  * SHA-256 over all (path + content) pairs in order.
- * Used as a cache key so unchanged files can skip re-inspection.
+ * Attached to InspectionResult (not used as an AI skip cache).
  */
-export function computeContentHash(files: InspectionFile[]): string {
-  const h = createHash("sha256");
-  for (const f of files) {
-    h.update(f.path);
-    h.update(f.content);
-  }
-  return `sha256:${h.digest("hex")}`;
+export async function computeContentHash(files: InspectionFile[]): Promise<string> {
+  const payload = files.map((f) => `${f.path}\0${f.content}`).join("\n");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
 }

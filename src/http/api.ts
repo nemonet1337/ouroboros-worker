@@ -3,10 +3,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Ports } from "../ports";
 import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
-import {
-  DEFAULT_WORKERS_AI_MODEL,
-  type DeployTarget,
-} from "../config/deployment";
+import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
@@ -23,8 +20,7 @@ import { sendWebhookTest } from "../webhook/test-send";
 import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
-import { FlagService, FLAGS } from "../flags/flag.service";
-import { resolveFeatureFlag } from "../flags/flag.service";
+import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
 import type { VersionMetadata } from "../env";
 import {
   validateBody,
@@ -74,10 +70,8 @@ export interface ApiDeps {
   /** Healing workflow terminate */
   cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
   cookieSecure?: boolean;
-  deployTarget?: DeployTarget;
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
-  flags?: FlagService;
   versionMetadata?: VersionMetadata;
   encryptionKey?: string;
 }
@@ -98,13 +92,11 @@ function clientIp(c: Context): string {
 }
 
 /**
- * The shared Ouroboros HTTP API (Hono). Runtime-agnostic — mounted by both the
- * Node server and the Cloudflare Worker at `/api/v1` (and `/api` for compat).
- * Routes are defined relative to the mount point (no `/api` prefix here).
+ * Ouroboros HTTP API (Hono). Mounted at `/api/v1` (and `/api` for compat).
+ * Routes are relative to the mount point.
  */
 export function createApi(deps: ApiDeps): Hono<Env> {
   const { ports, auth, logger } = deps;
-  const deployTarget: DeployTarget = deps.deployTarget ?? "cloudflare";
   const app = new Hono<Env>();
   const log = logger.child("api");
 
@@ -169,7 +161,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   const requireFlag = (flagName: string, defaultValue: boolean) => {
     return async (c: Context, next: Next) => {
-      const enabled = await resolveFeatureFlag(settingsRepo, deps.flags, flagName, defaultValue);
+      const enabled = await resolveFeatureFlag(settingsRepo, flagName, defaultValue);
       if (!enabled) {
         return c.json({ error: { code: "forbidden", message: `Feature ${flagName} is disabled` } }, 403);
       }
@@ -184,7 +176,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       name: "ouroboros",
       version: "2.0.0",
       apiVersion: API_VERSION,
-      deployTarget,
+      deployTarget: "cloudflare",
       versionMetadata: deps.versionMetadata || null,
     })
   );
@@ -320,7 +312,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       await log.error("model discovery failed", { reason: (err as Error).message });
       return c.json({ error: { code: "model_discovery_failed", message: (err as Error).message } }, 502);
     }
-    return c.json({ deployTarget, provider, models });
+    return c.json({ deployTarget: "cloudflare", provider, models });
   });
 
   // ── Settings (weights/thresholds/schedule/notifications/registration) ──────
@@ -480,7 +472,10 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       return c.json({ error: { code: "invalid_url", message: (err as Error).message } }, 400);
     }
 
-    const encKey = deps.encryptionKey ?? "ouroboros-default-secret-key-change-me";
+    const encKey = deps.encryptionKey ?? "";
+    if (body.secret && !encKey) {
+      return c.json({ error: { code: "misconfigured", message: "OURO_ENCRYPTION_KEY is not set" } }, 500);
+    }
     const secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
     const configData = {
       name: body.name || "webhook",
@@ -534,7 +529,10 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       if (body.events !== undefined) cfg.events = body.events;
       if (body.scoreThresholds !== undefined) cfg.scoreThresholds = body.scoreThresholds;
       if (body.secret !== undefined) {
-        const encKey = deps.encryptionKey ?? "ouroboros-default-secret-key-change-me";
+        const encKey = deps.encryptionKey ?? "";
+        if (body.secret && !encKey) {
+          return c.json({ error: { code: "misconfigured", message: "OURO_ENCRYPTION_KEY is not set" } }, 500);
+        }
         cfg.secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
       }
 

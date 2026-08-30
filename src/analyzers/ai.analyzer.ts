@@ -93,12 +93,22 @@ export class AIAnalyzer {
       ...findings.secrets.slice(0, 30),
     ];
 
+        const compact = truncated.map((f) => {
+      const rec = f as { id?: string; severity?: string; file?: string; line?: number; message?: string; title?: string };
+      return {
+        id: rec.id,
+        sev: rec.severity,
+        file: rec.file,
+        line: rec.line,
+        msg: rec.message || rec.title,
+      };
+    });
     const prompt = `Analyze these security and code quality findings and produce the JSON action plan.
 
 Detected frameworks: ${findings.detectedFrameworks.join(", ") || "none"}
 
-Findings (${truncated.length} total, flat array indexed from 0):
-${JSON.stringify(truncated, null, 2)}${codeContext ? `
+Findings (${compact.length} total, flat array indexed from 0):
+${JSON.stringify(compact)}${codeContext ? `
 
 Relevant code (vector index):
 ${codeContext}` : ""}`;
@@ -112,6 +122,7 @@ ${codeContext}` : ""}`;
       });
 
       const parsed = JSON.parse((text || "{}").replace(/```json|```/g, "").trim()) as AIResponse;
+      if (!Array.isArray(parsed.groups)) throw new Error("AI response missing groups");
 
       const groups: FindingGroup[] = parsed.groups.map((g) => ({
         id: g.id,

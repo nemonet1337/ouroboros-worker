@@ -44,12 +44,9 @@ function buildDeps(): ApiDeps {
     },
     config: {
       ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
-      targets: {} as any,
       vcs: { owner: "test", repo: "test", baseBranch: "main", branchPrefix: "ouro-fix" },
-      notifications: {},
-      autoMerge: { enabled: false, requireCIPass: false },
       dryRun: false,
-      scan: { maxPRsPerRun: 5, secretScanEnabled: true, licenseCheckEnabled: true },
+      scan: { maxPRsPerRun: 5 },
     },
     auth: {
       resolveSession: vi.fn().mockResolvedValue({ id: "user-1", email: "test@test.com", role: "admin" }),
@@ -64,7 +61,7 @@ function buildDeps(): ApiDeps {
       isRegistrationEnabled: vi.fn().mockResolvedValue(true),
     } as any,
     logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } as any,
-    deployTarget: "cloudflare",
+
     cookieSecure: false,
     registrationEnabled: true,
     githubTokenSet: true,

@@ -1,7 +1,7 @@
 export const designTokens = `
 :root {
   /* フォント定義 */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: system-ui, -apple-system, sans-serif;
 
   /* スペーシング */
   --spacing-xs: 0.25rem;
@@ -22,9 +22,6 @@ export const designTokens = `
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-/* Google Fonts Inter インポート */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 body {
   font-family: var(--font-sans);

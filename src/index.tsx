@@ -14,8 +14,6 @@ import {
 } from "./db/repositories";
 import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
 import {
-  SELECTED_REPO_KEY,
-  parseSelectedRepo,
   areWebhooksEnabled,
   getFeatureFlags,
   DEFAULT_APP_SETTINGS,
@@ -115,17 +113,8 @@ async function buildApp(env: Env): Promise<Hono> {
   const cancelHealing = makeCancelHealing(env, ctx);
   const app = new Hono();
 
-  app.use("*", async (c, next) => {
+  app.use("*", async (_c, next) => {
     await ensureMigrated(env);
-    try {
-      const raw = await new SettingsRepository(ctx.ports.db).get(SELECTED_REPO_KEY);
-      const parsed = parseSelectedRepo(raw);
-      if (parsed && (parsed.owner !== ctx.currentRepo.owner || parsed.repo !== ctx.currentRepo.repo)) {
-        ctx.refreshRepo(parsed.owner, parsed.repo);
-      }
-    } catch {
-      // 設定読み取り失敗は致命的ではない
-    }
     await next();
   });
 
@@ -229,7 +218,7 @@ async function buildApp(env: Env): Promise<Hono> {
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
 
-    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags, modelsEffective] =
+    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags] =
       await Promise.all([
         ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
         ctx.auth.getModel(user.id),
@@ -237,15 +226,11 @@ async function buildApp(env: Env): Promise<Hono> {
         settingsRepo.get("app_settings"),
         areWebhooksEnabled(settingsRepo),
         getFeatureFlags(settingsRepo),
-        ctx.auth.getModeModels(user.id).then(async (modes) => {
-          const global = await ctx.auth.getModel(user.id);
-          const effective: Record<string, string> = {};
-          for (const mode of ["coding", "plan", "refactor", "healing", "inspection"] as const) {
-            effective[mode] = modes[mode] ?? global ?? DEFAULT_WORKERS_AI_MODEL;
-          }
-          return effective;
-        }),
       ]);
+    const modelsEffective: Record<string, string> = {};
+    for (const mode of ["coding", "plan", "refactor", "healing", "inspection"] as const) {
+      modelsEffective[mode] = modeModels[mode] ?? globalModel ?? DEFAULT_WORKERS_AI_MODEL;
+    }
 
     let appSettings: Record<string, unknown> = { ...DEFAULT_APP_SETTINGS };
     try {

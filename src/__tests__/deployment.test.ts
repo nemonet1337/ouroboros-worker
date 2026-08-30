@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
 
-describe("deployment separation", () => {
+describe("Workers AI model ids", () => {
   it("recognises Workers AI model ids by their namespace", () => {
     expect(isWorkersAiModelId("@cf/meta/llama-3.1-8b-instruct")).toBe(true);
     expect(isWorkersAiModelId("@hf/mistral/mistral-7b-instruct-v0.2")).toBe(true);

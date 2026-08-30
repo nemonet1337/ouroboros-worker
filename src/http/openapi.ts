@@ -13,7 +13,6 @@ export const OPENAPI_SPEC = {
   components: {
     securitySchemes: {
       sessionCookie: { type: "apiKey", in: "cookie", name: "ouro_session" },
-      bearerToken: { type: "http", scheme: "bearer", bearerFormat: "ouro_<token>" },
     },
     schemas: {
       Error: {
@@ -37,7 +36,7 @@ export const OPENAPI_SPEC = {
       },
     },
   },
-  security: [{ sessionCookie: [] }, { bearerToken: [] }],
+  security: [{ sessionCookie: [] }],
   paths: {
     "/health": { get: { summary: "ヘルスチェック", security: [], responses: { "200": { description: "OK" } } } },
     "/version": { get: { summary: "バージョン情報", security: [], responses: { "200": { description: "OK" } } } },
@@ -59,11 +58,6 @@ export const OPENAPI_SPEC = {
     },
     "/auth/logout": { post: { summary: "ログアウト", responses: { "200": { description: "OK" } } } },
     "/auth/me": { get: { summary: "現在のユーザー", responses: { "200": { description: "OK" }, "401": { description: "未認証" } } } },
-    "/tokens": {
-      get: { summary: "API トークン一覧", responses: { "200": { description: "OK" } } },
-      post: { summary: "API トークン作成（secret は一度だけ返却）", responses: { "201": { description: "Created" } } },
-    },
-    "/tokens/{id}": { delete: { summary: "API トークン失効", responses: { "200": { description: "OK" } } } },
     "/config": {
       get: { summary: "アプリ設定の取得（秘匿値はマスク）", responses: { "200": { description: "OK" } } },
       put: { summary: "アプリ設定の保存（admin）", responses: { "200": { description: "OK" } } },
@@ -74,7 +68,7 @@ export const OPENAPI_SPEC = {
     },
     "/models": {
       get: {
-        summary: "利用可能な AI モデルの検出（cloudflare: Workers AI 全モデル / local: .env ゲートウェイのモデル）",
+        summary: "Workers AI のテキスト生成モデル一覧",
         responses: { "200": { description: "OK" }, "502": { description: "検出失敗" } },
       },
     },
