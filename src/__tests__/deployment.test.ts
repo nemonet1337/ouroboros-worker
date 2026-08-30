@@ -6,6 +6,7 @@ describe("deployment separation", () => {
     expect(isWorkersAiModelId("@cf/meta/llama-3.1-8b-instruct")).toBe(true);
     expect(isWorkersAiModelId("@hf/mistral/mistral-7b-instruct-v0.2")).toBe(true);
     expect(isWorkersAiModelId("minimax/m3")).toBe(true);
+    expect(isWorkersAiModelId("@cf/zai-org/glm-5.3-flash")).toBe(true);
   });
 
   it("rejects external gateway model ids", () => {
@@ -13,8 +14,8 @@ describe("deployment separation", () => {
     expect(isWorkersAiModelId("gpt-4o")).toBe(false);
   });
 
-  it("defaults to minimax/m3 on Workers AI", () => {
-    expect(DEFAULT_WORKERS_AI_MODEL).toBe("minimax/m3");
+  it("defaults to GLM-5.3-flash on Workers AI", () => {
+    expect(DEFAULT_WORKERS_AI_MODEL).toBe("@cf/zai-org/glm-5.3-flash");
     expect(isWorkersAiModelId(DEFAULT_WORKERS_AI_MODEL)).toBe(true);
   });
 });

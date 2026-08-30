@@ -3,15 +3,37 @@ import type { AiProvider, AiCompletionRequest, AiModelInfo } from "../ports";
 
 const AI_TIMEOUT_MS = 120_000;
 
-/** カタログに出ないパートナーモデル（minimax 等）を datalist に載せる。 */
+/** カタログに出ない／出にくいモデルを datalist に載せる。 */
 const PARTNER_MODELS: AiModelInfo[] = [
   {
     value: DEFAULT_WORKERS_AI_MODEL,
+    label: "GLM-5.3 Flash (Z.ai)",
+    provider: "workers-ai",
+    task: "Text Generation",
+  },
+  {
+    value: "minimax/m3",
     label: "MiniMax M3 (partner)",
     provider: "workers-ai",
     task: "Text Generation",
   },
 ];
+
+/** Binding / REST 双方の応答から本文を取る（旧 `{response}` と OpenAI `choices` 形）。 */
+export function extractCompletionText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (!result || typeof result !== "object") return "";
+  const obj = result as {
+    response?: unknown;
+    choices?: Array<{ message?: { content?: unknown } }>;
+    result?: { response?: unknown };
+  };
+  const fromChoice = obj.choices?.[0]?.message?.content;
+  if (typeof fromChoice === "string" && fromChoice.length > 0) return fromChoice;
+  if (typeof obj.response === "string" && obj.response.length > 0) return obj.response;
+  if (typeof obj.result?.response === "string") return obj.result.response;
+  return "";
+}
 
 export interface WorkersAiProviderOptions {
   /** Default model when a request does not override it. */
@@ -72,9 +94,9 @@ export class WorkersAiProvider implements AiProvider {
     maxTokens: number
   ): Promise<string> {
     const payload = { messages, max_tokens: maxTokens };
-    const run = this.ai.run(model as keyof AiModels, payload as never) as Promise<{ response?: string }>;
+    const run = this.ai.run(model as keyof AiModels, payload as never) as Promise<unknown>;
     const result = await withTimeout(run, AI_TIMEOUT_MS, `Workers AI binding timed out after ${AI_TIMEOUT_MS}ms`);
-    return result?.response ?? "";
+    return extractCompletionText(result);
   }
 
   /**
@@ -99,12 +121,7 @@ export class WorkersAiProvider implements AiProvider {
     if (!res.ok) {
       throw new Error(`Workers AI REST request failed: ${res.status} ${await res.text()}`);
     }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      result?: { response?: string };
-    };
-    // OpenAI 互換形を優先、旧形もフォールバック
-    return data.choices?.[0]?.message?.content ?? data.result?.response ?? "";
+    return extractCompletionText(await res.json());
   }
 
   /**

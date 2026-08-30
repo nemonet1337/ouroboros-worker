@@ -404,9 +404,9 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       payload: { sessionId, mode },
       enqueuedAt: Date.now(),
     });
-    return c.html(
-      <Alert type="info" message="生成を開始しました。完了まで自動更新されます。" />
-    );
+    // ページを generating 状態で再描画し、status poller を起動する
+    c.header("HX-Refresh", "true");
+    return c.body("");
   });
 
   /** 生成中ポーリング用ステータスフラグメント */
@@ -426,20 +426,9 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
         </div>
       );
     }
-    if (row.status === "failed") {
-      return c.html(
-        <div id="code-session-status">
-          <Alert type="error" message={`パッチ生成に失敗しました: ${row.error_message ?? "不明なエラー"}`} />
-        </div>
-      );
-    }
-    if (row.status === "generated") {
-      return c.html(
-        <div id="code-session-status">
-          <Alert type="success" message="パッチを生成しました。ページを再読み込みして内容を確認してください。" />
-          <meta http-equiv="refresh" content="1" />
-        </div>
-      );
+    if (row.status === "failed" || row.status === "generated") {
+      c.header("HX-Refresh", "true");
+      return c.body("");
     }
     return c.html(
       <div id="code-session-status">

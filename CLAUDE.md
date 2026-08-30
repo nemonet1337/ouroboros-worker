@@ -65,7 +65,7 @@ Workflows (healing.ts)
 
 ### AI モデル解決（モード別）
 - モード: `coding` / `plan` / `refactor` / `healing` / `inspection`
-- 解決順: `users.mode_models[mode]` → `users.model`（グローバル）→ `DEFAULT_WORKERS_AI_MODEL`（`minimax/m3`）
+- 解決順: `users.mode_models[mode]` → `users.model`（グローバル）→ `DEFAULT_WORKERS_AI_MODEL`（`@cf/zai-org/glm-5.3-flash`）
 - 呼び出しは `AuthService.resolveModel(userId, mode)` を必ず経由する
 - REST パス（`WORKERS_AI_API_TOKEN` 設定時）は `/ai/v1/chat/completions`。401/403 時は AI バインディングへフォールバック
 

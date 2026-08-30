@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AuthService, AuthError } from "../auth/service";
+import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
 import type { DbAdapter, SqlParam } from "../ports/db";
 
 class MockDbAdapter implements DbAdapter {
@@ -287,9 +288,9 @@ describe("AuthService", () => {
     });
 
     // 全部未設定 → デフォルト
-    expect(await auth.resolveModel("user-1", "coding")).toBe("minimax/m3");
+    expect(await auth.resolveModel("user-1", "coding")).toBe(DEFAULT_WORKERS_AI_MODEL);
     // userId 無し（cron）→ デフォルト
-    expect(await auth.resolveModel(null, "healing")).toBe("minimax/m3");
+    expect(await auth.resolveModel(null, "healing")).toBe(DEFAULT_WORKERS_AI_MODEL);
 
     // グローバル設定 → 全モードに波及
     await auth.setModel("user-1", "@cf/meta/llama-3.1-8b-instruct");
@@ -315,6 +316,6 @@ describe("AuthService", () => {
     });
 
     expect(await auth.getModeModels("user-1")).toEqual({});
-    expect(await auth.resolveModel("user-1", "coding")).toBe("minimax/m3");
+    expect(await auth.resolveModel("user-1", "coding")).toBe(DEFAULT_WORKERS_AI_MODEL);
   });
 });

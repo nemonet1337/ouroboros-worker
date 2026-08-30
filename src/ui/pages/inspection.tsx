@@ -95,12 +95,12 @@ export const InspectionPage: FC<InspectionPageProps> = ({ user, selectedRepo = n
                 <i data-lucide="history" class="w-5 h-5 text-secondary" />
                 <span>スキャン履歴</span>
               </h2>
+              <p class="text-xs opacity-50 -mt-4 mb-4">カードをクリックすると左に結果を表示します。</p>
 
               <div
                 hx-get="/ui/fragments/history"
                 hx-trigger="load"
-                hx-target="this"
-                hx-swap="innerHTML"
+                hx-swap="outerHTML"
               >
                 {/* 履歴読み込み中のプレースホルダー */}
                 <div class="space-y-4">

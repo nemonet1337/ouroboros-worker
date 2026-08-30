@@ -24,9 +24,18 @@ export interface HistoryEntry {
   overall: number;
   security: number;
   performance: number;
+  status: string;
+  target: string;
+  createdAt: number;
 }
 
-export function parseHistoryEntry(row: { id: string; result: string; created_at: number }): HistoryEntry {
+export function parseHistoryEntry(row: {
+  id: string;
+  result: string;
+  created_at: number;
+  status?: string;
+  target?: string | null;
+}): HistoryEntry {
   let overall = 0;
   let security = 0;
   let performance = 0;
@@ -46,6 +55,9 @@ export function parseHistoryEntry(row: { id: string; result: string; created_at:
     overall,
     security,
     performance,
+    status: row.status ?? "completed",
+    target: row.target ?? "",
+    createdAt: row.created_at,
   };
 }
 

@@ -14,7 +14,7 @@ It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues +
 Workers AI + Vectorize).
 
 > **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
-> (default model: `minimax/m3`). Every model Workers AI serves is selectable from the GUI
+> (default model: `@cf/zai-org/glm-5.3-flash`). Every model Workers AI serves is selectable from the GUI
 > settings screen. The only AI credential is the dedicated Workers AI API token,
 > **`WORKERS_AI_API_TOKEN`** (a Worker secret) — external gateway tokens (Anthropic /
 > OpenAI / Gemini / OpenRouter) are rejected at the API layer.
@@ -109,11 +109,11 @@ and the hourly cron trigger (no runner Service Binding required).
 
 ### AI models
 
-- The default model is **`minimax/m3`**.
+- The default model is **`@cf/zai-org/glm-5.3-flash`**.
 - `GET /api/v1/models` discovers every model from your account's Workers AI catalog, and
   **all of them are selectable from the GUI settings screen**.
 - Each user can set their personal model preference via `GET/PUT /api/v1/settings/model`;
-  the personal setting takes precedence during inspection (falls back to `minimax/m3` if unset).
+  the personal setting takes precedence during inspection (falls back to `@cf/zai-org/glm-5.3-flash` if unset).
 - The only AI credential is **`WORKERS_AI_API_TOKEN`**. Combined with
   `CLOUDFLARE_ACCOUNT_ID` it routes inference through the Workers AI REST API; without it
   the in-Worker AI binding is used directly.

@@ -159,6 +159,64 @@ describe("UI fragments", () => {
     expect(deps.triggerHealing).toHaveBeenCalledWith({ trigger: "gui", userId: "user-1", dryRun: true });
   });
 
+  it("history cards include status and link to inspection detail", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "insp-1",
+        user_id: "user-1",
+        target: "owner/repo",
+        result: JSON.stringify({
+          scoreCard: { overall: 80, breakdown: { security: { score: 70 }, performance: { score: 90 } } },
+        }),
+        status: "completed",
+        progress: null,
+        created_at: Date.now(),
+      },
+    ]);
+    const app = createFragments(deps);
+    const res = await app.request("/history", authed);
+    const body = await res.text();
+    expect(body).toContain("完了");
+    expect(body).toContain("/ui/fragments/inspections/insp-1");
+    expect(body).toContain("owner/repo");
+  });
+
+  it("POST generate sets HX-Refresh so the session page starts polling", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string) => {
+      if (sql.includes("code_sessions")) {
+        return [
+          {
+            id: "sess-1",
+            user_id: "user-1",
+            status: "ready",
+            updated_at: Date.now(),
+          },
+        ];
+      }
+      return [];
+    });
+    const app = createFragments(deps);
+    const res = await app.request("/code/sessions/sess-1/generate", {
+      method: "POST",
+      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
+      body: "codeMode=plan_code",
+    });
+    expect(res.headers.get("HX-Refresh")).toBe("true");
+    expect(deps.ports.queue.send).toHaveBeenCalled();
+  });
+
+  it("GET status refreshes the page when generation finished", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "sess-1", user_id: "user-1", status: "generated", updated_at: Date.now() },
+    ]);
+    const app = createFragments(deps);
+    const res = await app.request("/code/sessions/sess-1/status", authed);
+    expect(res.headers.get("HX-Refresh")).toBe("true");
+  });
+
   it("converts handler errors into an error alert fragment instead of raw output", async () => {
     const deps = buildDeps();
     (deps.ports.db.query as any) = vi.fn().mockRejectedValue(new Error("boom"));
