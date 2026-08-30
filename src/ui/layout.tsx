@@ -65,6 +65,11 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                         <span class="text-xs font-normal opacity-60">ロール: {user.role === 'admin' ? '管理者' : '一般ユーザー'}</span>
                       </li>
                       <li class="mt-1">
+                        <a href="/models" class="gap-2">
+                          <i data-lucide="cpu" class="w-4 h-4" /> モデル設定
+                        </a>
+                      </li>
+                      <li>
                         <a href="/settings" class="gap-2">
                           <i data-lucide="settings" class="w-4 h-4" /> システム設定
                         </a>

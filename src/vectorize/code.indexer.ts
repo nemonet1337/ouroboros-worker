@@ -1,6 +1,7 @@
 import type { VectorizePort } from "../ports/vectorize";
 import type { AiProvider } from "../ports/ai";
 import { SettingsRepository } from "../db/repositories";
+import { getEmbeddingModel } from "../config/settings.keys";
 
 export const CODE_INDEX_STATUS_KEY = "code_index_status";
 
@@ -34,7 +35,7 @@ const CHUNK_MAX_CHARS = 1500;
 // 無料プランの上限 50/呼び出しに収まるようチャンク数を絞る。
 const MAX_INDEX_FILES = 200;
 const MAX_CHUNKS = 500;
-const EMBED_BATCH = 100; // bge-base-en-v1.5 のバッチ上限
+const EMBED_BATCH = 100;
 const METADATA_TEXT_LIMIT = 800;
 
 /**
@@ -107,7 +108,7 @@ export class CodeIndexer {
       const vectors: number[][] = [];
       for (let i = 0; i < allChunks.length; i += EMBED_BATCH) {
         const batch = allChunks.slice(i, i + EMBED_BATCH);
-        vectors.push(...(await this.ai.embed(batch.map((c) => c.text))));
+        vectors.push(...(await this.embedTexts(batch.map((c) => c.text))));
       }
       if (allChunks.length > 0) {
         await this.vectorize.upsert(
@@ -148,7 +149,7 @@ export class CodeIndexer {
 
   async search(query: string, topK = 8): Promise<CodeSnippet[]> {
     if (!this.ai.embed) return [];
-    const [vector] = await this.ai.embed([query.slice(0, CHUNK_MAX_CHARS)]);
+    const [vector] = await this.embedTexts([query.slice(0, CHUNK_MAX_CHARS)]);
     const matches = await this.vectorize.query(vector, { topK });
     return matches
       .filter((m) => m.metadata?.file !== undefined)
@@ -173,6 +174,12 @@ export class CodeIndexer {
 
   private async saveStatus(status: CodeIndexStatus): Promise<void> {
     await this.settings.set(CODE_INDEX_STATUS_KEY, JSON.stringify(status));
+  }
+
+  private async embedTexts(texts: string[]): Promise<number[][]> {
+    if (!this.ai.embed) throw new Error("AI provider does not support embeddings");
+    const model = await getEmbeddingModel(this.settings);
+    return this.ai.embed(texts, model);
   }
 }
 

@@ -5,7 +5,6 @@
  */
 import type { Context, Next } from "hono";
 import { isWorkersAiModelId } from "../config/deployment";
-import { MODEL_MODES } from "../config/model.modes";
 
 export class ValidationError extends Error {
   constructor(message: string, readonly details: string[]) {
@@ -159,14 +158,14 @@ export const modelSchema: Validator<{ model: string | null }> = (body) => {
 };
 
 /**
- * モード別モデル設定。htmx フォーム（form-encoded）からも送られるためフラットな
- * フィールド構成。present なフィールドのみ適用し、空文字は「デフォルトに戻す」を意味する。
+ * テキスト生成 + Embedding の保存。htmx フォームからも送られる。
+ * present なフィールドのみ適用し、空文字はデフォルトに戻す。
  */
-export const modeModelsSchema: Validator<Record<string, string>> = (body) => {
+export const userModelsSchema: Validator<{ model?: string; embeddingModel?: string }> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   const errors: string[] = [];
-  const value: Record<string, string> = {};
-  for (const field of ["global", ...MODEL_MODES]) {
+  const value: { model?: string; embeddingModel?: string } = {};
+  for (const field of ["model", "embeddingModel"] as const) {
     const raw = body[field];
     if (raw === undefined || raw === null) continue;
     if (typeof raw !== "string") {

@@ -68,9 +68,13 @@ export const OPENAPI_SPEC = {
     },
     "/models": {
       get: {
-        summary: "Workers AI のテキスト生成モデル一覧",
+        summary: "Workers AI のテキスト生成 / Embedding モデル一覧（料金含む）",
         responses: { "200": { description: "OK" }, "502": { description: "検出失敗" } },
       },
+    },
+    "/settings/models": {
+      get: { summary: "選択中のテキスト生成・Embedding モデル", responses: { "200": { description: "OK" } } },
+      put: { summary: "モデル設定の保存（Embedding は admin）", responses: { "200": { description: "OK" }, "403": { description: "Embedding は admin のみ" } } },
     },
     "/inspect": {
       post: { summary: "コードインスペクション実行（scope: inspect）", responses: { "200": { description: "OK" }, "502": { description: "AI 失敗" } } },

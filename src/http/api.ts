@@ -3,7 +3,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Ports } from "../ports";
 import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
-import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
+import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL, isCompatibleEmbeddingModel } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
@@ -34,11 +34,10 @@ import {
   codeSessionCreateSchema,
   codeSessionActionSchema,
   modelSchema,
-  modeModelsSchema,
+  userModelsSchema,
 } from "./validation";
-import { MODEL_MODES, type ModelMode } from "../config/model.modes";
 import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
-import { DEFAULT_APP_SETTINGS, getSelectedRepo } from "../config/settings.keys";
+import { DEFAULT_APP_SETTINGS, getEmbeddingModel, getSelectedRepo, setEmbeddingModel } from "../config/settings.keys";
 import { encrypt } from "../utils/crypto";
 import {
   buildMetricsData,
@@ -356,32 +355,64 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // ── モード別 AI モデル設定 ────────────────────────────────────────────────
+  // ── AI モデル設定（テキスト生成はユーザー単位、Embedding はシステム全体） ──
   app.get("/settings/models", requireAuth(), async (c) => {
     const user = c.get("identity")!.user;
-    const global = await auth.getModel(user.id);
-    const modes = await auth.getModeModels(user.id);
-    const effective: Record<string, string> = {};
-    for (const mode of MODEL_MODES) {
-      effective[mode] = modes[mode] ?? global ?? DEFAULT_WORKERS_AI_MODEL;
-    }
-    return c.json({ global, modes, effective, default: DEFAULT_WORKERS_AI_MODEL });
+    const model = await auth.getModel(user.id);
+    const embeddingModel = await getEmbeddingModel(settingsRepo);
+    return c.json({
+      model,
+      embeddingModel,
+      effectiveModel: model ?? DEFAULT_WORKERS_AI_MODEL,
+      effectiveEmbeddingModel: embeddingModel,
+      defaults: { model: DEFAULT_WORKERS_AI_MODEL, embeddingModel: DEFAULT_EMBEDDING_MODEL },
+    });
   });
 
-  app.put("/settings/models", requireAuth(), validateBody(modeModelsSchema), async (c) => {
+  app.put("/settings/models", requireAuth(), validateBody(userModelsSchema), async (c) => {
     const user = c.get("identity")!.user;
-    const body = c.get("body") as Record<string, string>;
-    if (body.global !== undefined) {
-      await auth.setModel(user.id, body.global === "" ? null : body.global);
+    const body = c.get("body") as { model?: string; embeddingModel?: string };
+    if (body.model !== undefined) {
+      await auth.setModel(user.id, body.model === "" ? null : body.model);
     }
-    for (const mode of MODEL_MODES) {
-      if (body[mode] !== undefined) {
-        await auth.setModeModel(user.id, mode, body[mode] === "" ? null : body[mode]);
+    if (body.embeddingModel !== undefined) {
+      if (user.role !== "admin") {
+        if (c.req.header("HX-Request")) {
+          return c.html(
+            `<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>Embedding モデルの変更は管理者のみです。</span></div><script>lucide.createIcons()</script>`,
+            403
+          );
+        }
+        return c.json({ error: { code: "forbidden", message: "embedding model is admin-only" } }, 403);
       }
+      if (body.embeddingModel !== "") {
+        let dims: number | undefined;
+        try {
+          const listed = (await ports.ai.listModels?.()) ?? [];
+          dims = listed.find((m) => m.value === body.embeddingModel)?.outputDimensions;
+        } catch {
+          dims = undefined;
+        }
+        if (!isCompatibleEmbeddingModel(body.embeddingModel, dims)) {
+          const msg = `"${body.embeddingModel}" は Vectorize（768 次元）と互換がありません。`;
+          if (c.req.header("HX-Request")) {
+            return c.html(
+              `<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${msg}</span></div><script>lucide.createIcons()</script>`,
+              400
+            );
+          }
+          return c.json({ error: { code: "incompatible_embedding", message: msg } }, 400);
+        }
+      }
+      await setEmbeddingModel(settingsRepo, body.embeddingModel === "" ? null : body.embeddingModel);
     }
     if (c.req.header("HX-Request")) {
+      const savedEmbedding = body.embeddingModel !== undefined && user.role === "admin";
+      const extra = savedEmbedding
+        ? " Embedding を変えた場合はコードインデックスの再構築が必要です。"
+        : "";
       return c.html(
-        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。</span></div><script>lucide.createIcons()</script>`
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。${extra}</span></div><script>lucide.createIcons()</script>`
       );
     }
     return c.json({ ok: true });
@@ -701,7 +732,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.post("/refactor/:inspectionId/propose", requireAuth(), requireFlag(FLAGS.REFACTOR_APPROVED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
     const manager = makeProposalManager();
-    const model = await auth.resolveModel(userId, "refactor");
+    const model = await auth.resolveModel(userId);
     await manager.generateProposal(c.req.param("inspectionId")!, userId, model);
     return c.json({ ok: true });
   });
@@ -709,7 +740,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.post("/refactor/proposals/:inspectionId/apply", requireAuth(), requireFlag(FLAGS.REFACTOR_APPLIED, true), async (c) => {
     const userId = c.get("identity")!.user.id;
     const manager = makeProposalManager();
-    const model = await auth.resolveModel(userId, "refactor");
+    const model = await auth.resolveModel(userId);
     const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner, model);
     return c.json(result);
   });

@@ -1,26 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { modeModelsSchema } from "../http/validation";
+import { userModelsSchema } from "../http/validation";
 import { NoopRunner } from "../ports/runner";
 
-describe("modeModelsSchema", () => {
-  it("accepts valid per-mode model ids and empty string (reset)", () => {
-    const result = modeModelsSchema({
-      global: "minimax/m3",
-      coding: "@cf/meta/llama-3.1-8b-instruct",
-      plan: "",
+describe("userModelsSchema", () => {
+  it("accepts text and embedding model ids and empty string (reset)", () => {
+    const result = userModelsSchema({
+      model: "minimax/m3",
+      embeddingModel: "@cf/google/embeddinggemma-300m",
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toEqual({
-        global: "minimax/m3",
-        coding: "@cf/meta/llama-3.1-8b-instruct",
-        plan: "",
+        model: "minimax/m3",
+        embeddingModel: "@cf/google/embeddinggemma-300m",
       });
     }
   });
 
+  it("accepts empty string to reset", () => {
+    const result = userModelsSchema({ model: "", embeddingModel: "" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual({ model: "", embeddingModel: "" });
+    }
+  });
+
   it("rejects non-Workers-AI model ids", () => {
-    const result = modeModelsSchema({ coding: "gpt-4o" });
+    const result = userModelsSchema({ model: "gpt-4o" });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors[0]).toContain("gpt-4o");
@@ -28,10 +34,10 @@ describe("modeModelsSchema", () => {
   });
 
   it("ignores unknown fields", () => {
-    const result = modeModelsSchema({ bogus: "x/y", coding: "minimax/m3" });
+    const result = userModelsSchema({ bogus: "x/y", model: "minimax/m3" });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual({ coding: "minimax/m3" });
+      expect(result.value).toEqual({ model: "minimax/m3" });
     }
   });
 });

@@ -72,6 +72,8 @@ describe("UI fragments", () => {
     ["/code/sessions"],
     ["/webhooks"],
     ["/healing/runs"],
+    ["/model-pricing"],
+    ["/model-pricing?model=@cf/google/embeddinggemma-300m"],
   ])("GET %s returns HTML (not raw JSON) for an authed session", async (path) => {
     const app = createFragments(buildDeps());
     const res = await app.request(path, authed);

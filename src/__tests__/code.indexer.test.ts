@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { CodeIndexer, CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
+import { DEFAULT_EMBEDDING_MODEL } from "../config/deployment";
 import { SettingsRepository } from "../db/repositories";
 import type { DbAdapter } from "../ports/db";
 import type { VectorizePort, VectorizeVector } from "../ports/vectorize";
@@ -109,7 +110,7 @@ describe("CodeIndexer", () => {
 
     const snippets = await indexer.search("sql injection in src/a.ts");
 
-    expect(ai.embed).toHaveBeenCalled();
+    expect(ai.embed).toHaveBeenCalledWith(expect.any(Array), DEFAULT_EMBEDDING_MODEL);
     expect(snippets).toHaveLength(1);
     expect(snippets[0]).toMatchObject({ file: "src/a.ts", startLine: 1, text: "snippet" });
   });

@@ -1,52 +1,14 @@
 import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
-import type { AiModelInfo } from "../../ports/ai";
 import { Layout } from "../layout";
-import { MODEL_MODES, MODEL_MODE_LABELS, type ModelMode } from "../../config/model.modes";
 import { FLAGS } from "../../flags/flag.service";
 
 interface SettingsPageProps {
   user?: AuthedUser;
-  models?: AiModelInfo[];
-  globalModel?: string | null;
-  modeModels?: Record<string, string>;
-  defaultModel?: string;
-  /** モード別の実効モデル（placeholder 表示用） */
-  effectiveModels?: Record<string, string>;
   appSettings?: Record<string, unknown>;
   webhooksEnabled?: boolean;
   featureFlags?: Record<string, boolean>;
 }
-
-/** データリストの共有 ID。全モデル入力欄で共有する。 */
-const MODEL_DATALIST_ID = "ai-models";
-
-/**
- * モデル入力欄。<input list> + 共有 <datalist> でネイティブ検索でき、任意の
- * モデル ID も直接入力できる。保存値は input の value なのでリストに無くても
- * 表示が保たれる（「元に戻る」が根治）。
- */
-const ModelInput: FC<{
-  name: string;
-  label: string;
-  hint: string;
-  selected: string | null | undefined;
-}> = ({ name, label, hint, selected }) => (
-  <div class="form-control">
-    <label class="label py-1" for={`model-${name}`}>
-      <span class="label-text font-semibold opacity-75">{label}</span>
-    </label>
-    <input
-      type="text"
-      name={name}
-      id={`model-${name}`}
-      list={MODEL_DATALIST_ID}
-      value={selected ?? ""}
-      placeholder={hint}
-      class="input input-bordered w-full rounded-xl text-sm font-mono"
-    />
-  </div>
-);
 
 // GUI で切り替え可能な機能トグル一覧
 const FEATURE_TOGGLES: Array<{ flag: string; label: string }> = [
@@ -58,11 +20,6 @@ const FEATURE_TOGGLES: Array<{ flag: string; label: string }> = [
 
 export const SettingsPage: FC<SettingsPageProps> = ({
   user,
-  models = [],
-  globalModel = null,
-  modeModels = {},
-  defaultModel = "",
-  effectiveModels = {},
   appSettings = {},
   webhooksEnabled = true,
   featureFlags = {},
@@ -78,25 +35,18 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
   return (
     <Layout user={user}>
-      {/* 共有データリスト（Text Generation モデル） */}
-      <datalist id={MODEL_DATALIST_ID}>
-        {models.map((m) => (
-          <option value={m.value}>{m.label}</option>
-        ))}
-      </datalist>
-
       {/* ページヘッダー */}
       <div class="mb-8">
         <h1 class="text-3xl font-extrabold tracking-tight text-base-content">
           システム設定
         </h1>
         <p class="text-sm opacity-60 mt-1">
-          個人プロファイルの更新、利用する AI モデルの構成、およびシステム全体の動作制御
+          個人プロファイルの更新、およびシステム全体の動作制御
         </p>
       </div>
 
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-8 items-start">
-        {/* 左側: プロファイル & AIモデル (2カラム分) */}
+        {/* 左側: プロファイル */}
         <div class="xl:col-span-2 space-y-6">
 
           {/* プロファイル設定カード */}
@@ -156,59 +106,19 @@ export const SettingsPage: FC<SettingsPageProps> = ({
             </div>
           </div>
 
-          {/* AIモデル設定カード */}
           <div class="card card-glass shadow-lg">
             <div class="card-body p-6 md:p-8">
               <h2 class="card-title text-lg font-bold flex items-center gap-2 mb-2">
                 <i data-lucide="cpu" class="w-5 h-5 text-secondary" />
-                <span>AI 推論モデル設定</span>
+                <span>AI モデル</span>
               </h2>
-              <p class="text-xs opacity-60 mb-6">
-                自己修復やスキャン時に利用される Cloudflare Workers AI モデルを指定します。
-                リストから検索するか、任意のモデル ID を直接入力できます。未設定のモードは
-                グローバル設定（未設定時は <code class="font-mono">{defaultModel}</code>）を使用します。
+              <p class="text-xs opacity-60 mb-4">
+                テキスト生成と Embedding のモデル選択は専用画面に移しました。
               </p>
-
-              {models.length === 0 && (
-                <div class="alert alert-warning text-xs rounded-lg mb-4">
-                  <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-                  <span>利用可能なモデル一覧を取得できませんでした。モデル ID を直接入力して保存できます。</span>
-                </div>
-              )}
-
-              <form
-                hx-put="/api/v1/settings/models"
-                hx-target="#model-save-result"
-                hx-swap="innerHTML"
-                hx-disabled-elt="button[type='submit']"
-                class="space-y-4"
-              >
-                <ModelInput
-                  name="global"
-                  label="グローバル（全モード共通のデフォルト）"
-                  hint={`システムデフォルト（${defaultModel}）を使用`}
-                  selected={globalModel}
-                />
-
-                <div class="divider text-xs opacity-40 my-2">モード別設定</div>
-
-                {MODEL_MODES.map((mode: ModelMode) => (
-                  <ModelInput
-                    name={mode}
-                    label={MODEL_MODE_LABELS[mode]}
-                    hint={`実効: ${effectiveModels[mode] ?? defaultModel}`}
-                    selected={modeModels[mode] ?? null}
-                  />
-                ))}
-
-                <div class="form-control pt-2">
-                  <button type="submit" class="btn btn-gradient rounded-xl py-3 h-auto gap-2 flex items-center justify-center">
-                    <i data-lucide="save" class="w-4 h-4" />
-                    <span>モデル設定を保存</span>
-                  </button>
-                </div>
-              </form>
-              <div id="model-save-result" class="mt-4 empty:hidden"></div>
+              <a href="/models" class="btn btn-outline rounded-xl gap-2">
+                <i data-lucide="arrow-right" class="w-4 h-4" />
+                <span>モデル設定を開く</span>
+              </a>
             </div>
           </div>
 

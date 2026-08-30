@@ -12,9 +12,10 @@ import {
   CodeSessionRepository,
   InspectionRepository,
 } from "./db/repositories";
-import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
+import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
 import {
   areWebhooksEnabled,
+  getEmbeddingModel,
   getFeatureFlags,
   DEFAULT_APP_SETTINGS,
 } from "./config/settings.keys";
@@ -33,6 +34,7 @@ import { HealingPage } from "./ui/pages/healing";
 import { InspectionPage } from "./ui/pages/inspection";
 import { WebhooksPage } from "./ui/pages/webhooks";
 import { SettingsPage } from "./ui/pages/settings";
+import { ModelsPage } from "./ui/pages/models";
 import { AdminPage } from "./ui/pages/admin";
 import type { AuthedUser } from "./auth/service";
 import tailwindCss from "./ui/styles/tailwind.generated.css";
@@ -213,24 +215,37 @@ async function buildApp(env: Env): Promise<Hono> {
     return c.html(<WebhooksPage user={identity?.user} />);
   });
 
+  app.get("/models", requireAuthMiddleware, async (c) => {
+    const identity = c.get("identity");
+    const user = identity!.user;
+    const settingsRepo = new SettingsRepository(ctx.ports.db);
+    const [models, selectedModel, selectedEmbedding] = await Promise.all([
+      ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
+      ctx.auth.getModel(user.id),
+      getEmbeddingModel(settingsRepo),
+    ]);
+    return c.html(
+      <ModelsPage
+        user={user}
+        models={models}
+        selectedModel={selectedModel}
+        selectedEmbedding={selectedEmbedding}
+        defaultModel={DEFAULT_WORKERS_AI_MODEL}
+        defaultEmbedding={DEFAULT_EMBEDDING_MODEL}
+      />
+    );
+  });
+
   app.get("/settings", requireAuthMiddleware, async (c) => {
     const identity = c.get("identity");
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
 
-    const [models, globalModel, modeModels, rawSettings, webhooksEnabled, featureFlags] =
-      await Promise.all([
-        ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
-        ctx.auth.getModel(user.id),
-        ctx.auth.getModeModels(user.id),
-        settingsRepo.get("app_settings"),
-        areWebhooksEnabled(settingsRepo),
-        getFeatureFlags(settingsRepo),
-      ]);
-    const modelsEffective: Record<string, string> = {};
-    for (const mode of ["coding", "plan", "refactor", "healing", "inspection"] as const) {
-      modelsEffective[mode] = modeModels[mode] ?? globalModel ?? DEFAULT_WORKERS_AI_MODEL;
-    }
+    const [rawSettings, webhooksEnabled, featureFlags] = await Promise.all([
+      settingsRepo.get("app_settings"),
+      areWebhooksEnabled(settingsRepo),
+      getFeatureFlags(settingsRepo),
+    ]);
 
     let appSettings: Record<string, unknown> = { ...DEFAULT_APP_SETTINGS };
     try {
@@ -240,11 +255,6 @@ async function buildApp(env: Env): Promise<Hono> {
     return c.html(
       <SettingsPage
         user={user}
-        models={models}
-        globalModel={globalModel}
-        modeModels={modeModels}
-        defaultModel={DEFAULT_WORKERS_AI_MODEL}
-        effectiveModels={modelsEffective}
         appSettings={appSettings}
         webhooksEnabled={webhooksEnabled}
         featureFlags={featureFlags}

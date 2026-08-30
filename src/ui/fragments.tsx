@@ -13,6 +13,7 @@ import { Hono, type Context, type Next } from "hono";
 import { getCookie } from "hono/cookie";
 import type { FC } from "hono/jsx";
 import type { Ports } from "../ports";
+import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
 import type { AuthService, AuthedUser } from "../auth/service";
 import type { Logger } from "../logging/logger";
@@ -51,6 +52,7 @@ import { RepoSelector } from "./components/repo-selector";
 import { NotificationBell, type NotificationItem } from "./components/notification-bell";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
 import { getSelectedRepo, setSelectedRepo, setWebhooksEnabled, setFeatureFlags } from "../config/settings.keys";
+import { ModelPricingPanel } from "./components/model-pricing";
 
 const SESSION_COOKIE = "ouro_session";
 const APP_SETTINGS_KEY = "app_settings";
@@ -465,7 +467,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const userId = c.get("identity").user.id;
     const inspectionId = c.req.param("id")!;
     const manager = await makeProposalManager();
-    const model = await auth.resolveModel(userId, "refactor");
+    const model = await auth.resolveModel(userId);
     await manager.generateProposal(inspectionId, userId, model);
     return renderInspectionDetail(c, inspectionId);
   });
@@ -474,7 +476,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const userId = c.get("identity").user.id;
     const inspectionId = c.req.param("id")!;
     const manager = await makeProposalManager();
-    const model = await auth.resolveModel(userId, "refactor");
+    const model = await auth.resolveModel(userId);
     await manager.applyProposal(inspectionId, userId, ports.codeRunner, model);
     return renderInspectionDetail(c, inspectionId);
   });
@@ -728,6 +730,20 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
         {await renderHealingRuns(1, "", true)}
       </>
     );
+  });
+
+  // ── モデル料金パネル ──────────────────────────────────────────────────────
+  app.get("/model-pricing", async (c) => {
+    const id = (c.req.query("model") || c.req.query("embeddingModel") || "").trim();
+    if (!id) return c.html(<ModelPricingPanel />);
+    let models: AiModelInfo[] = [];
+    try {
+      models = (await ports.ai.listModels?.()) ?? [];
+    } catch {
+      models = [];
+    }
+    const found = models.find((m) => m.value === id);
+    return c.html(<ModelPricingPanel model={found ?? { value: id, label: id, provider: ports.ai.name }} query={id} />);
   });
 
   // ── プロファイル ──────────────────────────────────────────────────────────

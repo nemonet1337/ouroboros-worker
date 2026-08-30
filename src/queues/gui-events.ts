@@ -75,8 +75,8 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           }
           const mode =
             event.payload.mode === "code_only" ? ("code_only" as const) : ("plan_code" as const);
-          const model = await ctx.auth.resolveModel(userId, "coding");
-          const planModel = await ctx.auth.resolveModel(userId, "plan");
+          const model = await ctx.auth.resolveModel(userId);
+          const planModel = model;
           const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner, ctx.ports.ai);
           await manager.generate(sessionId, userId, { model, planModel, mode });
           await log.info("codegen complete", { sessionId });

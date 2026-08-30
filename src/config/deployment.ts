@@ -8,6 +8,32 @@
 /** Default Workers AI model used for every AI task unless overridden in the GUI. */
 export const DEFAULT_WORKERS_AI_MODEL = "@cf/zai-org/glm-5.3-flash";
 
+/** Default embedding model. Must emit 768-d vectors to match VECTORIZE. */
+export const DEFAULT_EMBEDDING_MODEL = "@cf/google/embeddinggemma-300m";
+
+/** Vectorize `ouroboros-code-index` の次元。これ以外の Embedding は選択不可。 */
+export const VECTORIZE_EMBEDDING_DIMS = 768;
+
+/** カタログに output_dimensions が無いが 768 と分かっているモデル。 */
+const KNOWN_768_EMBEDDING_MODELS = new Set([
+  DEFAULT_EMBEDDING_MODEL,
+  "@cf/baai/bge-base-en-v1.5",
+]);
+
+export function isEmbeddingTask(task: string | undefined): boolean {
+  return !!task && /embed/i.test(task);
+}
+
+export function isTextGenerationTask(task: string | undefined): boolean {
+  return !task || task === "Text Generation";
+}
+
+/** Vectorize 768 次元と揃う Embedding モデルだけ通す。 */
+export function isCompatibleEmbeddingModel(id: string, outputDimensions?: number): boolean {
+  if (KNOWN_768_EMBEDDING_MODELS.has(id)) return true;
+  return outputDimensions === VECTORIZE_EMBEDDING_DIMS;
+}
+
 /**
  * Workers AI model ids are namespaced — either with an explicit catalog prefix
  * ("@cf/...", "@hf/...") or as partner-hosted "vendor/model" ids

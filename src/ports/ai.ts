@@ -5,6 +5,12 @@ export interface AiCompletionRequest {
   maxTokens?: number;
 }
 
+export interface AiModelPrice {
+  unit: string;
+  price: number;
+  currency: string;
+}
+
 /** A model exposed by an AI backend, as shown in the GUI model selector. */
 export interface AiModelInfo {
   /** Identifier passed back to the provider (e.g. "claude-sonnet-4-6", "@cf/meta/llama-3.1-8b-instruct"). */
@@ -13,6 +19,9 @@ export interface AiModelInfo {
   provider: string;
   task?: string;
   description?: string;
+  pricing?: AiModelPrice[];
+  contextWindow?: number;
+  outputDimensions?: number;
 }
 
 /**
@@ -26,5 +35,5 @@ export interface AiProvider {
   /** Enumerate every model this backend can serve. */
   listModels?(): Promise<AiModelInfo[]>;
   /** テキスト埋め込み（コードインデックス用）。未対応バックエンドは undefined。 */
-  embed?(texts: string[]): Promise<number[][]>;
+  embed?(texts: string[], model?: string): Promise<number[][]>;
 }

@@ -110,7 +110,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       if (current?.status === "canceled") throw new Error("canceled");
       await runs.update(runId, { status: "analyzing" });
       const run = await runs.find(runId);
-      const model = await ctx.auth.resolveModel(run?.user_id, "healing");
+      const model = await ctx.auth.resolveModel(run?.user_id);
       const config = { ...ctx.config, ai: { ...ctx.config.ai, model } };
       const codeContext = await buildCodeContext(ctx, findings);
       const result = await new AIAnalyzer(config, ctx.ports.ai).analyze(findings, codeContext);
@@ -134,7 +134,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       if (!dryRun) await Promise.allSettled([dedup.loadOpenPRs(), cache.load()]);
 
       const run = await runs.find(runId);
-      const healingModel = await ctx.auth.resolveModel(run?.user_id, "healing");
+      const healingModel = await ctx.auth.resolveModel(run?.user_id);
 
       const sorted = [...analysis.groups].sort(
         (a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority)

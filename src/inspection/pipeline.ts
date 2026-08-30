@@ -199,7 +199,7 @@ async function analyzeAndStore(opts: {
     requestedAt: new Date().toISOString(),
   };
 
-  const model = await ctx.auth.resolveModel(userId, "inspection");
+  const model = await ctx.auth.resolveModel(userId);
   const engine = new InspectionEngine(ctx.ports.ai, {
     ai: { ...defaultInspectionConfig.ai, model, maxRetries: 1 },
   });

@@ -290,7 +290,7 @@ export async function runUserInspection(opts: {
   req.id ||= newId();
   req.requestedAt ||= new Date().toISOString();
 
-  const model = await auth.resolveModel(userId, "inspection");
+  const model = await auth.resolveModel(userId);
 
   const engine = new InspectionEngine(ports.ai, { ai: { ...defaultInspectionConfig.ai, model } });
   try {

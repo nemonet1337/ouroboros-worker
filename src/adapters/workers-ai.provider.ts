@@ -1,5 +1,11 @@
-import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
-import type { AiProvider, AiCompletionRequest, AiModelInfo } from "../ports";
+import {
+  DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_WORKERS_AI_MODEL,
+  isEmbeddingTask,
+  isTextGenerationTask,
+  isWorkersAiModelId,
+} from "../config/deployment";
+import type { AiProvider, AiCompletionRequest, AiModelInfo, AiModelPrice } from "../ports";
 
 const AI_TIMEOUT_MS = 120_000;
 const MODELS_TTL_MS = 60 * 60 * 1000;
@@ -18,7 +24,75 @@ const PARTNER_MODELS: AiModelInfo[] = [
     provider: "workers-ai",
     task: "Text Generation",
   },
+  {
+    value: DEFAULT_EMBEDDING_MODEL,
+    label: "EmbeddingGemma 300M (Google)",
+    provider: "workers-ai",
+    task: "Text Embeddings",
+    outputDimensions: 768,
+  },
 ];
+
+interface CatalogProperty {
+  property_id?: string;
+  value?: unknown;
+}
+
+interface CatalogModel {
+  name?: string;
+  description?: string;
+  task?: { name?: string } | string;
+  properties?: CatalogProperty[];
+}
+
+/** Workers AI カタログ 1 件を GUI 用に正規化する。name が無ければ null。 */
+export function mapCatalogModel(raw: unknown, provider: string): AiModelInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = raw as CatalogModel;
+  const name = typeof m.name === "string" ? m.name : "";
+  if (!name) return null;
+  const task = typeof m.task === "string" ? m.task : m.task?.name;
+  const props = Array.isArray(m.properties) ? m.properties : [];
+  const pricing: AiModelPrice[] = [];
+  let contextWindow: number | undefined;
+  let outputDimensions: number | undefined;
+  for (const p of props) {
+    if (p.property_id === "price" && Array.isArray(p.value)) {
+      for (const item of p.value) {
+        if (!item || typeof item !== "object") continue;
+        const row = item as { unit?: unknown; price?: unknown; currency?: unknown };
+        if (typeof row.price !== "number" || !Number.isFinite(row.price)) continue;
+        pricing.push({
+          unit: typeof row.unit === "string" ? row.unit : "",
+          price: row.price,
+          currency: typeof row.currency === "string" ? row.currency : "USD",
+        });
+      }
+    }
+    if (p.property_id === "context_window") {
+      const n = Number(p.value);
+      if (Number.isFinite(n)) contextWindow = n;
+    }
+    if (p.property_id === "output_dimensions") {
+      const n = Number(p.value);
+      if (Number.isFinite(n)) outputDimensions = n;
+    }
+  }
+  return {
+    value: name,
+    label: name.replace(/^@[^/]+\//, ""),
+    provider,
+    task,
+    description: typeof m.description === "string" ? m.description : undefined,
+    pricing: pricing.length > 0 ? pricing : undefined,
+    contextWindow,
+    outputDimensions,
+  };
+}
+
+function isSelectableCatalogTask(task: string | undefined): boolean {
+  return isTextGenerationTask(task) || isEmbeddingTask(task);
+}
 
 /** Binding / REST 双方の応答から本文を取る（旧 `{response}` と OpenAI `choices` 形）。 */
 export function extractCompletionText(result: unknown): string {
@@ -164,16 +238,16 @@ export class WorkersAiProvider implements AiProvider {
   }
 
   /**
-   * テキスト埋め込み。VECTORIZE インデックス（768 次元）と揃えるため
-   * モデルは bge-base-en-v1.5 固定。バッチ上限 100 件ずつ。binding のみ。
+   * テキスト埋め込み。未指定時は EmbeddingGemma。バッチ上限 100 件。binding のみ。
+   * 呼び出し側が Vectorize 768 次元と揃うモデルを渡すこと。
    */
-  async embed(texts: string[]): Promise<number[][]> {
-    const model = "@cf/baai/bge-base-en-v1.5";
+  async embed(texts: string[], model?: string): Promise<number[][]> {
+    const id = model && isWorkersAiModelId(model) ? model : DEFAULT_EMBEDDING_MODEL;
     const out: number[][] = [];
     const started = Date.now();
     for (let i = 0; i < texts.length; i += 100) {
       const batch = texts.slice(i, i + 100);
-      const run = this.ai.run(model as keyof AiModels, { text: batch } as never) as Promise<{
+      const run = this.ai.run(id as keyof AiModels, { text: batch } as never) as Promise<{
         data?: number[][];
       }>;
       const result = await withTimeout(run, AI_TIMEOUT_MS, "Workers AI embedding timed out");
@@ -184,7 +258,7 @@ export class WorkersAiProvider implements AiProvider {
       out.push(...data);
     }
     this.opts.onUsage?.({
-      model,
+      model: id,
       promptTokens: texts.reduce((n, t) => n + t.length, 0),
       completionTokens: 0,
       durationMs: Date.now() - started,
@@ -197,22 +271,14 @@ export class WorkersAiProvider implements AiProvider {
     if (this.#modelsCache && now - this.#modelsCache.at < MODELS_TTL_MS) {
       return this.#modelsCache.models;
     }
-    const models: AiModelInfo[] = [];
-    const perPage = 100;
-    for (let page = 1; ; page++) {
-      const batch = await this.ai.models({ per_page: perPage, page });
-      for (const m of batch) {
-        const task = m.task?.name ?? "";
-        if (task && task !== "Text Generation") continue;
-        models.push({
-          value: m.name,
-          label: m.name.replace(/^@[^/]+\//, ""),
-          provider: this.name,
-          task: m.task?.name,
-          description: m.description,
-        });
+    let models = await this.listModelsFromBinding();
+    const hasPricing = models.some((m) => (m.pricing?.length ?? 0) > 0);
+    if (!hasPricing && this.opts.apiToken && this.opts.accountId) {
+      try {
+        models = await this.listModelsFromRest();
+      } catch {
+        // binding 結果のまま（料金なし）
       }
-      if (batch.length < perPage) break;
     }
     const merged = [
       ...PARTNER_MODELS.filter((p) => !models.some((m) => m.value === p.value)).map((p) => ({
@@ -223,6 +289,49 @@ export class WorkersAiProvider implements AiProvider {
     ];
     this.#modelsCache = { at: now, models: merged };
     return merged;
+  }
+
+  private async listModelsFromBinding(): Promise<AiModelInfo[]> {
+    const models: AiModelInfo[] = [];
+    const perPage = 100;
+    for (let page = 1; ; page++) {
+      const batch = await this.ai.models({ per_page: perPage, page });
+      for (const raw of batch) {
+        const mapped = mapCatalogModel(raw, this.name);
+        if (!mapped || !isSelectableCatalogTask(mapped.task)) continue;
+        models.push(mapped);
+      }
+      if (batch.length < perPage) break;
+    }
+    return models;
+  }
+
+  private async listModelsFromRest(): Promise<AiModelInfo[]> {
+    const models: AiModelInfo[] = [];
+    const perPage = 100;
+    for (let page = 1; ; page++) {
+      const url = new URL(
+        `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/ai/models/search`
+      );
+      url.searchParams.set("per_page", String(perPage));
+      url.searchParams.set("page", String(page));
+      const res = await fetch(url, {
+        headers: { authorization: `Bearer ${this.opts.apiToken}` },
+        signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new Error(`Workers AI model search failed: ${res.status} ${await res.text()}`);
+      }
+      const json = (await res.json()) as { result?: unknown };
+      const batch = Array.isArray(json.result) ? json.result : [];
+      for (const raw of batch) {
+        const mapped = mapCatalogModel(raw, this.name);
+        if (!mapped || !isSelectableCatalogTask(mapped.task)) continue;
+        models.push(mapped);
+      }
+      if (batch.length < perPage) break;
+    }
+    return models;
   }
 }
 

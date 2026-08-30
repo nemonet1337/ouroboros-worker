@@ -8,7 +8,6 @@ import {
 import { hashPassword, verifyPassword } from "./password";
 import { newId, newSessionId } from "./tokens";
 import { isWorkersAiModelId, DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
-import type { ModelMode } from "../config/model.modes";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MAX_SESSIONS_PER_USER = 5;
@@ -164,32 +163,12 @@ export class AuthService {
     await this.users.setModel(userId, model);
   }
 
-  async getModeModels(userId: string): Promise<Record<string, string>> {
-    return this.users.getModeModels(userId);
-  }
-
-  async setModeModel(userId: string, mode: ModelMode, model: string | null): Promise<void> {
-    if (model !== null && !isWorkersAiModelId(model)) {
-      throw new AuthError(`"${model}" is not a valid Workers AI model id`);
-    }
-    const current = await this.users.getModeModels(userId);
-    if (model === null) {
-      delete current[mode];
-    } else {
-      current[mode] = model;
-    }
-    await this.users.setModeModels(userId, current);
-  }
-
   /**
-   * モード別モデルのフォールバック連鎖:
-   * mode_models[mode] → users.model（グローバル）→ DEFAULT_WORKERS_AI_MODEL。
+   * users.model → DEFAULT_WORKERS_AI_MODEL。
    * userId が無い場合（cron トリガー等）はデフォルトを返す。
    */
-  async resolveModel(userId: string | null | undefined, mode: ModelMode): Promise<string> {
+  async resolveModel(userId: string | null | undefined): Promise<string> {
     if (!userId) return DEFAULT_WORKERS_AI_MODEL;
-    const modeModels = await this.users.getModeModels(userId);
-    if (modeModels[mode]) return modeModels[mode];
     return (await this.users.getModel(userId)) ?? DEFAULT_WORKERS_AI_MODEL;
   }
 }

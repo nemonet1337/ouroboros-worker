@@ -235,7 +235,7 @@ describe("AuthService", () => {
     await expect(auth.setModel("user-1", "gpt-4o")).rejects.toThrow(AuthError);
   });
 
-  it("sets, gets, and clears per-mode models", async () => {
+  it("resolveModel falls back user model → default", async () => {
     db.users.push({
       id: "user-1",
       email: "test@example.com",
@@ -247,75 +247,10 @@ describe("AuthService", () => {
       updated_at: Date.now(),
     });
 
-    expect(await auth.getModeModels("user-1")).toEqual({});
+    expect(await auth.resolveModel("user-1")).toBe(DEFAULT_WORKERS_AI_MODEL);
+    expect(await auth.resolveModel(null)).toBe(DEFAULT_WORKERS_AI_MODEL);
 
-    await auth.setModeModel("user-1", "coding", "@cf/meta/llama-3.1-8b-instruct");
-    await auth.setModeModel("user-1", "refactor", "minimax/m3");
-    expect(await auth.getModeModels("user-1")).toEqual({
-      coding: "@cf/meta/llama-3.1-8b-instruct",
-      refactor: "minimax/m3",
-    });
-
-    await auth.setModeModel("user-1", "coding", null);
-    expect(await auth.getModeModels("user-1")).toEqual({ refactor: "minimax/m3" });
-  });
-
-  it("rejects invalid per-mode model id", async () => {
-    db.users.push({
-      id: "user-1",
-      email: "test@example.com",
-      password_hash: "hash",
-      role: "member",
-      model: null,
-      mode_models: null,
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    });
-
-    await expect(auth.setModeModel("user-1", "coding", "gpt-4o")).rejects.toThrow(AuthError);
-  });
-
-  it("resolveModel falls back mode → global → default", async () => {
-    db.users.push({
-      id: "user-1",
-      email: "test@example.com",
-      password_hash: "hash",
-      role: "member",
-      model: null,
-      mode_models: null,
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    });
-
-    // 全部未設定 → デフォルト
-    expect(await auth.resolveModel("user-1", "coding")).toBe(DEFAULT_WORKERS_AI_MODEL);
-    // userId 無し（cron）→ デフォルト
-    expect(await auth.resolveModel(null, "healing")).toBe(DEFAULT_WORKERS_AI_MODEL);
-
-    // グローバル設定 → 全モードに波及
     await auth.setModel("user-1", "@cf/meta/llama-3.1-8b-instruct");
-    expect(await auth.resolveModel("user-1", "coding")).toBe("@cf/meta/llama-3.1-8b-instruct");
-    expect(await auth.resolveModel("user-1", "refactor")).toBe("@cf/meta/llama-3.1-8b-instruct");
-
-    // モード別設定はグローバルより優先
-    await auth.setModeModel("user-1", "refactor", "@cf/qwen/qwen2.5-coder-32b-instruct");
-    expect(await auth.resolveModel("user-1", "refactor")).toBe("@cf/qwen/qwen2.5-coder-32b-instruct");
-    expect(await auth.resolveModel("user-1", "coding")).toBe("@cf/meta/llama-3.1-8b-instruct");
-  });
-
-  it("tolerates corrupted mode_models JSON", async () => {
-    db.users.push({
-      id: "user-1",
-      email: "test@example.com",
-      password_hash: "hash",
-      role: "member",
-      model: null,
-      mode_models: "{not json",
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    });
-
-    expect(await auth.getModeModels("user-1")).toEqual({});
-    expect(await auth.resolveModel("user-1", "coding")).toBe(DEFAULT_WORKERS_AI_MODEL);
+    expect(await auth.resolveModel("user-1")).toBe("@cf/meta/llama-3.1-8b-instruct");
   });
 });

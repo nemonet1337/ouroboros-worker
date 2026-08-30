@@ -4,13 +4,16 @@
  * - selected_repo   : システム全体で 1 つの選択リポジトリ（"owner/name"）
  * - feature_flags   : 機能トグルの JSON（{ "code-needs-fix": true, ... }）
  * - webhooks_enabled: Webhook 配信のグローバルスイッチ（"true" / "false"）
+ * - embedding_model : Vectorize 用 Embedding モデル ID（システム全体で 1 つ）
  */
+import { DEFAULT_EMBEDDING_MODEL, isWorkersAiModelId } from "./deployment";
 import type { SettingsRepository } from "../db/repositories";
 
 export const SELECTED_REPO_KEY = "selected_repo";
 export const FEATURE_FLAGS_KEY = "feature_flags";
 export const WEBHOOKS_ENABLED_KEY = "webhooks_enabled";
 export const APP_SETTINGS_KEY = "app_settings";
+export const EMBEDDING_MODEL_KEY = "embedding_model";
 
 /** 設定画面 / API の共通デフォルト（schedule は UTC HH:MM + 曜日） */
 export const DEFAULT_APP_SETTINGS = {
@@ -80,4 +83,23 @@ export async function areWebhooksEnabled(settings: SettingsRepository): Promise<
 
 export async function setWebhooksEnabled(settings: SettingsRepository, enabled: boolean): Promise<void> {
   await settings.set(WEBHOOKS_ENABLED_KEY, enabled ? "true" : "false");
+}
+
+/** システム全体の Embedding モデル。未設定・不正値は DEFAULT_EMBEDDING_MODEL。 */
+export async function getEmbeddingModel(settings: SettingsRepository): Promise<string> {
+  const raw = await settings.get(EMBEDDING_MODEL_KEY);
+  if (raw && isWorkersAiModelId(raw)) return raw;
+  return DEFAULT_EMBEDDING_MODEL;
+}
+
+/** 空文字 / null はデフォルトに戻す。 */
+export async function setEmbeddingModel(settings: SettingsRepository, model: string | null): Promise<void> {
+  if (!model) {
+    await settings.set(EMBEDDING_MODEL_KEY, "");
+    return;
+  }
+  if (!isWorkersAiModelId(model)) {
+    throw new Error(`"${model}" is not a valid Workers AI model id`);
+  }
+  await settings.set(EMBEDDING_MODEL_KEY, model);
 }

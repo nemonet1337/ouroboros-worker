@@ -63,10 +63,10 @@ Workflows (healing.ts)
 キャンセル: POST /healing/:runId/cancel → Workflow.terminate()
 ```
 
-### AI モデル解決（モード別）
-- モード: `coding` / `plan` / `refactor` / `healing` / `inspection`
-- 解決順: `users.mode_models[mode]` → `users.model`（グローバル）→ `DEFAULT_WORKERS_AI_MODEL`（`@cf/zai-org/glm-5.3-flash`）
-- 呼び出しは `AuthService.resolveModel(userId, mode)` を必ず経由する
+### AI モデル解決
+- テキスト生成: `users.model` → `DEFAULT_WORKERS_AI_MODEL`（`@cf/zai-org/glm-5.3-flash`）。`AuthService.resolveModel(userId)` を必ず経由する
+- Embedding: `settings.embedding_model` → `DEFAULT_EMBEDDING_MODEL`（`@cf/google/embeddinggemma-300m`）。Vectorize が 768 次元・共有のためシステム全体で 1 つ（admin のみ変更）
+- 専用画面 `/models`。モード別モデルは廃止
 - REST パス（`WORKERS_AI_API_TOKEN` 設定時）は `/ai/v1/chat/completions`。401/403 時は AI バインディングへフォールバック
 
 ### DB アクセス
