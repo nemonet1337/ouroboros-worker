@@ -7,8 +7,7 @@
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nemonet1337/ouroboros)
 
 Ouroboros detects issues, uses an LLM to analyze and generate patches, and opens pull
-requests automatically — with authentication, multi-tenant API tokens, telemetry logging,
-and email alerting.
+requests automatically — with authentication, multi-tenant API tokens, and telemetry logging.
 
 It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues + Workflows +
 Workers AI + Vectorize).
@@ -37,7 +36,6 @@ src/
 ├── http/          Hono-based REST API
 ├── inspection/    AI scoring engine (6 dimensions, 32 aspects)
 ├── logging/       Structured logger (R2-persisted)
-├── notifications/ Email alerts and notifications
 ├── ports/         Adapter interfaces (Ports & Adapters pattern)
 ├── pr/            PR body/title generation, dedup, auto-merge
 ├── queues/        Cloudflare Queues handler
@@ -45,9 +43,8 @@ src/
 ├── schemas/       JSON schema definitions
 ├── testing/       Browser testing utilities
 ├── ui/            Server-side rendered UI (Hono JSX)
-├── utils/         Crypto, escalator, fix cache
+├── utils/         Escalator, fix cache
 ├── vcs/           GitHub integration (fetch-based)
-├── webhook/       Webhook dispatch (Slack, Discord, GitHub, Generic)
 ├── workflows/     Cloudflare Workflows (durable healing lifecycle)
 ├── types.ts       All type definitions
 ├── context.ts     Dependency injection
@@ -61,7 +58,6 @@ src/
 | `LogStore`     | R2 objects                              |
 | `QueueAdapter` | Cloudflare Queues                       |
 | `AiProvider`   | Workers AI (the only AI gateway)        |
-| `Mailer`       | MailChannels / CF Email Routing         |
 | `VcsProvider`  | GitHub (fetch)                          |
 | `HealingRunner`| `RepoRunner` (in-process, GitHub REST API) |
 | `RateLimiter`  | Workers Rate Limiting API               |
@@ -129,7 +125,6 @@ and the hourly cron trigger (no runner Service Binding required).
 - **Registration control** — admin toggle for public registration; the first registered
   user becomes the admin.
 - **Telemetry** — structured logs persisted as flat `.log` files in R2.
-- **Email alerts** — high-risk scans and failed fixes via MailChannels.
 - **Async orchestration** — GUI events via Cloudflare Queues; healing lifecycle via Workflows.
 - **Rate limiting** — Workers Rate Limiting on public endpoints.
 - **Code inspection** — AI scoring engine exposed at `POST /api/v1/inspect`.
@@ -187,7 +182,6 @@ Tokens are sent as `Authorization: Bearer ouro_…`. Errors use a unified
 - `/code/new` — Create new code session
 - `/code/sessions/:id` — Code session details
 - `/refactor` — Refactoring proposals
-- `/webhooks` — Webhook configuration
 - `/tokens` — API token management
 - `/settings` — Personal settings (AI model selection)
 - `/admin` — Admin settings (registration toggle, user management)

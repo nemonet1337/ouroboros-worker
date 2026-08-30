@@ -3,7 +3,6 @@
  *
  * - selected_repo   : システム全体で 1 つの選択リポジトリ（"owner/name"）
  * - feature_flags   : 機能トグルの JSON（{ "code-needs-fix": true, ... }）
- * - webhooks_enabled: Webhook 配信のグローバルスイッチ（"true" / "false"）
  * - embedding_model : Vectorize 用 Embedding モデル ID（システム全体で 1 つ）
  */
 import { DEFAULT_EMBEDDING_MODEL, isWorkersAiModelId } from "./deployment";
@@ -11,7 +10,6 @@ import type { SettingsRepository } from "../db/repositories";
 
 export const SELECTED_REPO_KEY = "selected_repo";
 export const FEATURE_FLAGS_KEY = "feature_flags";
-export const WEBHOOKS_ENABLED_KEY = "webhooks_enabled";
 export const APP_SETTINGS_KEY = "app_settings";
 export const EMBEDDING_MODEL_KEY = "embedding_model";
 
@@ -20,7 +18,6 @@ export const DEFAULT_APP_SETTINGS = {
   weights: { security: 25, performance: 20, redundancy: 15, readability: 15, design: 15, correctness: 10 },
   gradeThresholds: { S: 95, A: 85, B: 70, C: 55, D: 40, F: 0 },
   schedule: { time: "03:00", daysOfWeek: [] as number[] },
-  notifications: { browserPush: true, emailDigest: true, emailThreshold: false, sound: false },
 };
 
 export interface SelectedRepo {
@@ -73,16 +70,6 @@ export async function setFeatureFlags(
   flags: Record<string, boolean>
 ): Promise<void> {
   await settings.set(FEATURE_FLAGS_KEY, JSON.stringify(flags));
-}
-
-/** Webhook 配信のグローバルスイッチ。未設定はデフォルト有効。 */
-export async function areWebhooksEnabled(settings: SettingsRepository): Promise<boolean> {
-  const raw = await settings.get(WEBHOOKS_ENABLED_KEY);
-  return raw !== "false";
-}
-
-export async function setWebhooksEnabled(settings: SettingsRepository, enabled: boolean): Promise<void> {
-  await settings.set(WEBHOOKS_ENABLED_KEY, enabled ? "true" : "false");
 }
 
 /** システム全体の Embedding モデル。未設定・不正値は DEFAULT_EMBEDDING_MODEL。 */

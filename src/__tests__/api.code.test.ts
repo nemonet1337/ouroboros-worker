@@ -36,7 +36,6 @@ function buildDeps(): ApiDeps {
       },
       logs: { kind: "r2" as const, append: vi.fn(), read: vi.fn(), list: vi.fn().mockResolvedValue([]) },
       queue: { kind: "cf-queue" as const, send: vi.fn() },
-      mailer: { kind: "cf-email" as const, send: vi.fn() },
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),
       rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },

@@ -52,7 +52,6 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const URI_RE = /^https?:\/\/.+/;
 
 // ── Validators ───────────────────────────────────────────────────────────────
 
@@ -87,26 +86,6 @@ export const inspectSchema: Validator<Record<string, unknown>> = (body) => {
     errors.push("files must be a non-empty array");
   else if (body.files.some((f: unknown) => !isObj(f) || typeof (f as any).path !== "string" || typeof (f as any).content !== "string"))
     errors.push("each file must have string path and content");
-  if (errors.length) return { ok: false, errors };
-  return { ok: true, value: body };
-};
-
-export const webhookCreateSchema: Validator<Record<string, unknown>> = (body) => {
-  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
-  const errors: string[] = [];
-  if (typeof body.url !== "string" || !URI_RE.test(body.url) || body.url.length > 2048)
-    errors.push("url must be a valid http/https URL (max 2048 chars)");
-  if (errors.length) return { ok: false, errors };
-  return { ok: true, value: body };
-};
-
-export const webhookPatchSchema: Validator<Record<string, unknown>> = (body) => {
-  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
-  const errors: string[] = [];
-  if (body.url !== undefined && (typeof body.url !== "string" || !URI_RE.test(body.url) || body.url.length > 2048))
-    errors.push("url must be a valid http/https URL (max 2048 chars)");
-  if (body.enabled !== undefined && typeof body.enabled !== "boolean")
-    errors.push("enabled must be a boolean");
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: body };
 };

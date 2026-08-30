@@ -7,7 +7,7 @@
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nemonet1337/ouroboros)
 
 Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull Request を自動作成します。
-認証・マルチテナントな API トークン・テレメトリログ・メールアラートを備えています。
+認証・マルチテナントな API トークン・テレメトリログを備えています。
 
 **Cloudflare Workers 特化** — Workers + D1 + R2 + Queues + Workflows + Workers AI + Vectorize の
 エッジネイティブ構成だけをサポートします。
@@ -36,7 +36,6 @@ src/
 ├── http/          Hono ベース REST API
 ├── inspection/    AI スコアリングエンジン（6 次元・32 観点）
 ├── logging/       構造化ロガー（R2 永続化）
-├── notifications/ メールアラート・通知
 ├── ports/         アダプターインターフェース（Ports & Adapters パターン）
 ├── pr/            PR タイトル・本文生成・重複排除・自動マージ
 ├── queues/        Cloudflare Queues ハンドラー
@@ -44,9 +43,8 @@ src/
 ├── schemas/       JSON スキーマ定義
 ├── testing/       ブラウザテスト支援
 ├── ui/            サーバーサイドレンダリング UI（Hono JSX）
-├── utils/         暗号化・エスカレーター・修正キャッシュ
+├── utils/         エスカレーター・修正キャッシュ
 ├── vcs/           GitHub 連携（fetch ベース）
-├── webhook/       Webhook ディスパッチ（Slack, Discord, GitHub, Generic）
 ├── workflows/     Cloudflare Workflows（永続的な自己修復ライフサイクル）
 ├── types.ts       全型定義
 ├── context.ts     依存性注入
@@ -60,7 +58,6 @@ src/
 | `LogStore`     | R2 オブジェクト                   |
 | `QueueAdapter` | Cloudflare Queues                |
 | `AiProvider`   | Workers AI（唯一の AI ゲートウェイ）|
-| `Mailer`       | MailChannels / CF Email Routing  |
 | `VcsProvider`  | GitHub (fetch)                   |
 | `HealingRunner`| `RepoRunner`（同一 Worker 内、GitHub REST API） |
 | `RateLimiter`  | Workers Rate Limiting API        |
@@ -127,7 +124,6 @@ wrangler deploy                                      # または: wrangler dev
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
 - **登録制御** — 公開登録の管理者トグル。最初に登録したユーザーが管理者になります。
 - **テレメトリ** — 構造化ログをフラット `.log` ファイルとして R2 に永続化。
-- **メールアラート** — 高リスクなスキャンや修正失敗を MailChannels で通知。
 - **非同期オーケストレーション** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。
 - **レート制限** — 公開エンドポイントに Workers Rate Limiting。
 - **コードインスペクション** — AI スコアリングエンジンを `POST /api/v1/inspect` で提供。
@@ -185,7 +181,6 @@ wrangler deploy                                      # または: wrangler dev
 - `/code/new` — 新規コードセッション作成
 - `/code/sessions/:id` — コードセッション詳細
 - `/refactor` — リファクタリング提案
-- `/webhooks` — Webhook 設定
 - `/tokens` — API トークン管理
 - `/settings` — 個人設定（AI モデル選択）
 - `/admin` — 管理者設定（登録トグル、ユーザー管理）

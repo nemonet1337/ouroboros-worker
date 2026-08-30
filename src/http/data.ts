@@ -8,7 +8,6 @@ import type {
   HealingRunRepository,
   SettingsRepository,
   HealingRunRow,
-  WebhookRow,
 } from "../db/repositories";
 import type { Ports } from "../ports";
 import type { AuthService } from "../auth/service";
@@ -206,34 +205,6 @@ export async function buildMetricsData(
     dependencyChanges,
     causeData,
     codeStats,
-  };
-}
-
-export interface WebhookView {
-  id: string;
-  url: string;
-  enabled: boolean;
-  name: string;
-  adapter: string;
-  events: string[];
-  scoreThresholds: Record<string, number>;
-  secret: string;
-}
-
-export function shapeWebhookRow(r: WebhookRow): WebhookView {
-  let cfg: any = {};
-  try {
-    cfg = r.config ? JSON.parse(r.config) : {};
-  } catch {}
-  return {
-    id: r.id,
-    url: r.url,
-    enabled: r.enabled === 1,
-    name: cfg.name || "webhook",
-    adapter: r.type || cfg.adapter || "generic",
-    events: cfg.events || ["inspection.completed"],
-    scoreThresholds: cfg.scoreThresholds || { overall: 70 },
-    secret: cfg.secret || "",
   };
 }
 

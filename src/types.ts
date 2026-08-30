@@ -219,7 +219,6 @@ export interface InspectionOptions {
   granularity: "file" | "function";
   /** Score categories to evaluate (all enabled when omitted) */
   enabledCategories?: InspectionCategory[];
-  /** Trigger webhook notifications only when these thresholds are breached */
   scoreThresholds?: ScoreThresholds;
 }
 
@@ -471,86 +470,6 @@ export interface InspectionRecord {
   recommendationCount: number;
   /** Full InspectionResult stored as JSONB */
   result: InspectionResult;
-}
-
-// ─── Webhook payload types ────────────────────────────────────────────────────
-
-export type WebhookEvent =
-  | "inspection.completed"
-  | "inspection.threshold_breached"
-  | "inspection.failed";
-
-export interface WebhookThresholdBreach {
-  category: InspectionCategory | "overall";
-  threshold: Score;
-  actual: Score;
-}
-
-/** Abbreviated score card used in webhook payloads to keep payload size small */
-export interface WebhookScoreCard {
-  overall: Score;
-  grade: Grade;
-}
-
-export interface WebhookPayload {
-  event: WebhookEvent;
-  /** ISO 8601 */
-  triggeredAt: string;
-  inspection: {
-    id: string;
-    language: Language;
-    scoreCard: WebhookScoreCard;
-    summary: string;
-    findingCount: number;
-    recommendationCount: number;
-    /** Deep-link into the WebUI for this result */
-    url?: string;
-  };
-  /** Only present for inspection.threshold_breached events */
-  breaches?: WebhookThresholdBreach[];
-  /** Only present for inspection.failed events */
-  error?: string;
-}
-
-// ─── Webhook endpoint configuration ──────────────────────────────────────────
-
-export type WebhookAdapter = "slack" | "discord" | "github" | "generic";
-
-export interface ScoreThresholdConfig {
-  overall?: Score;
-  security?: Score;
-  performance?: Score;
-  redundancy?: Score;
-  readability?: Score;
-  design?: Score;
-  correctness?: Score;
-}
-
-export interface WebhookEndpoint {
-  id: string;
-  name: string;
-  url: string;
-  adapter: WebhookAdapter;
-  /** Which events trigger this endpoint */
-  events: WebhookEvent[];
-  /** When set, request body is HMAC-SHA256 signed; signature added as X-Ouroboros-Signature */
-  secret?: string;
-  /** Extra HTTP headers merged into every request */
-  headers?: Record<string, string>;
-  enabled: boolean;
-  /** Per-endpoint score thresholds; overrides global thresholds for this endpoint */
-  scoreThresholds?: ScoreThresholdConfig;
-}
-
-export interface WebhookDeliveryResult {
-  endpointId: string;
-  endpointName: string;
-  event: WebhookEvent;
-  success: boolean;
-  statusCode?: number;
-  error?: string;
-  attemptCount: number;
-  deliveredAt: string;
 }
 
 // ─── Code Session types ─────────────────────────────────────────────────────────

@@ -1,7 +1,5 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { AIAnalyzer } from "../analyzers/ai.analyzer";
-import { AlertService } from "../notifications/alerts";
-import { Notifier } from "../notifications/notifier";
 import { PRDeduplicator } from "../pr/pr.deduplicator";
 import { FixCache } from "../utils/fix.cache";
 import { Escalator } from "../utils/escalator";
@@ -114,8 +112,9 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       const config = { ...ctx.config, ai: { ...ctx.config.ai, model } };
       const codeContext = await buildCodeContext(ctx, findings);
       const result = await new AIAnalyzer(config, ctx.ports.ai).analyze(findings, codeContext);
-      await new Notifier().notifyScanComplete(result);
-      await new AlertService(ctx.ports.mailer, ctx.alertRecipients).scanRisk(result);
+      console.log(
+        `[healing] scan complete score=${result.riskScore} groups=${result.groups.length} ${result.summary}`
+      );
       return result;
     });
 
@@ -128,8 +127,6 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
       const dedup = new PRDeduplicator(ctx.config, ctx.ports.vcs);
       const cache = new FixCache(ctx.config, ctx.ports.vcs);
       const escalator = new Escalator(ctx.config, ctx.ports.vcs);
-      const notifier = new Notifier();
-      const alerts = new AlertService(ctx.ports.mailer, ctx.alertRecipients);
 
       if (!dryRun) await Promise.allSettled([dedup.loadOpenPRs(), cache.load()]);
 
@@ -171,7 +168,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
             });
             dedup.register(pr.branch);
             await cache.record(group);
-            await notifier.notifyPRCreated(pr, group);
+            console.log(`[healing] PR #${pr.number} ${pr.url} group=${group.id} priority=${group.priority}`);
             prs.push({ number: pr.number, title: pr.title, branch: pr.branch, url: pr.url });
             prsCreated++;
           } catch (err) {
@@ -179,8 +176,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
           }
         } else {
           const reason = fix.validationOutput || "auto-fix failed";
-          await notifier.notifyFixFailed(group, reason);
-          await alerts.fixFailed(group, reason);
+          console.log(`[healing] fix failed group=${group.id}: ${reason.slice(0, 200)}`);
           await escalator.escalate(group, reason);
         }
       }

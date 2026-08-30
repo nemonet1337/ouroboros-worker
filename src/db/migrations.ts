@@ -175,4 +175,11 @@ export const MIGRATIONS: Migration[] = [
       `ALTER TABLE code_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'plan_code'`,
     ],
   },
+  {
+    id: "0011_drop_webhooks",
+    statements: [
+      `DROP TABLE IF EXISTS webhooks`,
+      `DELETE FROM settings WHERE key = 'webhooks_enabled'`,
+    ],
+  },
 ];

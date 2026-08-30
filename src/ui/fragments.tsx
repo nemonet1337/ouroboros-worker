@@ -22,7 +22,6 @@ import type { InspectionRequest, InspectionResult, Language } from "../types";
 import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
 import {
   InspectionRepository,
-  WebhookRepository,
   HealingRunRepository,
   SettingsRepository,
   CodeSessionRepository,
@@ -32,11 +31,8 @@ import {
   loadPublicConfig,
   parseHistoryEntry,
   runUserInspection,
-  shapeWebhookRow,
 } from "../http/data";
-import { validateWebhookUrl } from "../webhook/url.guard";
-import { sendWebhookTest } from "../webhook/test-send";
-import { webhookCreateSchema, codeSessionCreateSchema } from "../http/validation";
+import { codeSessionCreateSchema } from "../http/validation";
 import { newId } from "../auth/tokens";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
@@ -46,12 +42,11 @@ import { InspectionHistoryList } from "./components/inspection-history-list";
 import { InspectionDetail } from "./components/inspection-detail";
 import { InspectionProgress } from "./components/inspection-progress";
 import { CodeSessionList } from "./components/code-session-list";
-import { WebhookList } from "./components/webhook-list";
 import { HealingRunList } from "./components/healing-run-list";
 import { RepoSelector } from "./components/repo-selector";
 import { NotificationBell, type NotificationItem } from "./components/notification-bell";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
-import { getSelectedRepo, setSelectedRepo, setWebhooksEnabled, setFeatureFlags } from "../config/settings.keys";
+import { getSelectedRepo, setSelectedRepo, setFeatureFlags } from "../config/settings.keys";
 import { ModelPricingPanel } from "./components/model-pricing";
 
 const SESSION_COOKIE = "ouro_session";
@@ -75,7 +70,6 @@ export interface FragmentDeps {
   githubTokenSet?: boolean;
   triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
   cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
-  encryptionKey?: string;
 }
 
 type Env = { Variables: { identity: { user: AuthedUser } } };
@@ -121,7 +115,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const app = new Hono<Env>();
 
   const inspections = new InspectionRepository(ports.db);
-  const webhooks = new WebhookRepository(ports.db);
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
@@ -489,78 +482,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     return renderInspectionDetail(c, inspectionId);
   });
 
-  // ── Webhook ───────────────────────────────────────────────────────────────
-  const renderWebhookList = async (userId: string, oob = false) => {
-    const rows = await webhooks.listByUser(userId);
-    return <WebhookList webhooks={rows.map(shapeWebhookRow)} oob={oob} />;
-  };
-
-  app.get("/webhooks", async (c) => c.html(await renderWebhookList(c.get("identity").user.id)));
-
-  app.post("/webhooks", async (c) => {
-    const userId = c.get("identity").user.id;
-    const body = await c.req.parseBody();
-    const check = webhookCreateSchema(body);
-    if (!check.ok) {
-      return c.html(<Alert type="error" message={`入力内容を確認してください: ${check.errors.join(", ")}`} />);
-    }
-    const v = check.value as Record<string, unknown>;
-    try {
-      validateWebhookUrl(v.url as string);
-    } catch (err) {
-      return c.html(<Alert type="error" message={`宛先 URL が不正です: ${(err as Error).message}`} />);
-    }
-    const configData = {
-      name: (typeof v.name === "string" && v.name) || "webhook",
-      adapter: (typeof v.adapter === "string" && v.adapter) || "generic",
-      events: ["inspection.completed"],
-      secret: "",
-      scoreThresholds: { overall: 70 },
-    };
-    await webhooks.insert({
-      id: newId(),
-      user_id: userId,
-      url: v.url as string,
-      type: configData.adapter,
-      enabled: 1,
-      config: JSON.stringify(configData),
-      created_at: Date.now(),
-    });
-    return c.html(
-      <>
-        <Alert type="success" message="Webhook を登録しました。" />
-        {await renderWebhookList(userId, true)}
-      </>
-    );
-  });
-
-  app.post("/webhooks/:id/toggle", async (c) => {
-    const userId = c.get("identity").user.id;
-    const hook = (await webhooks.listByUser(userId)).find((w) => w.id === c.req.param("id"));
-    if (hook) await webhooks.setEnabled(hook.id, userId, hook.enabled !== 1);
-    return c.html(await renderWebhookList(userId));
-  });
-
-  app.post("/webhooks/:id/delete", async (c) => {
-    const userId = c.get("identity").user.id;
-    await webhooks.delete(c.req.param("id")!, userId);
-    return c.html(await renderWebhookList(userId));
-  });
-
-  app.post("/webhooks/:id/test", async (c) => {
-    const userId = c.get("identity").user.id;
-    const hook = (await webhooks.listByUser(userId)).find((w) => w.id === c.req.param("id"));
-    if (!hook) return c.html(<Alert type="error" message="Webhook が見つかりません。" />);
-    const result = await sendWebhookTest(hook.url);
-    if (result.ok) {
-      return c.html(<Alert type="success" message={`テスト送信に成功しました (HTTP ${result.status})。`} />);
-    }
-    if (result.status !== undefined) {
-      return c.html(<Alert type="error" message={`テスト送信が拒否されました (HTTP ${result.status})。`} />);
-    }
-    return c.html(<Alert type="error" message={`テスト送信に失敗しました: ${result.error}`} />);
-  });
-
   // ── 自己修復 ──────────────────────────────────────────────────────────────
   const HEALING_RUNS_PER_PAGE = 10;
   const ALLOWED_STATUS_FILTERS = new Set([
@@ -756,12 +677,9 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     return c.html(<Alert type="success" message="プロファイルを更新しました。" />);
   });
 
-  // ── システム設定（管理者のみ: Webhook/機能トグル/スケジュール） ────────────
+  // ── システム設定（管理者のみ: 機能トグル/スケジュール） ────────────
   app.put("/system-settings", requireAdmin, async (c) => {
     const body = await c.req.parseBody({ all: true });
-
-    // Webhook 全体スイッチ（チェックボックス: on/未送信）
-    await setWebhooksEnabled(settingsRepo, body.webhooksEnabled === "on" || body.webhooksEnabled === "true");
 
     // 機能トグル（flag:<name> フィールド。フォームはチェック時のみ送信される）
     const flags: Record<string, boolean> = {};

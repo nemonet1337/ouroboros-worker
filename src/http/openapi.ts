@@ -63,7 +63,7 @@ export const OPENAPI_SPEC = {
       put: { summary: "アプリ設定の保存（admin）", responses: { "200": { description: "OK" } } },
     },
     "/settings": {
-      get: { summary: "設定の取得（weights/thresholds/schedule/notifications/registration）", responses: { "200": { description: "OK" } } },
+      get: { summary: "設定の取得（weights/thresholds/schedule/registration）", responses: { "200": { description: "OK" } } },
       put: { summary: "設定の保存（admin）", responses: { "200": { description: "OK" } } },
     },
     "/models": {
@@ -82,15 +82,6 @@ export const OPENAPI_SPEC = {
     "/inspect/{id}": { get: { summary: "インスペクション結果取得", responses: { "200": { description: "OK" }, "404": { description: "なし" } } } },
     "/history": { get: { summary: "インスペクション履歴（スコア内訳付き）", responses: { "200": { description: "OK" } } } },
     "/metrics": { get: { summary: "ダッシュボード指標", responses: { "200": { description: "OK" } } } },
-    "/webhooks": {
-      get: { summary: "Webhook 一覧", responses: { "200": { description: "OK" } } },
-      post: { summary: "Webhook 作成", responses: { "201": { description: "Created" } } },
-    },
-    "/webhooks/{id}": {
-      patch: { summary: "Webhook 有効/無効", responses: { "200": { description: "OK" } } },
-      delete: { summary: "Webhook 削除", responses: { "200": { description: "OK" } } },
-    },
-    "/webhooks/{id}/test": { post: { summary: "Webhook テスト送信", responses: { "200": { description: "OK" } } } },
     "/healing": {
       get: { summary: "自己修復ラン一覧", responses: { "200": { description: "OK" } } },
       post: { summary: "自己修復サイクル起動（scope: heal）", responses: { "202": { description: "Accepted" } } },

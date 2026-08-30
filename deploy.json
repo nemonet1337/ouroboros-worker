@@ -29,18 +29,6 @@
       "name": "GITHUB_REPOSITORY_OWNER",
       "description": "リポジトリオーナー名（GitHub ユーザー名または組織名）。",
       "type": "text"
-    },
-    {
-      "name": "OURO_ALERT_EMAILS",
-      "description": "（任意）アラート通知の送信先メールアドレス（カンマ区切り、例: ops@example.com,dev@example.com）。",
-      "type": "text",
-      "default": ""
-    },
-    {
-      "name": "OURO_ENCRYPTION_KEY",
-      "description": "（任意）Webhook secret の暗号化キー。",
-      "type": "secret",
-      "default": ""
     }
   ]
 }

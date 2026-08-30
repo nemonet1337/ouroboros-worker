@@ -286,46 +286,6 @@ export class InspectionRepository {
   }
 }
 
-export interface WebhookRow {
-  id: string;
-  user_id: string;
-  url: string;
-  type: string;
-  enabled: number;
-  config: string | null;
-  created_at: number;
-}
-
-export class WebhookRepository {
-  constructor(private readonly db: DbAdapter) {}
-
-  async insert(row: WebhookRow): Promise<void> {
-    await this.db.exec(
-      `INSERT INTO webhooks (id, user_id, url, type, enabled, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.user_id, row.url, row.type, row.enabled, row.config, row.created_at]
-    );
-  }
-
-  async listByUser(userId: string): Promise<WebhookRow[]> {
-    return this.db.query<WebhookRow>(
-      `SELECT * FROM webhooks WHERE user_id = ? ORDER BY created_at DESC`,
-      [userId]
-    );
-  }
-
-  async setEnabled(id: string, userId: string, enabled: boolean): Promise<void> {
-    await this.db.exec(`UPDATE webhooks SET enabled = ? WHERE id = ? AND user_id = ?`, [
-      enabled ? 1 : 0,
-      id,
-      userId,
-    ]);
-  }
-
-  async delete(id: string, userId: string): Promise<void> {
-    await this.db.exec(`DELETE FROM webhooks WHERE id = ? AND user_id = ?`, [id, userId]);
-  }
-}
-
 export class HealingRunRepository {
   constructor(private readonly db: DbAdapter) {}
 

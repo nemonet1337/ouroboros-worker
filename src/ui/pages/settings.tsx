@@ -6,7 +6,6 @@ import { FLAGS } from "../../flags/flag.service";
 interface SettingsPageProps {
   user?: AuthedUser;
   appSettings?: Record<string, unknown>;
-  webhooksEnabled?: boolean;
   featureFlags?: Record<string, boolean>;
 }
 
@@ -21,7 +20,6 @@ const FEATURE_TOGGLES: Array<{ flag: string; label: string }> = [
 export const SettingsPage: FC<SettingsPageProps> = ({
   user,
   appSettings = {},
-  webhooksEnabled = true,
   featureFlags = {},
 }) => {
   const isAdmin = user?.role === "admin";
@@ -134,7 +132,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   <span>システム設定</span>
                 </h2>
                 <p class="text-xs opacity-60 mb-4">
-                  Webhook 配信・機能トグル・自己修復スケジュールを管理します（管理者のみ）。
+                  機能トグル・自己修復スケジュールを管理します（管理者のみ）。
                 </p>
 
                 <form
@@ -144,19 +142,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   hx-disabled-elt="button[type='submit']"
                   class="space-y-5"
                 >
-                  {/* Webhook 全体 ON/OFF */}
-                  <div class="form-control">
-                    <label class="label cursor-pointer justify-start gap-3 py-1">
-                      <input
-                        type="checkbox"
-                        name="webhooksEnabled"
-                        class="toggle toggle-primary toggle-sm"
-                        checked={webhooksEnabled}
-                      />
-                      <span class="label-text font-semibold opacity-75">Webhook 配信を有効にする</span>
-                    </label>
-                  </div>
-
                   <div class="divider text-xs opacity-40 my-1">機能トグル</div>
 
                   {FEATURE_TOGGLES.map((t) => (
@@ -236,7 +221,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   <span>システム設定</span>
                 </h2>
                 <p class="text-xs opacity-60">
-                  Webhook 配信・機能トグル・スケジュールの変更は管理者のみ可能です。
+                  機能トグル・スケジュールの変更は管理者のみ可能です。
                 </p>
               </div>
             </div>

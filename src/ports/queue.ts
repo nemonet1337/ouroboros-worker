@@ -2,9 +2,7 @@ export type GuiEventType =
   | "inspection.requested"
   | "healing.requested"
   | "codeindex.requested"
-  | "codegen.requested"
-  | "webhook.test"
-  | "alert.dispatch";
+  | "codegen.requested";
 
 export interface GuiEvent {
   id: string;

@@ -3,7 +3,6 @@ import {
   credentialsSchema,
   profileUpdateSchema,
   inspectSchema,
-  webhookCreateSchema,
 } from "../http/validation";
 
 const ok = (v: { ok: boolean }) => v.ok;
@@ -27,10 +26,5 @@ describe("request validation schemas", () => {
     expect(ok(inspectSchema({ language: "typescript", files: [{ path: "a.ts", content: "x" }] }))).toBe(true);
     expect(ok(inspectSchema({ files: [] }))).toBe(false);
     expect(ok(inspectSchema({ files: [{ path: "a.ts" }] }))).toBe(false);
-  });
-
-  it("webhook create requires a http/https url", () => {
-    expect(ok(webhookCreateSchema({ url: "https://hooks.example.com/x", type: "slack" }))).toBe(true);
-    expect(ok(webhookCreateSchema({ type: "slack" }))).toBe(false);
   });
 });

@@ -9,14 +9,11 @@ import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
 import {
   InspectionRepository,
-  WebhookRepository,
   HealingRunRepository,
   SettingsRepository,
   CodeSessionRepository,
 } from "../db/repositories";
 import type { InspectionRequest } from "../types";
-import { validateWebhookUrl } from "../webhook/url.guard";
-import { sendWebhookTest } from "../webhook/test-send";
 import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
@@ -27,8 +24,6 @@ import {
   credentialsSchema,
   profileUpdateSchema,
   inspectSchema,
-  webhookCreateSchema,
-  webhookPatchSchema,
   settingsSchema,
   configSchema,
   codeSessionCreateSchema,
@@ -38,13 +33,11 @@ import {
 } from "./validation";
 import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
 import { DEFAULT_APP_SETTINGS, getEmbeddingModel, getSelectedRepo, setEmbeddingModel } from "../config/settings.keys";
-import { encrypt } from "../utils/crypto";
 import {
   buildMetricsData,
   loadPublicConfig,
   parseHistoryEntry,
   runUserInspection,
-  shapeWebhookRow,
   CONFIG_KEY,
   LEGACY_GATEWAY_CONFIG_KEYS,
 } from "./data";
@@ -72,7 +65,6 @@ export interface ApiDeps {
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
   versionMetadata?: VersionMetadata;
-  encryptionKey?: string;
 }
 
 interface Identity {
@@ -100,7 +92,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const log = logger.child("api");
 
   const inspections = new InspectionRepository(ports.db);
-  const webhooks = new WebhookRepository(ports.db);
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
@@ -314,7 +305,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ deployTarget: "cloudflare", provider, models });
   });
 
-  // ── Settings (weights/thresholds/schedule/notifications/registration) ──────
+  // ── Settings (weights/thresholds/schedule/registration) ──────
   app.get("/settings", requireAuth(), async (c) => {
     const raw = await settingsRepo.get(SETTINGS_KEY);
     const stored = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
@@ -486,122 +477,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   app.get("/history", requireAuth(), async (c) => {
     const rows = await inspections.listByUser(c.get("identity")!.user.id, 50);
     return c.json(rows.map((r) => parseHistoryEntry(r)).reverse());
-  });
-
-  // ── Webhooks ─────────────────────────────────────────────────────────────
-  app.get("/webhooks", requireAuth(), async (c) => {
-    const rows = await webhooks.listByUser(c.get("identity")!.user.id);
-    return c.json({ webhooks: rows.map(shapeWebhookRow) });
-  });
-
-  app.post("/webhooks", requireAuth(), validateBody(webhookCreateSchema), async (c) => {
-    const body = c.get("body") as any;
-    const id = newId();
-    try {
-      validateWebhookUrl(body.url);
-    } catch (err) {
-      return c.json({ error: { code: "invalid_url", message: (err as Error).message } }, 400);
-    }
-
-    const encKey = deps.encryptionKey ?? "";
-    if (body.secret && !encKey) {
-      return c.json({ error: { code: "misconfigured", message: "OURO_ENCRYPTION_KEY is not set" } }, 500);
-    }
-    const secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
-    const configData = {
-      name: body.name || "webhook",
-      adapter: body.adapter || body.type || "generic",
-      events: body.events || ["inspection.completed"],
-      secret,
-      scoreThresholds: body.scoreThresholds || { overall: 70 },
-    };
-
-    await webhooks.insert({
-      id,
-      user_id: c.get("identity")!.user.id,
-      url: body.url,
-      type: configData.adapter,
-      enabled: 1,
-      config: JSON.stringify(configData),
-      created_at: Date.now(),
-    });
-    return c.json({ id }, 201);
-  });
-
-  app.patch("/webhooks/:id", requireAuth(), validateBody(webhookPatchSchema), async (c) => {
-    const body = c.get("body") as any;
-    const hookId = c.req.param("id")!;
-    const userId = c.get("identity")!.user.id;
-
-    if (body.url !== undefined) {
-      try {
-        validateWebhookUrl(body.url);
-      } catch (err) {
-        return c.json({ error: { code: "invalid_url", message: (err as Error).message } }, 400);
-      }
-    }
-
-    if (body.enabled !== undefined) {
-      await webhooks.setEnabled(hookId, userId, body.enabled);
-    }
-
-    const rows = await webhooks.listByUser(userId);
-    const existing = rows.find((r) => r.id === hookId);
-
-    if (existing) {
-      let cfg: any = {};
-      try {
-        cfg = existing.config ? JSON.parse(existing.config) : {};
-      } catch {}
-
-      if (body.name !== undefined) cfg.name = body.name;
-      if (body.type !== undefined) cfg.adapter = body.type;
-      if (body.url !== undefined) cfg.url = body.url;
-      if (body.events !== undefined) cfg.events = body.events;
-      if (body.scoreThresholds !== undefined) cfg.scoreThresholds = body.scoreThresholds;
-      if (body.secret !== undefined) {
-        const encKey = deps.encryptionKey ?? "";
-        if (body.secret && !encKey) {
-          return c.json({ error: { code: "misconfigured", message: "OURO_ENCRYPTION_KEY is not set" } }, 500);
-        }
-        cfg.secret = body.secret ? await encrypt(String(body.secret), encKey) : "";
-      }
-
-      const updates: string[] = [];
-      const params: any[] = [];
-      if (body.url !== undefined) {
-        updates.push("url = ?");
-        params.push(body.url);
-      }
-      if (body.type !== undefined) {
-        updates.push("type = ?");
-        params.push(body.type);
-      }
-
-      updates.push("config = ?");
-      params.push(JSON.stringify(cfg));
-
-      params.push(hookId, userId);
-      await ports.db.exec(`UPDATE webhooks SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`, params);
-    }
-
-    return c.json({ ok: true });
-  });
-
-  app.delete("/webhooks/:id", requireAuth(), async (c) => {
-    await webhooks.delete(c.req.param("id")!, c.get("identity")!.user.id);
-    return c.json({ ok: true });
-  });
-
-  app.post("/webhooks/:id/test", requireAuth(), async (c) => {
-    const list = await webhooks.listByUser(c.get("identity")!.user.id);
-    const hook = list.find((w) => w.id === c.req.param("id"));
-    if (!hook) return c.json({ error: { code: "not_found", message: "webhook not found" } }, 404);
-    const result = await sendWebhookTest(hook.url);
-    if (result.error && result.status === undefined) {
-      return c.json({ success: false, error: result.error }, result.ok ? 200 : 400);
-    }
-    return c.json({ success: result.ok, statusCode: result.status, error: result.error });
   });
 
   // ── Self-healing ─────────────────────────────────────────────────────────

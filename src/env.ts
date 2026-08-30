@@ -10,18 +10,6 @@ export interface AnalyticsEngineDataset {
   }): void;
 }
 
-export interface SendEmailBinding {
-  send(message: { to: string; from: string; subject: string; html?: string; text?: string }): Promise<unknown>;
-}
-
-export interface EmailMessage {
-  from: string;
-  to: string;
-  subject: string;
-  headers: Headers;
-  forward(dest: string): Promise<void>;
-}
-
 export interface SecretsStoreSecret {
   get(): Promise<string>;
 }
@@ -43,7 +31,6 @@ export interface Env {
   RATE_LIMITER?: RateLimit;
   VECTORIZE?: VectorizeIndex;
   AI_ANALYTICS?: AnalyticsEngineDataset;
-  EMAIL?: SendEmailBinding;
   CF_VERSION_METADATA?: VersionMetadata;
 
   // secrets（Secrets Store）
@@ -51,8 +38,6 @@ export interface Env {
   WORKERS_AI_TOKEN_SECRET?: SecretsStoreSecret;
 
   // vars
-  OURO_ALERT_EMAILS?: string;
-  MAIL_FROM?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** "true" to open registration; anything else (or absent) means closed. Default: false. */
   OURO_REGISTRATION_ENABLED?: string;
@@ -64,8 +49,6 @@ export interface Env {
   GITHUB_REPOSITORY?: string;
   /** @deprecated GITHUB_TOKEN から自動検出。明示上書きのみ */
   GITHUB_REPOSITORY_OWNER?: string;
-  /** Webhook secret 暗号化キー */
-  OURO_ENCRYPTION_KEY?: string;
 }
 
 /** Minimal RateLimit binding shape (Workers Rate Limiting API). */

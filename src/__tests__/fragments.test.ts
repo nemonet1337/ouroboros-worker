@@ -35,7 +35,6 @@ function buildDeps(overrides: Partial<FragmentDeps> = {}): FragmentDeps {
       },
       logs: { kind: "r2" as const, append: vi.fn(), read: vi.fn().mockResolvedValue("log line"), list: vi.fn().mockResolvedValue(["ouroboros.log"]) },
       queue: { kind: "cf-queue" as const, send: vi.fn() },
-      mailer: { kind: "cf-email" as const, send: vi.fn() },
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),
       rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
@@ -70,7 +69,6 @@ describe("UI fragments", () => {
     ["/prs?page=1"],
     ["/history"],
     ["/code/sessions"],
-    ["/webhooks"],
     ["/healing/runs"],
     ["/model-pricing"],
     ["/model-pricing?model=@cf/google/embeddinggemma-300m"],
@@ -88,7 +86,6 @@ describe("UI fragments", () => {
     const app = createFragments(buildDeps());
     const cases: Array<[string, string]> = [
       ["/code/sessions", "セッションはありません"],
-      ["/webhooks", "登録済みの Webhook はありません"],
       ["/healing/runs", "修復実行履歴はありません"],
       ["/history", "スキャン履歴はありません"],
     ];
@@ -224,7 +221,7 @@ describe("UI fragments", () => {
     const deps = buildDeps();
     (deps.ports.db.query as any) = vi.fn().mockRejectedValue(new Error("boom"));
     const app = createFragments(deps);
-    const res = await app.request("/webhooks", authed);
+    const res = await app.request("/healing/runs", authed);
     expect(res.headers.get("content-type")).toContain("text/html");
     expect(await res.text()).toContain("処理に失敗しました");
   });

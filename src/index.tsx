@@ -14,13 +14,12 @@ import {
 } from "./db/repositories";
 import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
 import {
-  areWebhooksEnabled,
   getEmbeddingModel,
   getFeatureFlags,
   DEFAULT_APP_SETTINGS,
 } from "./config/settings.keys";
 import type { GuiEvent } from "./ports/queue";
-import type { Env, EmailMessage } from "./env";
+import type { Env } from "./env";
 import { buildContext, type WorkerContext } from "./context";
 import { handleGuiEvents } from "./queues/gui-events";
 import { HomePage } from "./ui/pages/home";
@@ -32,7 +31,6 @@ import { CodeSessionPage } from "./ui/pages/code-session";
 import { createFragments } from "./ui/fragments";
 import { HealingPage } from "./ui/pages/healing";
 import { InspectionPage } from "./ui/pages/inspection";
-import { WebhooksPage } from "./ui/pages/webhooks";
 import { SettingsPage } from "./ui/pages/settings";
 import { ModelsPage } from "./ui/pages/models";
 import { AdminPage } from "./ui/pages/admin";
@@ -124,7 +122,6 @@ async function buildApp(env: Env): Promise<Hono> {
     ...ctx,
     triggerHealing,
     cancelHealing,
-    encryptionKey: ctx.encryptionKey,
   };
   mountApi(app, apiDeps);
   app.route("/ui/fragments", createFragments(apiDeps));
@@ -210,11 +207,6 @@ async function buildApp(env: Env): Promise<Hono> {
     );
   });
 
-  app.get("/webhooks", requireAuthMiddleware, (c) => {
-    const identity = c.get("identity");
-    return c.html(<WebhooksPage user={identity?.user} />);
-  });
-
   app.get("/models", requireAuthMiddleware, async (c) => {
     const identity = c.get("identity");
     const user = identity!.user;
@@ -241,9 +233,8 @@ async function buildApp(env: Env): Promise<Hono> {
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
 
-    const [rawSettings, webhooksEnabled, featureFlags] = await Promise.all([
+    const [rawSettings, featureFlags] = await Promise.all([
       settingsRepo.get("app_settings"),
-      areWebhooksEnabled(settingsRepo),
       getFeatureFlags(settingsRepo),
     ]);
 
@@ -256,7 +247,6 @@ async function buildApp(env: Env): Promise<Hono> {
       <SettingsPage
         user={user}
         appSettings={appSettings}
-        webhooksEnabled={webhooksEnabled}
         featureFlags={featureFlags}
       />
     );
@@ -289,19 +279,6 @@ export default {
   async queue(batch: MessageBatch<GuiEvent>, env: Env): Promise<void> {
     await ensureMigrated(env);
     await handleGuiEvents(batch, env);
-  },
-  async email(message: EmailMessage, env: Env): Promise<void> {
-    if (!env.EMAIL) return;
-    console.log(`[worker] received email from ${message.from} to ${message.to}: ${message.subject}`);
-    const recipients = (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    for (const dest of recipients) {
-      try {
-        await message.forward(dest);
-        console.log(`[worker] forwarded email to ${dest}`);
-      } catch (e: any) {
-        console.error(`[worker] failed to forward email to ${dest}: ${e.message}`);
-      }
-    }
   },
   async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureMigrated(env);

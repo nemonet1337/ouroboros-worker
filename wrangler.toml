@@ -20,7 +20,7 @@ enabled = true
 [ai]
 binding = "AI"
 
-# D1 (SQL) — users, tokens, sessions, settings, inspections, webhooks, healing_runs
+# D1 (SQL) — users, sessions, settings, inspections, healing_runs
 [[d1_databases]]
 binding = "DB"
 database_name = "ouroboros"
@@ -80,7 +80,6 @@ crons = ["0 * * * *"]
 # OURO_REGISTRATION_ENABLED: ops レベルの強制オーバーライド（任意）。
 # 未設定 = DB 側のトグルに従う。
 # OURO_REGISTRATION_ENABLED = "false"
-MAIL_FROM = "ouroboros@nemonet.work"
 
 # シークレット（`wrangler secret put <NAME>` で設定）:
 #   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用 Cloudflare API トークン。
@@ -90,8 +89,6 @@ MAIL_FROM = "ouroboros@nemonet.work"
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
 #   GITHUB_TOKEN             PR/Issue 作成。owner/repo はこのトークンから自動検出される
 #   GITHUB_REPOSITORY        （非推奨）owner/repo を手動指定する場合のみ
-#   OURO_ALERT_EMAILS        アラート通知先（カンマ区切り）
-#   OURO_ENCRYPTION_KEY      Webhook secret 暗号化キー
 #
 # 管理者アカウント: 初回リクエスト時（ユーザーが 0 人のとき）に /register から
 # 最初に登録したアカウントが自動的に管理者になります。

@@ -10,8 +10,6 @@ import { D1Adapter } from "./adapters/d1.adapter";
 import { R2LogStore } from "./adapters/r2.logstore";
 import { CfQueueAdapter } from "./adapters/cf.queue";
 import { WorkersAiProvider } from "./adapters/workers-ai.provider";
-import { CfEmailMailer } from "./adapters/cf.email.mailer";
-import { NoopMailer } from "./adapters/noop.mailer";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 import { AiUsageTracker } from "./analytics/ai.usage.tracker";
@@ -24,7 +22,6 @@ export interface WorkerContext {
   config: HealingConfig;
   auth: AuthService;
   logger: Logger;
-  alertRecipients: string[];
   /**
    * OURO_REGISTRATION_ENABLED による上書き。未設定（undefined）なら DB 設定に従う
    */
@@ -32,8 +29,6 @@ export interface WorkerContext {
   githubTokenSet: boolean;
   analytics?: AiUsageTracker;
   versionMetadata?: VersionMetadata;
-  /** Webhook secret 暗号化キー（OURO_ENCRYPTION_KEY） */
-  encryptionKey: string;
   /** 現在の対象リポジトリ（settings.selected_repo 優先で解決済み）。 */
   currentRepo: { owner: string; repo: string };
   /** 対象リポジトリを実行時に差し替える（vcs provider と config.vcs をミューテート）。 */
@@ -96,9 +91,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   // 単一 Worker 内の RepoRunner（旧 runner Service Binding は廃止）
   const runner = new RepoRunner(vcs, ai, db);
 
-  const mailer = env.EMAIL
-    ? new CfEmailMailer(env.EMAIL, env.MAIL_FROM ?? "ouroboros@example.com")
-    : new NoopMailer();
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
   const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
@@ -119,7 +111,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     db,
     logs,
     queue,
-    mailer,
     runner,
     codeRunner: runner,
     rateLimiter,
@@ -141,7 +132,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     config,
     auth,
     logger,
-    alertRecipients: (env.OURO_ALERT_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     registrationEnabled:
       env.OURO_REGISTRATION_ENABLED === undefined
         ? undefined
@@ -149,7 +139,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     githubTokenSet: !!githubToken,
     analytics,
     versionMetadata: env.CF_VERSION_METADATA,
-    encryptionKey: env.OURO_ENCRYPTION_KEY ?? "",
     currentRepo,
     refreshRepo,
   };

@@ -26,17 +26,15 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   http/                Hono ベース REST API（ルート・バリデーション・OpenAPI）
   inspection/          AI スコアリングエンジン（6 次元・32 観点）
   logging/             構造化ロガー（R2 永続化）
-  notifications/       メールアラート・Notifier（EMAIL バインディング or Noop）
   ports/               アダプターインターフェース（Ports & Adapters）
   pr/                  PR 生成・重複排除・AI 安全レビュー・自動マージ
   queues/              Cloudflare Queues コンシューマー
   refactor/            Refactor モード（検査結果からのリファクタ提案・適用）
   schemas/             JSON スキーマ定義（AJV バリデーション用）
   ui/                  Hono JSX ベース SSR GUI（htmx + Tailwind v4 + daisyUI 5）
-  utils/               暗号化・エスカレーター・修正キャッシュ
+  utils/               エスカレーター・修正キャッシュ
   vcs/                 GitHub REST API 連携（fetch ベース、git object 書き込み含む）
   vectorize/           Vectorize コードインデックス（埋め込み RAG）
-  webhook/             Webhook ディスパッチ・閾値評価・SSRF ガード
   workflows/           Cloudflare Workflows（永続・再開可能なライフサイクル）
   __tests__/           Vitest ユニットテスト
   types.ts             全型定義
@@ -58,7 +56,6 @@ Workflows (healing.ts)
   1. scan     → RepoRunner.scan() → GitHub tarball + scanner
   2. analyze  → AIAnalyzer（Vectorize RAG）→ Workers AI
   3. fix      → RepoRunner.applyFix() → blob/tree/commit/ref → VCS.createPR()
-  4. notify   → Notifier + AlertService
 失敗時は healing_runs.status = "failed" + summary にエラーを記録
 キャンセル: POST /healing/:runId/cancel → Workflow.terminate()
 ```
@@ -102,8 +99,6 @@ WORKERS_AI_API_TOKEN     （任意）無効なトークンは 2021 エラーに�
 CLOUDFLARE_ACCOUNT_ID    Workers AI REST API 使用時に必要（任意）
 GITHUB_TOKEN             PR/Issue 作成用
 GITHUB_REPOSITORY        owner/repo 形式（非推奨・トークンから自動検出可）
-OURO_ALERT_EMAILS        メールアラート送信先（カンマ区切り、任意）
-OURO_ENCRYPTION_KEY      Webhook secret 暗号化キー（任意）
 ```
 
 ## コード規約
