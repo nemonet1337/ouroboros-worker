@@ -244,3 +244,19 @@ src/ui/styles/tailwind.generated.css
 # Kilo Code
 .kilo/
 .kilocode/
+
+# Agent / local tooling
+# Share: .devcontainer/, .grok/config.toml, .claude/settings.json, .claude/rules/,
+#        .serena/project.yml, .serena/.gitignore
+.claude/*.local.json
+.grok/*
+!.grok/config.toml
+.serena/cache/
+.serena/project.local.yml
+.mcp-auth/
+.headroom/
+
+# Secrets / local credentials (do not commit)
+.env.*
+!.env.example
+
