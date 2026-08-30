@@ -53,7 +53,7 @@ export const InspectionPage: FC<InspectionPageProps> = ({ user, selectedRepo = n
                     <label class="label py-1">
                       <span class="label-text font-semibold opacity-75">対象リポジトリ</span>
                     </label>
-                    <div class="input input-bordered w-full rounded-xl mt-1 text-sm font-mono flex items-center gap-2 bg-base-200/60">
+                    <div class="input w-full rounded-xl mt-1 text-sm font-mono flex items-center gap-2 bg-base-200/60">
                       <i data-lucide="github" class="w-4 h-4 opacity-60" />
                       <span>{repoLabel}</span>
                     </div>
@@ -66,7 +66,7 @@ export const InspectionPage: FC<InspectionPageProps> = ({ user, selectedRepo = n
                     <textarea
                       name="instruction"
                       id="instruction"
-                      class="textarea textarea-bordered w-full input-glow rounded-xl mt-1 text-sm leading-relaxed bg-black/10 placeholder-base-content/30"
+                      class="textarea w-full input-glow rounded-xl mt-1 text-sm leading-relaxed bg-black/10 placeholder-base-content/30"
                       rows={4}
                       placeholder="例: 認証まわりのセキュリティ問題を重点的に解析してください。（空欄の場合は全体的な品質を解析します）"
                     ></textarea>

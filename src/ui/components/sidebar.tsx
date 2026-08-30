@@ -11,6 +11,7 @@ export const Sidebar: FC<SidebarProps> = ({ user }) => {
     { href: "/healing", icon: "wrench", label: "自己修復" },
     { href: "/inspection", icon: "search", label: "コード解析" },
     { href: "/code", icon: "code", label: "コード編集" },
+    { href: "/webhooks", icon: "webhook", label: "ウェブフック" },
     { href: "/models", icon: "cpu", label: "モデル設定" },
     { href: "/settings", icon: "settings", label: "システム設定" },
   ];
@@ -20,42 +21,35 @@ export const Sidebar: FC<SidebarProps> = ({ user }) => {
   }
 
   return (
-    <div class="drawer-side z-40 border-r border-[var(--glass-border)] bg-base-100">
-      <label for="drawer-toggle" class="drawer-overlay"></label>
-      <div class="flex flex-col h-full w-60 bg-base-100">
-        {/* ロゴ部分 */}
-        <div class="hidden lg:flex items-center gap-3 px-4 h-14 border-b border-[var(--glass-border)]">
-          <div class="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-content font-bold text-sm">
-            O
-          </div>
-          <span class="text-lg font-bold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-            Ouroboros
-          </span>
+    <div class="flex h-full w-60 flex-col bg-base-100">
+      <div class="hidden h-14 items-center gap-3 border-b border-[var(--glass-border)] px-4 lg:flex">
+        <div class="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-content">
+          O
         </div>
-
-        {/* メニューリンク */}
-        <ul id="sidebar-menu" class="menu p-3 w-full flex-1 gap-1">
-          {links.map((link) => (
-            <li key={link.href}>
-              <a
-                href={link.href}
-                class="sidebar-link gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200 hover:bg-base-200"
-              >
-                <i data-lucide={link.icon} class="w-4 h-4 opacity-70" />
-                <span>{link.label}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-
-        {/* フッター情報 */}
-        <div class="p-3 border-t border-[var(--glass-border)] text-xs opacity-50 flex justify-between items-center bg-base-200">
-          <span>Ouroboros Worker</span>
-          <span id="sidebar-version">v2.0.0</span>
-        </div>
+        <span class="bg-gradient-to-r from-primary to-secondary bg-clip-text text-lg font-bold tracking-wider text-transparent">
+          Ouroboros
+        </span>
       </div>
 
-      {/* アクティブ状態付与用のクライアントスクリプト */}
+      <ul id="sidebar-menu" class="flex w-full flex-1 flex-col gap-1 p-3">
+        {links.map((link) => (
+          <li key={link.href}>
+            <a
+              href={link.href}
+              class="sidebar-link flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-all duration-200 hover:bg-base-200"
+            >
+              <i data-lucide={link.icon} class="h-4 w-4 opacity-70" />
+              <span>{link.label}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+
+      <div class="flex items-center justify-between border-t border-[var(--glass-border)] bg-base-200 p-3 text-xs opacity-50">
+        <span>Ouroboros Worker</span>
+        <span id="sidebar-version">v2.0.0</span>
+      </div>
+
       <script dangerouslySetInnerHTML={{ __html: `
         (function() {
           const path = window.location.pathname;

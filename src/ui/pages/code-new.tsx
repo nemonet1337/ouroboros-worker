@@ -49,7 +49,7 @@ export const CodeNewPage: FC<CodeNewPageProps> = ({ user, selectedRepo = null })
                 <label class="label py-1">
                   <span class="label-text font-semibold opacity-75">対象リポジトリ</span>
                 </label>
-                <div class="input input-bordered w-full rounded-xl mt-1 text-sm font-mono flex items-center gap-2 bg-base-200/60">
+                <div class="input w-full rounded-xl mt-1 text-sm font-mono flex items-center gap-2 bg-base-200/60">
                   <i data-lucide="github" class="w-4 h-4 opacity-60" />
                   <span>{repoLabel}</span>
                 </div>
@@ -69,7 +69,7 @@ export const CodeNewPage: FC<CodeNewPageProps> = ({ user, selectedRepo = null })
                   name="title"
                   id="title"
                   placeholder="例: ログインフォームのレイアウトバグ修正"
-                  class="input input-bordered w-full input-glow rounded-xl mt-1 text-sm"
+                  class="input w-full input-glow rounded-xl mt-1 text-sm"
                   required
                 />
               </div>
@@ -81,7 +81,7 @@ export const CodeNewPage: FC<CodeNewPageProps> = ({ user, selectedRepo = null })
                 <textarea
                   name="instruction"
                   id="instruction"
-                  class="textarea textarea-bordered w-full input-glow rounded-xl mt-1 text-sm leading-relaxed bg-black/10 placeholder-base-content/30"
+                  class="textarea w-full input-glow rounded-xl mt-1 text-sm leading-relaxed bg-black/10 placeholder-base-content/30"
                   rows={6}
                   placeholder="例: src/ui/pages/login.tsx 内のレイアウトスタイルについて、入力フォーム周辺のパディングを増やし、グラデーションボタンをより鮮やかに変更してください。"
                   required

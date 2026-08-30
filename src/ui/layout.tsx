@@ -13,12 +13,18 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
     <html lang="ja" data-theme="winter">
       <AppHead />
       <body class="min-h-screen bg-base-300 transition-colors duration-200">
-        <div class="drawer lg:drawer-open">
-          <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
-          <div class="drawer-content flex flex-col min-h-screen">
-            
-            {/* ナビゲーションバー (ヘッダー) */}
-            <div class="navbar bg-base-100 sticky top-0 z-30 px-4 border-b border-[var(--glass-border)] h-14">
+        <div class="flex min-h-screen">
+          <input id="drawer-toggle" type="checkbox" class="peer/drawer sr-only" />
+          <label
+            for="drawer-toggle"
+            class="fixed inset-0 z-30 hidden bg-black/50 peer-checked/drawer:block lg:hidden"
+          ></label>
+          <aside class="fixed inset-y-0 left-0 z-40 flex w-60 -translate-x-full flex-col border-r border-[var(--glass-border)] bg-base-100 transition-transform duration-200 peer-checked/drawer:translate-x-0 lg:static lg:translate-x-0">
+            <Sidebar user={user} />
+          </aside>
+
+          <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+            <header class="sticky top-0 z-20 flex h-14 items-center border-b border-[var(--glass-border)] bg-base-100 px-4">
               <div class="flex-none lg:hidden">
                 <label for="drawer-toggle" class="btn btn-square btn-ghost btn-sm">
                   <i data-lucide="menu" class="w-5 h-5"></i>
@@ -29,13 +35,10 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                   Ouroboros
                 </a>
               </div>
-              
-              {/* 右側のコントロール群 */}
-              <div class="flex-none ml-auto flex items-center gap-2">
-                {/* バージョンバッジ */}
-                <span id="version-badge" class="text-xs px-2 py-0.5 rounded-full bg-base-200 text-base-content/60 hidden font-mono"></span>
 
-                {/* 進捗通知ベル（進行中の解析・修復・編集セッションを全ページで表示） */}
+              <div class="ml-auto flex flex-none items-center gap-2">
+                <span id="version-badge" class="hidden rounded-full bg-base-200 px-2 py-0.5 font-mono text-xs text-base-content/60"></span>
+
                 {user && (
                   <div
                     hx-get="/ui/fragments/notifications"
@@ -44,63 +47,54 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                   ></div>
                 )}
 
-                {/* テーマ切り替えトグル */}
                 <button id="theme-toggle" class="btn btn-ghost btn-sm btn-circle" aria-label="テーマ切替">
                   <i data-lucide="sun" class="w-5 h-5 hidden dark-icon" />
                   <i data-lucide="moon" class="w-5 h-5 hidden light-icon" />
                 </button>
 
-                {/* ユーザープロフィール */}
                 {user ? (
-                  <div class="dropdown dropdown-end">
-                    <button class="btn btn-ghost btn-sm avatar gap-2 normal-case">
-                      <div class="w-8 h-8 rounded-full bg-primary text-primary-content flex items-center justify-center font-bold">
+                  <details class="relative">
+                    <summary class="btn btn-ghost btn-sm flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                      <div class="flex size-8 items-center justify-center rounded-full bg-primary font-bold text-primary-content">
                         {user.email[0].toUpperCase()}
                       </div>
-                      <span class="hidden md:inline text-xs opacity-75">{user.email.split('@')[0]}</span>
-                    </button>
-                    <div class="dropdown-content menu z-50 bg-base-100 rounded-xl w-60 p-2 mt-2 shadow-2xl border border-[var(--glass-border)]">
-                      <li class="menu-title px-4 py-2 border-b border-[var(--glass-border)]">
-                        <span class="font-semibold text-base-content truncate block">{user.email}</span>
+                      <span class="hidden text-xs opacity-75 md:inline">{user.email.split('@')[0]}</span>
+                    </summary>
+                    <div class="absolute right-0 z-50 mt-2 w-60 rounded-xl border border-[var(--glass-border)] bg-base-100 p-2 shadow-2xl">
+                      <div class="border-b border-[var(--glass-border)] px-4 py-2">
+                        <span class="block truncate font-semibold text-base-content">{user.email}</span>
                         <span class="text-xs font-normal opacity-60">ロール: {user.role === 'admin' ? '管理者' : '一般ユーザー'}</span>
-                      </li>
-                      <li class="mt-1">
-                        <a href="/models" class="gap-2">
-                          <i data-lucide="cpu" class="w-4 h-4" /> モデル設定
-                        </a>
-                      </li>
-                      <li>
-                        <a href="/settings" class="gap-2">
-                          <i data-lucide="settings" class="w-4 h-4" /> システム設定
-                        </a>
-                      </li>
+                      </div>
+                      <a href="/models" class="mt-1 flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-base-200">
+                        <i data-lucide="cpu" class="w-4 h-4" /> モデル設定
+                      </a>
+                      <a href="/settings" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-base-200">
+                        <i data-lucide="settings" class="w-4 h-4" /> システム設定
+                      </a>
                       {user.role === "admin" && (
-                        <li>
-                          <a href="/admin" class="gap-2">
-                            <i data-lucide="shield-check" class="w-4 h-4" /> 管理者パネル
-                          </a>
-                        </li>
+                        <a href="/admin" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-base-200">
+                          <i data-lucide="shield-check" class="w-4 h-4" /> 管理者パネル
+                        </a>
                       )}
-                      <li class="border-t border-[var(--glass-border)] mt-1 pt-1">
+                      <div class="mt-1 border-t border-[var(--glass-border)] pt-1">
                         <button
                           hx-post="/api/v1/auth/logout"
                           hx-redirect="/login"
                           hx-swap="none"
-                          class="gap-2 text-error hover:bg-error/10"
+                          class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-error hover:bg-error/10"
                         >
                           <i data-lucide="log-out" class="w-4 h-4" /> ログアウト
                         </button>
-                      </li>
+                      </div>
                     </div>
-                  </div>
+                  </details>
                 ) : null}
               </div>
-            </div>
+            </header>
 
-            {/* メインコンテンツ */}
-            <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full animate-fade-in-up">
+            <main class="mx-auto w-full max-w-7xl flex-1 animate-fade-in-up p-4 md:p-8">
               {flash && (
-                <div class={`alert ${flash.type === 'success' ? 'alert-success' : 'alert-error'} shadow-lg mb-6 rounded-lg animate-fade-in-up`}>
+                <div class={`alert ${flash.type === 'success' ? 'alert-success' : 'alert-error'} mb-6 rounded-lg shadow-lg animate-fade-in-up`}>
                   <i data-lucide={flash.type === 'success' ? 'check-circle' : 'alert-triangle'} class="w-5 h-5" />
                   <span>{flash.message}</span>
                 </div>
@@ -108,49 +102,39 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
               {children}
             </main>
           </div>
-
-          {/* 共通サイドバー */}
-          <Sidebar user={user} />
         </div>
 
-        {/* アイコン初期化 & テーマ切替スクリプト */}
         <script dangerouslySetInnerHTML={{ __html: `
-          // Lucide アイコン初期化
           lucide.createIcons();
           document.addEventListener('htmx:afterSwap', function() {
             lucide.createIcons();
           });
 
-          // HTMX エラーレスポンス (400, 500等) でもスワップを許可する
           document.addEventListener('htmx:beforeSwap', function(evt) {
             if (evt.detail.xhr.status >= 400 && evt.detail.xhr.status < 600) {
               evt.detail.shouldSwap = true;
               evt.detail.isError = false;
 
-              // レスポンスが JSON の場合、HTMLのアラート通知に変換してスワップさせる
               const contentType = evt.detail.xhr.getResponseHeader("Content-Type");
               if (contentType && contentType.includes("application/json")) {
                 try {
                   const responseObj = JSON.parse(evt.detail.xhr.responseText);
                   const errorMsg = responseObj.error?.message || "エラーが発生しました。";
                   const details = responseObj.error?.details ? " : " + responseObj.error.details.join(", ") : "";
-                  
-                  // serverResponseをHTMLで上書きしてHTMXにスワップさせる
+
                   evt.detail.serverResponse = '<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>' + errorMsg + details + '</span></div>';
                 } catch (e) {
-                  // パース失敗時のフォールバック
                 }
               }
             }
           });
 
-          // テーマ切り替え機能
           (function() {
             const toggleBtn = document.getElementById('theme-toggle');
             if (!toggleBtn) return;
-            
+
             const getTheme = () => document.documentElement.getAttribute('data-theme');
-            
+
             const updateToggleIcons = (theme) => {
               const sunIcon = toggleBtn.querySelector('.dark-icon');
               const moonIcon = toggleBtn.querySelector('.light-icon');
@@ -162,10 +146,10 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
                 moonIcon.classList.add('hidden');
               }
             };
-            
+
             const currentTheme = getTheme();
             updateToggleIcons(currentTheme);
-            
+
             toggleBtn.addEventListener('click', () => {
               const newTheme = getTheme() === 'night' ? 'winter' : 'night';
               document.documentElement.setAttribute('data-theme', newTheme);
@@ -174,7 +158,6 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({ user, flash, childr
             });
           })();
 
-          // バージョン情報の取得と表示
           (async () => {
             try {
               const res = await fetch('/api/v1/version');

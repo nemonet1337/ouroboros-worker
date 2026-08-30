@@ -31,7 +31,7 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   queues/              Cloudflare Queues コンシューマー
   refactor/            Refactor モード（検査結果からのリファクタ提案・適用）
   schemas/             JSON スキーマ定義（AJV バリデーション用）
-  ui/                  Hono JSX ベース SSR GUI（htmx + Tailwind v4 + daisyUI 5）
+  ui/                  Hono JSX ベース SSR GUI（htmx + Tailwind v4）
   utils/               エスカレーター・修正キャッシュ
   vcs/                 GitHub REST API 連携（fetch ベース、git object 書き込み含む）
   vectorize/           Vectorize コードインデックス（埋め込み RAG）
@@ -76,7 +76,7 @@ Workflows (healing.ts)
 ```bash
 npm run typecheck       # TypeScript 型チェック（tsc --noEmit）
 npm run test            # Vitest ユニットテスト（src/__tests__/）
-npm run build:css       # Tailwind v4 + daisyUI 5 の CSS を生成
+npm run build:css       # Tailwind v4 の CSS を生成
 npm run worker:dev      # build:css + wrangler dev
 npm run worker:deploy   # build:css + wrangler deploy
 ```

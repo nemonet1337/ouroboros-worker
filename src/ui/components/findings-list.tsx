@@ -54,33 +54,30 @@ export const FindingsList: FC<FindingsListProps> = ({ findings }) => {
         const localizedCategory = CATEGORY_MAP[f.category.toLowerCase()] || f.category;
 
         return (
-          <div 
-            key={f.id} 
-            class={`collapse collapse-arrow card-glass hover:shadow-md transition-all duration-200 ${config.borderClass} overflow-hidden`}
+          <details
+            key={f.id}
+            class={`card-glass overflow-hidden transition-all duration-200 hover:shadow-md ${config.borderClass}`}
+            open={i === 0}
           >
-            {/* アコーディオン制御用のラジオボタン。i === 0 で最初のみデフォルト展開 */}
-            <input type="radio" name="findings-accordion" checked={i === 0} class="peer" />
-            
-            <div class="collapse-title text-base font-semibold flex items-center gap-3 pr-12 py-4">
-              <span class={`badge badge-sm font-black px-2 py-0.5 rounded-full ${config.badgeClass} flex items-center gap-1`}>
-                <i data-lucide={config.icon} class="w-3.5 h-3.5" />
+            <summary class="flex cursor-pointer list-none items-center gap-3 py-4 pr-4 text-base font-semibold [&::-webkit-details-marker]:hidden">
+              <span class={`badge badge-sm flex items-center gap-1 rounded-full px-2 py-0.5 font-black ${config.badgeClass}`}>
+                <i data-lucide={config.icon} class="h-3.5 w-3.5" />
                 <span>{config.label}</span>
               </span>
-              <span class="text-base-content tracking-wide truncate">{f.title}</span>
-            </div>
-            
-            <div class="collapse-content px-6 pb-5 pt-0 border-t border-[var(--glass-border)]/5 bg-base-200/20">
-              <div class="pt-4 space-y-3 text-sm text-base-content/85 leading-relaxed">
+              <span class="truncate tracking-wide text-base-content">{f.title}</span>
+            </summary>
+            <div class="border-t border-[var(--glass-border)]/5 bg-base-200/20 px-6 pb-5 pt-0">
+              <div class="space-y-3 pt-4 text-sm leading-relaxed text-base-content/85">
                 <p>{f.description}</p>
                 <div class="flex items-center gap-2 pt-2">
                   <span class="text-xs opacity-50">カテゴリ:</span>
-                  <span class="badge badge-outline badge-sm rounded-full text-xs font-semibold px-2">
+                  <span class="badge badge-outline badge-sm rounded-full px-2 text-xs font-semibold">
                     {localizedCategory}
                   </span>
                 </div>
               </div>
             </div>
-          </div>
+          </details>
         );
       })}
     </div>

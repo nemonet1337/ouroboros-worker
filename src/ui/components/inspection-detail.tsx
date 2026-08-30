@@ -17,12 +17,12 @@ interface InspectionDetailProps {
 }
 
 const RecommendationCard: FC<{ rec: Recommendation }> = ({ rec }) => (
-  <details class="collapse collapse-arrow bg-base-200/40 rounded-lg">
-    <summary class="collapse-title text-sm font-semibold">{rec.title}</summary>
-    <div class="collapse-content text-xs space-y-2">
+  <details class="rounded-lg bg-base-200/40">
+    <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">{rec.title}</summary>
+    <div class="space-y-2 px-3 pb-3 text-xs">
       {rec.rationale && <p class="opacity-75">{rec.rationale}</p>}
       {rec.diff && (
-        <pre class="bg-black/40 rounded-lg p-3 overflow-x-auto font-mono text-[11px] leading-relaxed whitespace-pre">
+        <pre class="overflow-x-auto whitespace-pre rounded-lg bg-black/40 p-3 font-mono text-[11px] leading-relaxed">
           {rec.diff}
         </pre>
       )}

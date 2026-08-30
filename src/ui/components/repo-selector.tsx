@@ -52,7 +52,7 @@ export const RepoSelector: FC<RepoSelectorProps> = ({ repos, selected, error }) 
           list="repo-list"
           placeholder="owner/name を検索または入力"
           value={current}
-          class="input input-bordered flex-1 input-glow rounded-xl text-sm font-mono"
+          class="input flex-1 input-glow rounded-xl text-sm font-mono"
           required
         />
         <datalist id="repo-list">

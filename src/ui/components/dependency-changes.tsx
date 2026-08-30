@@ -15,7 +15,7 @@ interface DependencyChangesProps {
 export const DependencyChanges: FC<DependencyChangesProps> = ({ changes }) => {
   return (
     <div class="overflow-x-auto">
-      <table class="table table-zebra">
+      <table class="table-modern w-full text-left text-sm">
         <thead>
           <tr>
             <th>Package</th>

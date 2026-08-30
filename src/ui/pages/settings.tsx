@@ -71,7 +71,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     name="email"
                     id="email"
                     placeholder={user?.email || "you@example.com"}
-                    class="input input-bordered w-full input-glow rounded-xl mt-1 text-sm"
+                    class="input w-full input-glow rounded-xl mt-1 text-sm"
                     required
                   />
                 </div>
@@ -85,7 +85,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     name="password"
                     id="password"
                     placeholder="変更しない場合は空欄のままにしてください"
-                    class="input input-bordered w-full input-glow rounded-xl mt-1 text-sm"
+                    class="input w-full input-glow rounded-xl mt-1 text-sm"
                     minlength={8}
                   />
                   <label class="label px-1">
@@ -169,7 +169,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                       name="scheduleTime"
                       id="scheduleTime"
                       value={scheduleTime}
-                      class="input input-bordered w-full rounded-xl text-sm"
+                      class="input w-full rounded-xl text-sm"
                     />
                     <label class="label px-1">
                       <span class="label-text-alt opacity-50">

@@ -26,31 +26,31 @@ interface NotificationBellProps {
  */
 export const NotificationBell: FC<NotificationBellProps> = ({ items }) => {
   return (
-    <div class="dropdown dropdown-end">
-      <button class="btn btn-ghost btn-sm btn-circle indicator" aria-label="進行中のアクション">
+    <details class="relative">
+      <summary class="btn btn-ghost btn-sm btn-circle indicator cursor-pointer list-none [&::-webkit-details-marker]:hidden" aria-label="進行中のアクション">
         <i data-lucide="bell" class="w-5 h-5" />
         {items.length > 0 && (
           <span class="indicator-item badge badge-primary badge-xs font-bold">{items.length}</span>
         )}
-      </button>
-      <div class="dropdown-content z-50 bg-base-100 rounded-xl w-80 p-2 mt-2 shadow-2xl border border-[var(--glass-border)]">
-        <div class="px-3 py-2 text-xs font-semibold opacity-60 border-b border-[var(--glass-border)]">
+      </summary>
+      <div class="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-[var(--glass-border)] bg-base-100 p-2 shadow-2xl">
+        <div class="border-b border-[var(--glass-border)] px-3 py-2 text-xs font-semibold opacity-60">
           進行中のアクション
         </div>
         {items.length === 0 ? (
-          <div class="px-3 py-4 text-xs opacity-50 text-center">実行中のアクションはありません</div>
+          <div class="px-3 py-4 text-center text-xs opacity-50">実行中のアクションはありません</div>
         ) : (
-          <ul class="menu menu-sm p-0">
+          <ul class="p-0">
             {items.map((item) => (
               <li>
-                <a href={item.href} class="flex items-start gap-2 py-2">
-                  <i data-lucide={item.icon} class="w-4 h-4 mt-0.5 text-primary shrink-0" />
-                  <span class="flex-1 min-w-0">
-                    <span class="block text-xs font-semibold truncate">
+                <a href={item.href} class="flex items-start gap-2 rounded-md px-2 py-2 hover:bg-base-200">
+                  <i data-lucide={item.icon} class="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-xs font-semibold">
                       {item.kind}: {item.title}
                     </span>
                     <span class="block text-xs opacity-60">
-                      <span class="loading loading-dots loading-xs align-middle mr-1"></span>
+                      <span class="loading loading-dots loading-xs mr-1 align-middle"></span>
                       {item.status} ・{" "}
                       {new Date(item.at).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo" })}
                     </span>
@@ -61,6 +61,6 @@ export const NotificationBell: FC<NotificationBellProps> = ({ items }) => {
           </ul>
         )}
       </div>
-    </div>
+    </details>
   );
 };

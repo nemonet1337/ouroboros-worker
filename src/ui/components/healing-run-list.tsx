@@ -229,11 +229,11 @@ export const HealingRunList: FC<HealingRunListProps> = ({
                           </div>
                         )}
                         {prs.length > 0 ? (
-                          <details class="collapse collapse-arrow bg-base-200/40 rounded-lg">
-                            <summary class="collapse-title min-h-0 py-1 px-2 text-xs font-semibold">
+                          <details class="rounded-lg bg-base-200/40">
+                            <summary class="min-h-0 cursor-pointer px-2 py-1 text-xs font-semibold">
                               作成 PR: {prs.length} 件
                             </summary>
-                            <div class="collapse-content px-2 space-y-1">
+                            <div class="space-y-1 px-2 pb-2">
                               {prs.map((pr) => (
                                 <div class="text-xs">
                                   {pr.url ? (

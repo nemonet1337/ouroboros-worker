@@ -1,4 +1,14 @@
 export const components = `
+/* アラート */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-width: 1px;
+  border-style: solid;
+}
+
 /* アラートの最小保証色（Cloudflareステータス色） */
 .alert-error {
   background-color: #FF4040;

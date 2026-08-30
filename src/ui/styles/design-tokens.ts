@@ -29,8 +29,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* テーマカラー（旧 daisyUI 4 の --p/--b1 等の上書き）は
-   src/ui/styles/tailwind.source.css の @plugin "daisyui/theme" 定義へ移行済み */
+/* テーマカラー（--color-primary / --color-base-* 等）は
+   src/ui/styles/tailwind.source.css の @theme と [data-theme] 上書きで定義 */
 
 /* ============================================
    テーマ別カスタム変数: ライト (winter)

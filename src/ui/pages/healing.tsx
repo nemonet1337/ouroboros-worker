@@ -83,39 +83,38 @@ export const HealingPage: FC<HealingPageProps> = ({ user }) => {
       </div>
 
       {/* 実行ログモーダル（リストのポーリングで消えないようページに固定） */}
-      <dialog id="healing_log_modal" class="modal">
-        <div class="modal-box max-w-3xl">
+      <dialog
+        id="healing_log_modal"
+        class="relative m-auto w-[calc(100%-2rem)] max-w-3xl rounded-xl border border-[var(--glass-border)] bg-base-100 p-6 text-base-content shadow-2xl backdrop:bg-black/50"
+        onclick="if (event.target === this) this.close()"
+      >
+        <form method="dialog">
+          <button
+            type="submit"
+            class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            aria-label="閉じる"
+          >
+            ✕
+          </button>
+        </form>
+        <h3 class="mb-1 flex items-center gap-2 text-lg font-bold">
+          <i data-lucide="scroll-text" class="h-5 w-5 text-primary" />
+          修復実行ログ
+        </h3>
+        <p class="mb-4 text-xs opacity-50">実行 ID をクリックした修復の詳細とログ出力です。</p>
+        <div id="healing-log-modal-loading" class="htmx-indicator mb-2 text-xs opacity-60">
+          読み込み中…
+        </div>
+        <div id="healing-log-modal-body" class="min-h-24">
+          <p class="text-sm opacity-50">実行 ID をクリックするとログが表示されます。</p>
+        </div>
+        <div class="mt-4 flex justify-end">
           <form method="dialog">
-            <button
-              type="submit"
-              class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-              aria-label="閉じる"
-            >
-              ✕
+            <button type="submit" class="btn btn-sm rounded-lg">
+              閉じる
             </button>
           </form>
-          <h3 class="font-bold text-lg mb-1 flex items-center gap-2">
-            <i data-lucide="scroll-text" class="w-5 h-5 text-primary" />
-            修復実行ログ
-          </h3>
-          <p class="text-xs opacity-50 mb-4">実行 ID をクリックした修復の詳細とログ出力です。</p>
-          <div id="healing-log-modal-loading" class="htmx-indicator text-xs opacity-60 mb-2">
-            読み込み中…
-          </div>
-          <div id="healing-log-modal-body" class="min-h-24">
-            <p class="text-sm opacity-50">実行 ID をクリックするとログが表示されます。</p>
-          </div>
-          <div class="modal-action">
-            <form method="dialog">
-              <button type="submit" class="btn btn-sm rounded-lg">
-                閉じる
-              </button>
-            </form>
-          </div>
         </div>
-        <form method="dialog" class="modal-backdrop">
-          <button type="submit">閉じる</button>
-        </form>
       </dialog>
     </Layout>
   );

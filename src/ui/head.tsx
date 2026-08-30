@@ -23,7 +23,7 @@ export const AppHead: FC<AppHeadProps> = ({ title = "Ouroboros" }) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>{title}</title>
 
-      {/* ビルド済み Tailwind v4 + daisyUI 5（npm run build:css で生成、Worker が配信） */}
+      {/* ビルド済み Tailwind v4（npm run build:css で生成、Worker が配信） */}
       <link href="/assets/tailwind.css" rel="stylesheet" type="text/css" />
       <script src="https://unpkg.com/htmx.org@2.0.8"></script>
       <script src="https://unpkg.com/lucide@0.408.0"></script>

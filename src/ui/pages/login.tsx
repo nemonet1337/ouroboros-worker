@@ -99,7 +99,7 @@ export const LoginPage: FC<LoginPageProps> = ({ next, error }) => {
                         name="email"
                         id="email"
                         placeholder="you@example.com"
-                        class="input input-bordered w-full pl-10 input-glow rounded-xl"
+                        class="input w-full pl-10 input-glow rounded-xl"
                         required
                       />
                     </div>
@@ -118,7 +118,7 @@ export const LoginPage: FC<LoginPageProps> = ({ next, error }) => {
                         name="password"
                         id="password"
                         placeholder="••••••••"
-                        class="input input-bordered w-full pl-10 input-glow rounded-xl"
+                        class="input w-full pl-10 input-glow rounded-xl"
                         required
                       />
                     </div>

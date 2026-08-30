@@ -51,19 +51,29 @@ export const InspectionProgress: FC<InspectionProgressProps> = ({ id, status, st
           <span>解析の進行状況</span>
         </h2>
 
-        {/* ステップインジケーター */}
-        <ul class="steps steps-vertical w-full text-sm">
+        <ol class="w-full space-y-2 text-sm">
           {STEP_ORDER.filter((s) => s !== "queued").map((s) => {
             const idx = STEP_ORDER.indexOf(s);
             const done = currentIdx > idx || status === "completed";
             const active = status === s;
             return (
-              <li class={`step ${done || active ? "step-primary" : ""}`}>
-                {STEP_LABELS[s] ?? s}
+              <li class="flex items-center gap-2">
+                <span
+                  class={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
+                    done || active
+                      ? "bg-primary text-primary-content"
+                      : "bg-base-200 text-base-content/40"
+                  }`}
+                >
+                  {done ? "✓" : idx}
+                </span>
+                <span class={done || active ? "font-semibold" : "opacity-50"}>
+                  {STEP_LABELS[s] ?? s}
+                </span>
               </li>
             );
           })}
-        </ul>
+        </ol>
 
         {/* ステップログ */}
         {steps.length > 0 && (
