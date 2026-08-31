@@ -85,6 +85,8 @@ wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migr
 
 # Vectorize インデックス（コード RAG 用）
 wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string
+wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string
 wrangler queues create ouroboros-dlq                 # 失敗イベントの DLQ
 
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン

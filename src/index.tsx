@@ -260,8 +260,25 @@ async function buildApp(env: Env): Promise<Hono> {
     const { CodeSessionManager } = await import("./code/session.manager");
     const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner, ctx.ports.ai);
     const session = await manager.get(sessionId, identity!.user.id);
+    const traceRows = await ctx.ports.db.query<{ value: string }>(
+      `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'harnessTrace'`,
+      [sessionId]
+    );
+    let harnessTrace = null;
+    if (traceRows[0]?.value) {
+      try {
+        harnessTrace = JSON.parse(traceRows[0].value);
+      } catch {
+        harnessTrace = null;
+      }
+    }
     return c.html(
-      <CodeSessionPage sessionId={sessionId} user={identity?.user} session={session as any} />
+      <CodeSessionPage
+        sessionId={sessionId}
+        user={identity?.user}
+        session={session as any}
+        harnessTrace={harnessTrace}
+      />
     );
   });
 

@@ -84,6 +84,8 @@ wrangler d1 migrations apply ouroboros               # schema from src/db/migrat
 
 # Vectorize index (code RAG)
 wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
+wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string
+wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string
 wrangler queues create ouroboros-dlq                 # dead-letter queue for failed events
 
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token

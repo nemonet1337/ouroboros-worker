@@ -137,6 +137,30 @@ describe("CodeSessionManager", () => {
     expect(queries.some((q) => q.sql.includes("mode = ?") && q.params.includes("code_only"))).toBe(true);
   });
 
+  it("includes retrieved snippets in the plan prompt", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
+    (runner as any).generate = generateSpy;
+    const ai = {
+      name: "mock",
+      complete: vi.fn().mockResolvedValue("1. 直す"),
+    };
+    const indexer = {
+      search: vi.fn().mockResolvedValue([
+        { file: "src/a.ts", startLine: 1, endLine: 8, text: "export function a() {}", score: 0.9 },
+      ]),
+    };
+    manager = new CodeSessionManager(mockDb, runner, ai as any, indexer as any);
+
+    await manager.generate("session-123", "user-1", { model: "m", planModel: "p/m" });
+
+    expect(indexer.search).toHaveBeenCalled();
+    expect(ai.complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("src/a.ts"),
+      })
+    );
+  });
+
   it("stores error_message when runner returns empty patches", async () => {
     const generateSpy = vi.fn().mockResolvedValue({ patches: [], model: "m", error: "empty" });
     (runner as any).generate = generateSpy;

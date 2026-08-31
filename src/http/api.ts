@@ -32,6 +32,7 @@ import {
   userModelsSchema,
 } from "./validation";
 import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
+import { codeIndexStatusKey, vectorizeNamespace } from "../vectorize/chunker";
 import { DEFAULT_APP_SETTINGS, getEmbeddingModel, getSelectedRepo, setEmbeddingModel } from "../config/settings.keys";
 import {
   buildMetricsData,
@@ -429,11 +430,12 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       );
     }
     // インデックス構築は数分かかるため Queue で非同期実行する
+    const selected = await getSelectedRepo(settingsRepo);
     await ports.queue.send({
       id: newId(),
       type: "codeindex.requested",
       userId: c.get("identity")!.user.id,
-      payload: {},
+      payload: selected ? { owner: selected.owner, repo: selected.repo } : {},
       enqueuedAt: Date.now(),
     });
     if (c.req.header("HX-Request")) {
@@ -445,7 +447,11 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   app.get("/code-index/status", requireAuth(), async (c) => {
-    const raw = await settingsRepo.get(CODE_INDEX_STATUS_KEY);
+    const selected = await getSelectedRepo(settingsRepo);
+    const ns = vectorizeNamespace(selected?.owner ?? "", selected?.repo ?? "");
+    const raw =
+      (await settingsRepo.get(codeIndexStatusKey(ns))) ??
+      (await settingsRepo.get(CODE_INDEX_STATUS_KEY));
     if (!raw) return c.json({ status: "none" });
     try {
       return c.json(JSON.parse(raw));

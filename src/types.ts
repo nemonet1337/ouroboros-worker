@@ -157,6 +157,15 @@ export interface Patch {
   explanation: string;
 }
 
+export interface HarnessTrace {
+  selectedPaths: string[];
+  source: "vectorize" | "path" | "tarball-fallback";
+  snippetCount: number;
+  verifyErrors: string[];
+  verifyWarnings: string[];
+  repairAttempts: number;
+}
+
 export interface ValidationResult {
   success: boolean;
   output: string;

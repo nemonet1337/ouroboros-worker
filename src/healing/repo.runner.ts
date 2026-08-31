@@ -22,10 +22,18 @@ import type {
 } from "../ports/runner";
 import type { Patch } from "../types";
 import type { GitHubProvider } from "../vcs/github.provider";
+import type { VectorizePort } from "../ports/vectorize";
 import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
-import { buildCodeGenPrompt } from "../code/prompt.templates";
+import { assembleContext } from "../code/context.assembler";
+import { runHarness } from "../code/harness";
+import { verifyFix } from "../code/verifier";
+import { SettingsRepository } from "../db/repositories";
+import { CodeIndexer } from "../vectorize/code.indexer";
+import { vectorizeNamespace } from "../vectorize/chunker";
 import { scanFiles } from "./scanner";
 import { createPatch } from "diff";
+
+export { parseGeneratedPatches } from "../code/parse.patches";
 
 export class RepoRunner implements HealingRunner, CodeRunner {
   readonly kind = "local" as const;
@@ -33,7 +41,8 @@ export class RepoRunner implements HealingRunner, CodeRunner {
   constructor(
     private readonly vcs: GitHubProvider,
     private readonly ai: AiProvider,
-    private readonly db: DbAdapter
+    private readonly db: DbAdapter,
+    private readonly vectorize?: VectorizePort
   ) {}
 
   // ── Healing ──────────────────────────────────────────────────────────────
@@ -95,7 +104,41 @@ export class RepoRunner implements HealingRunner, CodeRunner {
       const model =
         opts.model && isWorkersAiModelId(opts.model) ? opts.model : DEFAULT_WORKERS_AI_MODEL;
 
+      const findingQuery = opts.group.findings
+        .map((f) => {
+          const any = f as { message?: string; title?: string; file?: string };
+          return `${any.file ?? ""} ${any.message || any.title || ""}`;
+        })
+        .join("\n");
+
+      let relatedSnippets: Array<{ file: string; startLine: number; endLine: number; text: string }> = [];
+      if (this.vectorize) {
+        try {
+          const indexer = new CodeIndexer(
+            this.vectorize,
+            this.ai,
+            this.vcs,
+            new SettingsRepository(this.db)
+          );
+          relatedSnippets = await indexer.search(findingQuery || targetPaths.join(" "), 12, {
+            namespace: vectorizeNamespace(this.vcs.owner, this.vcs.repo),
+          });
+        } catch {
+          relatedSnippets = [];
+        }
+      }
+
+      const extraPaths = uniquePaths(relatedSnippets.map((s) => s.file))
+        .filter((p) => !targetPaths.includes(p))
+        .slice(0, 3);
+      const extraFiles: Array<{ path: string; content: string }> = [];
+      for (const p of extraPaths) {
+        const extra = await this.vcs.readFileContent(p, baseBranch);
+        if (extra) extraFiles.push({ path: extra.path, content: extra.content });
+      }
+
       const patches: Patch[] = [];
+      let maxIterations = 0;
       for (const path of targetPaths) {
         const file = await this.vcs.readFileContent(path, baseBranch);
         if (!file) continue;
@@ -115,24 +158,46 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         const contextLines = opts.contextLines ?? 20;
         const useWindow = file.content.length > 4000 && line !== undefined;
         const snippet = useWindow ? windowAround(file.content, line, contextLines) : file.content;
+        const relatedBlock = formatRelated(
+          relatedSnippets.filter((s) => s.file !== path),
+          extraFiles
+        );
 
-        const raw = await this.ai.complete({
-          model,
-          system: useWindow
-            ? "You are a code fixer. Return ONLY the replacement for the given excerpt, no explanation."
-            : "You are a code fixer. Return ONLY the complete fixed file content, no explanation.",
-          prompt: `Fix these issues in ${path}:\n${findings
-            .map((f) => {
-              const any = f as { message?: string; title?: string };
-              return `- ${any.message || any.title || ""}`;
-            })
-            .join("\n")}\n\n\`\`\`\n${snippet}\n\`\`\``,
-          maxTokens: Math.min(8192, 1024 + Math.ceil(snippet.length / 2)),
-        });
-        const replacement = raw.trim();
-        const fixedContent = useWindow
+        const completeFix = async (repairErrors?: string[]): Promise<string> => {
+          const repair =
+            repairErrors && repairErrors.length > 0
+              ? `\nPrevious attempt failed:\n${repairErrors.map((e) => `- ${e}`).join("\n")}\n`
+              : "";
+          const raw = await this.ai.complete({
+            model,
+            system: useWindow
+              ? "You are a code fixer. Related snippets are reference only. Return ONLY the replacement for the given excerpt, no explanation."
+              : "You are a code fixer. Related snippets are reference only. Return ONLY the complete fixed file content, no explanation.",
+            prompt: `Fix these issues in ${path}:\n${findings
+              .map((f) => {
+                const any = f as { message?: string; title?: string };
+                return `- ${any.message || any.title || ""}`;
+              })
+              .join("\n")}${relatedBlock}\n\n\`\`\`\n${snippet}\n\`\`\`${repair}`,
+            maxTokens: Math.min(8192, 1024 + Math.ceil(snippet.length / 2)),
+          });
+          return raw.trim();
+        };
+
+        let replacement = await completeFix();
+        let fixedContent = useWindow
           ? spliceWindow(file.content, line!, contextLines, replacement)
           : replacement;
+        let iterations = 1;
+        const first = verifyFix(replacement, fixedContent);
+        if (!first.ok) {
+          replacement = await completeFix(first.errors);
+          fixedContent = useWindow
+            ? spliceWindow(file.content, line!, contextLines, replacement)
+            : replacement;
+          iterations = 2;
+        }
+        maxIterations = Math.max(maxIterations, iterations);
 
         patches.push({
           file: path,
@@ -173,7 +238,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         patches,
         branch: opts.dryRun ? undefined : branch,
         validationOutput: `Fixed ${patches.length} file(s) on branch ${branch}`,
-        iterations: 1,
+        iterations: Math.max(1, maxIterations),
       };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -458,91 +523,41 @@ export class RepoRunner implements HealingRunner, CodeRunner {
     if (!parsed) return { patches: [], model, error: "invalid repo url" };
 
     return this.withRepo(parsed.owner, parsed.repo, async () => {
-      let fileList: string[] = [];
-      let fileContext: Record<string, string> = {};
+      let files: Array<{ path: string; content: string }> = [];
       try {
-        const cached = await this.db.query<{ value: string }>(
-          `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'fileList'`,
-          [opts.sessionId]
-        );
-        if (cached[0]?.value) {
-          try {
-            fileList = JSON.parse(cached[0].value) as string[];
-          } catch {
-            fileList = [];
-          }
-        }
-        if (fileList.length === 0) {
-          const files = await this.vcs.getRepoFiles(80, session.branch);
-          fileList = files.map((f) => f.path);
-          await this.cacheSet(opts.sessionId, "fileList", JSON.stringify(fileList));
-        }
-        const picked = pickContextPaths(fileList, opts.instruction, 8);
-        let chars = 0;
-        for (const p of picked) {
-          if (chars >= 8_000) break;
-          const file = await this.vcs.readFileContent(p, session.branch);
-          if (!file) continue;
-          const slice = file.content.slice(0, 4_000);
-          fileContext[p] = slice;
-          chars += slice.length;
+        files = await this.vcs.getRepoFiles(80, session.branch);
+        if (files.length > 0) {
+          await this.cacheSet(opts.sessionId, "fileList", JSON.stringify(files.map((f) => f.path)));
         }
       } catch {
-        // proceed without file context
+        // proceed without tarball
       }
 
-      const { system, user } = buildCodeGenPrompt({
+      const indexer = this.vectorize
+        ? new CodeIndexer(this.vectorize, this.ai, this.vcs, new SettingsRepository(this.db))
+        : undefined;
+      const assembled = await assembleContext({
+        query: opts.instruction,
+        indexer,
+        files,
+        namespace: vectorizeNamespace(this.vcs.owner, this.vcs.repo),
+        maxFiles: 8,
+        maxChars: 12_000,
+      });
+      const result = await runHarness({
         instruction: opts.instruction,
-        repoStructure: fileList,
-        fileContext,
-      });
-
-      const raw = await this.ai.complete({
         model,
-        system,
-        prompt: user,
-        maxTokens: 8192,
+        ai: this.ai,
+        assembled,
       });
-
-      const parsedPatches = parseGeneratedPatches(raw);
-      return { patches: parsedPatches.patches, model, error: parsedPatches.error };
+      await this.cacheSet(opts.sessionId, "harnessTrace", JSON.stringify(result.trace));
+      return result;
     });
   }
 }
 
 function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths)];
-}
-
-/** markdown フェンスと reasoning 前文を剥がして patches JSON を取り出す。 */
-export function parseGeneratedPatches(raw: string): { patches: Patch[]; error?: string } {
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-  const candidates = [cleaned];
-  const braceStart = cleaned.indexOf("{");
-  const braceEnd = cleaned.lastIndexOf("}");
-  if (braceStart >= 0 && braceEnd > braceStart) {
-    candidates.push(cleaned.slice(braceStart, braceEnd + 1));
-  }
-  const bracketStart = cleaned.indexOf("[");
-  const bracketEnd = cleaned.lastIndexOf("]");
-  if (bracketStart >= 0 && bracketEnd > bracketStart) {
-    candidates.push(cleaned.slice(bracketStart, bracketEnd + 1));
-  }
-
-  let lastErr = `AI 応答の JSON パースに失敗しました: ${cleaned.slice(0, 200)}`;
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate) as { patches?: unknown } | unknown[];
-      if (Array.isArray(parsed)) return { patches: parsed as Patch[] };
-      if (parsed && typeof parsed === "object" && Array.isArray(parsed.patches)) {
-        return { patches: parsed.patches as Patch[] };
-      }
-      lastErr = "AI の応答に patches 配列が含まれていませんでした。";
-    } catch {
-      // try next candidate
-    }
-  }
-  return { patches: [], error: lastErr };
 }
 
 function generateDiff(path: string, original: string, modified: string): string {
@@ -563,18 +578,27 @@ function spliceWindow(content: string, line: number, contextLines: number, repla
   return [...lines.slice(0, start), ...replacement.split("\n"), ...lines.slice(end)].join("\n");
 }
 
-function pickContextPaths(fileList: string[], instruction: string, limit: number): string[] {
-  const tokens = instruction
-    .toLowerCase()
-    .split(/[^a-z0-9_./-]+/i)
-    .filter((t) => t.length > 2);
-  const scored = fileList.map((p) => {
-    const lower = p.toLowerCase();
-    const hits = tokens.reduce((n, t) => n + (lower.includes(t) ? 1 : 0), 0);
-    return { p, hits };
-  });
-  scored.sort((a, b) => b.hits - a.hits);
-  const matched = scored.filter((s) => s.hits > 0).map((s) => s.p);
-  const rest = scored.filter((s) => s.hits === 0).map((s) => s.p);
-  return [...matched, ...rest].slice(0, limit);
+function formatRelated(
+  snippets: Array<{ file: string; startLine: number; endLine: number; text: string }>,
+  extraFiles: Array<{ path: string; content: string }>
+): string {
+  const parts: string[] = [];
+  if (snippets.length > 0) {
+    parts.push(
+      "\n\nRelated snippets (reference only):\n" +
+        snippets
+          .slice(0, 8)
+          .map((s) => `### ${s.file}:${s.startLine}-${s.endLine}\n\`\`\`\n${s.text}\n\`\`\``)
+          .join("\n")
+    );
+  }
+  if (extraFiles.length > 0) {
+    parts.push(
+      "\n\nRelated files (reference only):\n" +
+        extraFiles
+          .map((f) => `### ${f.path}\n\`\`\`\n${f.content.slice(0, 2000)}\n\`\`\``)
+          .join("\n")
+    );
+  }
+  return parts.join("");
 }

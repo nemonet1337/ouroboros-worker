@@ -5,6 +5,7 @@ import type { WorkerContext } from "../context";
 import type { Logger } from "../logging/logger";
 import { InspectionRepository, SettingsRepository } from "../db/repositories";
 import { CodeIndexer, CODE_INDEX_STATUS_KEY, type CodeIndexStatus } from "../vectorize/code.indexer";
+import { selectPathsForAnalysis } from "../code/context.assembler";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
@@ -98,7 +99,7 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
         id: newId(),
         type: "codeindex.requested",
         userId,
-        payload: {},
+        payload: { owner: vcs.owner, repo: vcs.repo },
         enqueuedAt: Date.now(),
       });
       if (currentStatus?.status === "done") {
@@ -122,16 +123,17 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
     if (indexReady) {
       if (!(await push("searching", "関連するコードを Vectorize で検索しています…", "searching"))) return;
       const query = instruction.trim() || "コード全体の品質・セキュリティ・パフォーマンス上の問題";
-      const snippets = await indexer.search(query, 12);
-      targetPaths = uniqueTopPaths(
-        snippets.map((s) => s.file),
-        MAX_ANALYSIS_FILES
-      );
+      const selected = await selectPathsForAnalysis({
+        query,
+        indexer,
+        maxFiles: MAX_ANALYSIS_FILES,
+      });
+      targetPaths = selected.paths;
       if (
         !(await push(
           "searching",
-          snippets.length > 0
-            ? `関連チャンク ${snippets.length} 件を取得（対象ファイル: ${targetPaths.join(", ") || "なし"}）。`
+          selected.snippets.length > 0
+            ? `関連チャンク ${selected.snippets.length} 件を取得（対象ファイル: ${targetPaths.join(", ") || "なし"}）。`
             : "関連チャンクが見つからなかったため代表ファイルを解析します。",
           "searching"
         ))
@@ -222,15 +224,6 @@ function needsReindex(status: CodeIndexStatus | null): boolean {
   if (!status) return true;
   if (status.status !== "done") return true;
   return Date.now() - status.updatedAt > INDEX_STALE_MS;
-}
-
-export function uniqueTopPaths(paths: string[], limit: number): string[] {
-  const out: string[] = [];
-  for (const p of paths) {
-    if (!out.includes(p)) out.push(p);
-    if (out.length >= limit) break;
-  }
-  return out;
 }
 
 export { CODE_INDEX_STATUS_KEY };

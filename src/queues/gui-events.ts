@@ -58,6 +58,9 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
             await log.error("code index requested but VECTORIZE is not bound", {});
             break;
           }
+          const owner = typeof event.payload.owner === "string" ? event.payload.owner : "";
+          const repo = typeof event.payload.repo === "string" ? event.payload.repo : "";
+          if (owner && repo) ctx.refreshRepo(owner, repo);
           const indexer = new CodeIndexer(
             ctx.ports.vectorize,
             ctx.ports.ai,
@@ -84,7 +87,20 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
             event.payload.mode === "code_only" ? ("code_only" as const) : ("plan_code" as const);
           const model = await ctx.auth.resolveModel(userId);
           const planModel = model;
-          const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner, ctx.ports.ai);
+          const indexer = ctx.ports.vectorize
+            ? new CodeIndexer(
+                ctx.ports.vectorize,
+                ctx.ports.ai,
+                ctx.ports.vcs as unknown as GitHubProvider,
+                new SettingsRepository(ctx.ports.db)
+              )
+            : undefined;
+          const manager = new CodeSessionManager(
+            ctx.ports.db,
+            ctx.ports.codeRunner,
+            ctx.ports.ai,
+            indexer
+          );
           await manager.generate(sessionId, userId, { model, planModel, mode });
           await log.info("codegen complete", { sessionId });
           break;

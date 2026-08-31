@@ -24,15 +24,25 @@ function mockSettings(): { repo: SettingsRepository; store: Map<string, string> 
   return { repo: new SettingsRepository(db), store };
 }
 
-function mockVectorize(): { port: VectorizePort; upserted: VectorizeVector[] } {
+function mockVectorize(): {
+  port: VectorizePort;
+  upserted: VectorizeVector[];
+  deleted: string[];
+  queries: Array<{ namespace?: string }>;
+} {
   const upserted: VectorizeVector[] = [];
+  const deleted: string[] = [];
+  const queries: Array<{ namespace?: string }> = [];
   return {
     upserted,
+    deleted,
+    queries,
     port: {
       async upsert(vectors) {
         upserted.push(...vectors);
       },
-      async query() {
+      async query(_vector, options) {
+        queries.push({ namespace: options?.namespace });
         return [
           {
             id: "src/a.ts#1",
@@ -40,6 +50,9 @@ function mockVectorize(): { port: VectorizePort; upserted: VectorizeVector[] } {
             metadata: { file: "src/a.ts", startLine: 1, endLine: 50, text: "snippet" },
           },
         ];
+      },
+      async deleteByIds(ids) {
+        deleted.push(...ids);
       },
     },
   };
@@ -113,6 +126,38 @@ describe("CodeIndexer", () => {
     expect(ai.embed).toHaveBeenCalledWith(expect.any(Array), DEFAULT_EMBEDDING_MODEL);
     expect(snippets).toHaveLength(1);
     expect(snippets[0]).toMatchObject({ file: "src/a.ts", startLine: 1, text: "snippet" });
+  });
+
+  it("search queries the repo namespace", async () => {
+    const { repo } = mockSettings();
+    const { port, queries } = mockVectorize();
+    const ai = mockAiWithEmbed();
+    const vcs = { owner: "acme", repo: "app", getRepoFiles: async () => [] };
+    const indexer = new CodeIndexer(port, ai as any, vcs, repo);
+
+    await indexer.search("auth");
+
+    expect(queries[0]?.namespace).toBe("acme/app");
+  });
+
+  it("reindex upserts into the repo namespace and deletes previous chunk ids", async () => {
+    const { repo, store } = mockSettings();
+    const { port, upserted, deleted } = mockVectorize();
+    const ai = mockAiWithEmbed();
+    const vcs = {
+      owner: "acme",
+      repo: "app",
+      getRepoFiles: async () => [{ path: "src/a.ts", content: "const a = 1;" }],
+    };
+    const indexer = new CodeIndexer(port, ai as any, vcs, repo);
+
+    await indexer.reindex();
+    expect(upserted[0].namespace).toBe("acme/app");
+    expect(JSON.parse(store.get("code_index_status:acme/app")!).status).toBe("done");
+    const firstIds = [...upserted.map((v) => v.id)];
+
+    await indexer.reindex();
+    expect(deleted).toEqual(firstIds);
   });
 
   it("reindex passes a bounded maxFiles to getRepoFiles to avoid subrequest limits", async () => {

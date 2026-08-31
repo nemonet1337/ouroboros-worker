@@ -90,6 +90,9 @@ npm run worker:deploy   # build:css + wrangler deploy
 1. `wrangler.toml` を確認
 2. Vectorize インデックスを作成（初回のみ）:
    `wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine`
+   フィルタ用メタデータインデックス（初回のみ）:
+   `wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string`
+   `wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string`
 3. DLQ を作成（初回のみ）: `wrangler queues create ouroboros-dlq`
 4. `wrangler deploy` でデプロイ
 

@@ -1,4 +1,4 @@
-import type { AllFindings, FindingGroup, Patch } from "../types";
+import type { AllFindings, FindingGroup, HarnessTrace, Patch } from "../types";
 
 export type RunnerKind = "local" | "noop";
 
@@ -70,6 +70,7 @@ export interface CodeGenerateResult {
   model: string;
   /** 生成失敗時の理由（JSON パース失敗等）。成功時は undefined */
   error?: string;
+  trace?: HarnessTrace;
 }
 
 export interface CodeRunner {

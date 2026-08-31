@@ -4,7 +4,8 @@ import { CodeIndexer } from "../vectorize/code.indexer";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
-import { detectLanguage, MAX_ANALYSIS_FILES, uniqueTopPaths } from "../inspection/pipeline";
+import { detectLanguage, MAX_ANALYSIS_FILES } from "../inspection/pipeline";
+import { selectPathsForAnalysis } from "../code/context.assembler";
 import { newId } from "../auth/tokens";
 import type { AllFindings, InspectionRequest, InspectionResult } from "../types";
 import { groupsFromAnalysis } from "./groups.from.analysis";
@@ -93,12 +94,12 @@ export async function inspectHealingRun(
         new SettingsRepository(ctx.ports.db)
       );
       const query = instruction?.trim() || ANALYSIS_QUERY;
-      const snippets = await indexer.search(query, 12);
-      const paths = uniqueTopPaths(
-        snippets.map((s) => s.file),
-        MAX_ANALYSIS_FILES
-      );
-      for (const path of paths) {
+      const selected = await selectPathsForAnalysis({
+        query,
+        indexer,
+        maxFiles: MAX_ANALYSIS_FILES,
+      });
+      for (const path of selected.paths) {
         const file = await vcs.readFileContent?.(path);
         if (file) files.push({ path: file.path, content: file.content });
       }

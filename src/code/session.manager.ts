@@ -3,6 +3,7 @@ import type { CodeRunner, CodeInitOptions } from "../ports/runner";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
 import type { VcsProvider } from "../ports/vcs";
 import type { AiProvider } from "../ports/ai";
+import type { CodeIndexer } from "../vectorize/code.indexer";
 
 export interface CreateSessionOpts {
   userId: string;
@@ -13,15 +14,16 @@ export interface CreateSessionOpts {
   instruction: string;
 }
 
-const PLAN_SYSTEM = `You are a senior software engineer. Given a coding task instruction,
+const PLAN_SYSTEM = `You are a senior software engineer. Given a coding task instruction and retrieved code snippets,
 produce a short numbered implementation plan (max 8 steps, Japanese).
-Output ONLY the plan steps, no preamble.`;
+Name the files you will touch. Output ONLY the plan steps, no preamble.`;
 
 export class CodeSessionManager {
   constructor(
     private readonly db: DbAdapter,
     private readonly runner: CodeRunner,
-    private readonly ai?: AiProvider
+    private readonly ai?: AiProvider,
+    private readonly indexer?: CodeIndexer
   ) {}
 
   async create(opts: CreateSessionOpts): Promise<string> {
@@ -238,11 +240,24 @@ export class CodeSessionManager {
   private async generatePlan(id: string, instruction: string, planModel?: string): Promise<string> {
     if (!this.ai) return "";
     try {
+      let prompt = instruction;
+      if (this.indexer) {
+        try {
+          const snippets = await this.indexer.search(instruction, 8);
+          if (snippets.length > 0) {
+            prompt = `${instruction}\n\n## Retrieved code\n${snippets
+              .map((s) => `### ${s.file}:${s.startLine}-${s.endLine}\n${s.text}`)
+              .join("\n\n")}`;
+          }
+        } catch {
+          // plan without snippets
+        }
+      }
       const plan = (
         await this.ai.complete({
           model: planModel,
           system: PLAN_SYSTEM,
-          prompt: instruction,
+          prompt,
           maxTokens: 1024,
         })
       ).trim();

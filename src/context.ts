@@ -93,12 +93,12 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     repo,
   });
 
-  // 単一 Worker 内の RepoRunner（旧 runner Service Binding は廃止）
-  const runner = new RepoRunner(vcs, ai, db);
-
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
   const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
+
+  // 単一 Worker 内の RepoRunner（旧 runner Service Binding は廃止）
+  const runner = new RepoRunner(vcs, ai, db, vectorize);
 
   const config: HealingConfig = {
     ...defaultHealingConfig,

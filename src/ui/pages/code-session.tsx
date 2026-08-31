@@ -1,12 +1,13 @@
 import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
-import type { CodeSessionRow, Patch } from "../../types";
+import type { CodeSessionRow, HarnessTrace, Patch } from "../../types";
 import { Layout } from "../layout";
 
 interface CodeSessionPageProps {
   sessionId: string;
   user?: AuthedUser;
   session?: CodeSessionRow;
+  harnessTrace?: HarnessTrace | null;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -20,7 +21,7 @@ const STATUS_BADGE: Record<string, string> = {
   dismissed: "badge-ghost",
 };
 
-export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, session }) => {
+export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, session, harnessTrace }) => {
   if (!session) {
     return (
       <Layout user={user}>
@@ -73,6 +74,44 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
               <h2 class="font-semibold text-sm opacity-75 mb-2">指示</h2>
               <div class="bg-base-200 rounded-xl p-4 text-sm whitespace-pre-wrap">{session.instruction}</div>
             </div>
+
+            {harnessTrace ? (
+              <details class="bg-base-200 rounded-xl p-4">
+                <summary class="font-semibold text-sm opacity-75 cursor-pointer">
+                  コーディングハーネス（参照 {harnessTrace.selectedPaths.length} ファイル / repair {harnessTrace.repairAttempts}）
+                </summary>
+                <div class="mt-3 space-y-2 text-xs">
+                  <p>
+                    検索ソース: <span class="font-mono">{harnessTrace.source}</span>
+                    {" · "}
+                    スニペット {harnessTrace.snippetCount} 件
+                  </p>
+                  {harnessTrace.selectedPaths.length > 0 ? (
+                    <ul class="list-disc pl-4 font-mono">
+                      {harnessTrace.selectedPaths.map((p) => (
+                        <li>{p}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p class="opacity-60">参照ファイルはありません</p>
+                  )}
+                  {harnessTrace.verifyWarnings.length > 0 ? (
+                    <ul class="text-warning list-disc pl-4">
+                      {harnessTrace.verifyWarnings.map((w) => (
+                        <li>{w}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {harnessTrace.verifyErrors.length > 0 ? (
+                    <ul class="text-error list-disc pl-4">
+                      {harnessTrace.verifyErrors.map((e) => (
+                        <li>{e}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </details>
+            ) : null}
 
             {/* Plan フェーズの実装計画 */}
             {session.plan ? (
