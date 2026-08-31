@@ -69,7 +69,8 @@ export async function scanHealingRun(ctx: WorkerContext, runId: string): Promise
 export async function inspectHealingRun(
   ctx: WorkerContext,
   runId: string,
-  findings: AllFindings
+  findings: AllFindings,
+  instruction?: string
 ): Promise<{ inspectionId: string; overall: number; groups: number }> {
   const runs = new HealingRunRepository(ctx.ports.db);
   const inspections = new InspectionRepository(ctx.ports.db);
@@ -91,7 +92,8 @@ export async function inspectHealingRun(
         vcs,
         new SettingsRepository(ctx.ports.db)
       );
-      const snippets = await indexer.search(ANALYSIS_QUERY, 12);
+      const query = instruction?.trim() || ANALYSIS_QUERY;
+      const snippets = await indexer.search(query, 12);
       const paths = uniqueTopPaths(
         snippets.map((s) => s.file),
         MAX_ANALYSIS_FILES
@@ -115,6 +117,7 @@ export async function inspectHealingRun(
       language: detectLanguage(files.map((f) => f.path)),
       files: files.map((f) => ({ path: f.path, content: f.content })),
       requestedAt: new Date().toISOString(),
+      projectContext: instruction?.trim() || undefined,
     };
     const engine = new InspectionEngine(ctx.ports.ai, {
       ai: { ...defaultInspectionConfig.ai, model, maxRetries: 1 },
@@ -137,11 +140,20 @@ export async function inspectHealingRun(
     findingCount: groups.reduce((n, g) => n + g.findings.length, 0),
     autoFixableCount: groups.filter((g) => g.autoFixable).length,
     summary: inspection?.summary ?? (groups.length === 0 ? "問題は検出されませんでした。" : `検出 ${groups.length} グループ`),
+    instruction: instruction?.trim() || undefined,
   };
 
+  const trimmedInstruction = instruction?.trim() || undefined;
   const resultPayload = inspection
-    ? { ...inspection, healingGroups: groups }
-    : { id: inspectionId, summary: analysis.summary, scoreCard: null, findings: [], healingGroups: groups };
+    ? { ...inspection, healingGroups: groups, instruction: trimmedInstruction }
+    : {
+        id: inspectionId,
+        summary: analysis.summary,
+        scoreCard: null,
+        findings: [],
+        healingGroups: groups,
+        instruction: trimmedInstruction,
+      };
 
   await inspections.insert({
     id: inspectionId,

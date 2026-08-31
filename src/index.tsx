@@ -34,7 +34,6 @@ import { CodeSessionPage } from "./ui/pages/code-session";
 import { createFragments } from "./ui/fragments";
 import { HealingPage } from "./ui/pages/healing";
 import { HealingAnalysisPage } from "./ui/pages/healing-analysis";
-import { InspectionPage } from "./ui/pages/inspection";
 import { SettingsPage } from "./ui/pages/settings";
 import { ModelsPage } from "./ui/pages/models";
 import { AdminPage } from "./ui/pages/admin";
@@ -106,7 +105,14 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
       id: crypto.randomUUID(),
       type: "healing.requested",
       userId: opts.userId,
-      payload: { runId, dryRun, trigger: opts.trigger, phase: "analyze", autoFix },
+      payload: {
+        runId,
+        dryRun,
+        trigger: opts.trigger,
+        phase: "analyze",
+        autoFix,
+        instruction: opts.instruction?.trim() || undefined,
+      },
       enqueuedAt: now,
     };
     await ctx.ports.queue.send(event);
@@ -210,7 +216,9 @@ async function buildApp(env: Env): Promise<Hono> {
 
   app.get("/healing", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
-    return c.html(<HealingPage user={identity?.user} />);
+    const repo = ctx.currentRepo;
+    const selectedRepo = repo.owner && repo.repo ? repo : null;
+    return c.html(<HealingPage user={identity?.user} selectedRepo={selectedRepo} />);
   });
 
   app.get("/healing/:runId", requireAuthMiddleware, async (c) => {
@@ -234,10 +242,7 @@ async function buildApp(env: Env): Promise<Hono> {
     return c.html(<HealingAnalysisPage user={identity?.user} run={run} result={result} />);
   });
 
-  app.get("/inspection", requireAuthMiddleware, (c) => {
-    const identity = c.get("identity");
-    return c.html(<InspectionPage user={identity?.user} selectedRepo={ctx.currentRepo} />);
-  });
+  app.get("/inspection", requireAuthMiddleware, (c) => c.redirect("/healing", 302));
 
   app.get("/code", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");

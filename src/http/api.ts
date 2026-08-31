@@ -54,6 +54,7 @@ export interface TriggerHealingOpts {
   phase?: "analyze" | "fix";
   runId?: string;
   autoFix?: boolean;
+  instruction?: string;
 }
 
 export interface TriggerHealingResult {

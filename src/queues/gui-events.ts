@@ -27,6 +27,8 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
               trigger: String(event.payload.trigger ?? "gui"),
               phase: event.payload.phase === "fix" ? "fix" : "analyze",
               autoFix: Boolean(event.payload.autoFix),
+              instruction:
+                typeof event.payload.instruction === "string" ? event.payload.instruction : undefined,
             },
           });
           await log.info("started healing workflow", {

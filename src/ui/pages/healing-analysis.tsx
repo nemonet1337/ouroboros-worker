@@ -14,7 +14,7 @@ import { parseHealingSummary } from "../../healing/summary";
 interface HealingAnalysisPageProps {
   user?: AuthedUser;
   run: HealingRunRow;
-  result: (InspectionResult & { healingGroups?: unknown }) | null;
+  result: (InspectionResult & { healingGroups?: unknown; instruction?: string }) | null;
 }
 
 export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, result }) => {
@@ -28,6 +28,8 @@ export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, r
   }));
   const prs = (summary.prs ?? []).map((p) => (typeof p === "number" ? { number: p } : p));
   const findings = result?.findings ?? [];
+  const recommendations = result?.recommendations ?? [];
+  const instruction = summary.analysis?.instruction ?? result?.instruction;
 
   return (
     <Layout user={user}>
@@ -52,6 +54,11 @@ export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, r
             />
             <div class="flex-1 min-w-0 space-y-3">
               <h1 class="text-2xl font-extrabold tracking-tight">解析結果</h1>
+              {instruction && (
+                <p class="text-xs opacity-60">
+                  指示: <span class="opacity-90">{instruction}</span>
+                </p>
+              )}
               {summary.analysis?.summary || result?.summary ? (
                 <p class="text-sm leading-relaxed opacity-85">{summary.analysis?.summary ?? result?.summary}</p>
               ) : (
@@ -127,6 +134,29 @@ export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, r
           }))}
         />
       </div>
+
+      {recommendations.length > 0 && (
+        <div class="card card-glass shadow-lg mb-8">
+          <div class="card-body p-6">
+            <h2 class="card-title text-lg font-bold opacity-75 mb-4">改善提案 ({recommendations.length})</h2>
+            <div class="space-y-2">
+              {recommendations.slice(0, 20).map((rec) => (
+                <details class="rounded-lg bg-base-200/40">
+                  <summary class="cursor-pointer px-3 py-2 text-sm font-semibold">{rec.title}</summary>
+                  <div class="space-y-2 px-3 pb-3 text-xs">
+                    {rec.rationale && <p class="opacity-75">{rec.rationale}</p>}
+                    {rec.diff && (
+                      <pre class="overflow-x-auto whitespace-pre rounded-lg bg-black/40 p-3 font-mono text-[11px] leading-relaxed">
+                        {rec.diff}
+                      </pre>
+                    )}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {prs.length > 0 && (
         <div class="card card-glass shadow-lg mb-8">

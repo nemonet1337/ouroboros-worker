@@ -31,6 +31,7 @@ export interface HealingSummary {
     findingCount: number;
     autoFixableCount: number;
     summary: string;
+    instruction?: string;
     usage?: HealingUsage;
   };
   groups?: FindingGroup[];

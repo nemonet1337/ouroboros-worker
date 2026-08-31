@@ -146,7 +146,7 @@ describe("UI fragments", () => {
     expect(await res.text()).toContain("この機能は現在無効化されています");
   });
 
-  it("starts an analyze phase from the healing form", async () => {
+  it("rejects analyze when no repository is selected", async () => {
     const deps = buildDeps();
     const app = createFragments(deps);
     const res = await app.request("/healing", {
@@ -155,8 +155,32 @@ describe("UI fragments", () => {
       body: "",
     });
     expect(res.status).toBe(200);
+    expect(await res.text()).toContain("対象リポジトリが選択されていません");
+    expect(deps.triggerHealing).not.toHaveBeenCalled();
+  });
+
+  it("starts an analyze phase and forwards the optional instruction", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string, params: unknown[] = []) => {
+      if (String(sql).includes("FROM settings") && params[0] === "selected_repo") {
+        return [{ value: "acme/app" }];
+      }
+      return [];
+    });
+    const app = createFragments(deps);
+    const res = await app.request("/healing", {
+      method: "POST",
+      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
+      body: "instruction=" + encodeURIComponent("認証まわりを重点的に"),
+    });
+    expect(res.status).toBe(200);
     expect(await res.text()).toContain("解析を開始しました");
-    expect(deps.triggerHealing).toHaveBeenCalledWith({ trigger: "gui", userId: "user-1", phase: "analyze" });
+    expect(deps.triggerHealing).toHaveBeenCalledWith({
+      trigger: "gui",
+      userId: "user-1",
+      phase: "analyze",
+      instruction: "認証まわりを重点的に",
+    });
   });
 
   it("rejects fix when the run is not analyzed", async () => {

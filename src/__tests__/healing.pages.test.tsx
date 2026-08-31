@@ -5,6 +5,8 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { HealingPage } from "../ui/pages/healing";
 import { HealingAnalysisPage } from "../ui/pages/healing-analysis";
+import { HomePage } from "../ui/pages/home";
+import { Sidebar } from "../ui/components/sidebar";
 import type { HealingRunRow } from "../db/repositories";
 
 function sampleRun(overrides: Partial<HealingRunRow> = {}): HealingRunRow {
@@ -49,13 +51,20 @@ function sampleRun(overrides: Partial<HealingRunRow> = {}): HealingRunRow {
 }
 
 describe("healing pages", () => {
-  it("lists analyze CTA and not the old one-shot full-heal buttons", async () => {
+  it("lists analyze CTA, optional instruction, and a single コード解析 nav item", async () => {
     const app = new Hono();
-    app.get("/healing", (c) => c.html(<HealingPage />));
+    app.get("/healing", (c) =>
+      c.html(<HealingPage selectedRepo={{ owner: "acme", repo: "app" }} />)
+    );
     const html = await (await app.request("/healing")).text();
     expect(html).toContain("解析を実行する");
-    expect(html).not.toContain("フル修復を実行する");
+    expect(html).toContain("解析の指示（任意）");
+    expect(html).toContain("acme/app");
     expect(html).toContain("healing_fix_modal");
+    expect(html).not.toContain("フル修復を実行する");
+    expect(html).not.toContain("AI コード解析 (Inspection)");
+    expect(html).not.toContain('href="/inspection"');
+    expect(html).toContain("コード解析");
   });
 
   it("renders radar detail with model, tokens, and repair CTA", async () => {
@@ -68,5 +77,19 @@ describe("healing pages", () => {
     expect(html).toContain("修復を開始");
     expect(html).toContain("glm-5.3-flash");
     expect(html).toContain('aria-label="6 次元スコアのレーダーチャート"');
+    expect(html).not.toContain("リファクタ提案を生成");
+  });
+
+  it("dashboard and sidebar point only at /healing for analysis", async () => {
+    const app = new Hono();
+    app.get("/", (c) => c.html(<HomePage />));
+    app.get("/nav", (c) => c.html(<Sidebar />));
+    const home = await (await app.request("/")).text();
+    expect(home).toContain('href="/healing"');
+    expect(home).not.toContain('href="/inspection"');
+    const nav = await (await app.request("/nav")).text();
+    expect(nav).toContain("コード解析");
+    expect(nav).not.toContain("自己修復");
+    expect(nav).not.toContain('href="/inspection"');
   });
 });

@@ -8,8 +8,7 @@ interface SidebarProps {
 export const Sidebar: FC<SidebarProps> = ({ user }) => {
   const links = [
     { href: "/", icon: "layout-dashboard", label: "ダッシュボード" },
-    { href: "/healing", icon: "wrench", label: "自己修復" },
-    { href: "/inspection", icon: "search", label: "コード解析" },
+    { href: "/healing", icon: "search", label: "コード解析" },
     { href: "/code", icon: "code", label: "コード編集" },
     { href: "/webhooks", icon: "webhook", label: "ウェブフック" },
     { href: "/models", icon: "cpu", label: "モデル設定" },

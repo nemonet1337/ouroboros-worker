@@ -81,23 +81,13 @@ export const HomePage: FC<HomePageProps> = ({ user }) => {
       <div class="mt-8">
         <h2 class="text-xl font-bold mb-4 opacity-75">クイックアクション</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <a href="/inspection" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
+          <a href="/healing" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
             <div class="p-3 rounded-xl bg-primary/10 text-primary">
               <i data-lucide="search" class="w-6 h-6"></i>
             </div>
             <div>
-              <div class="font-bold text-sm">コードスキャン</div>
-              <div class="text-xs opacity-50 mt-0.5">解析を実行する</div>
-            </div>
-          </a>
-          
-          <a href="/healing" class="card card-glass hover:scale-[1.02] active:scale-[0.98] transition-all p-5 flex flex-row items-center gap-4">
-            <div class="p-3 rounded-xl bg-secondary/10 text-secondary">
-              <i data-lucide="wrench" class="w-6 h-6"></i>
-            </div>
-            <div>
-              <div class="font-bold text-sm">自己修復</div>
-              <div class="text-xs opacity-50 mt-0.5">修復ログを確認する</div>
+              <div class="font-bold text-sm">コード解析</div>
+              <div class="text-xs opacity-50 mt-0.5">解析してから修復する</div>
             </div>
           </a>
 

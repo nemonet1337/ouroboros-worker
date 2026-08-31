@@ -193,7 +193,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
         kind: "コード解析",
         title: r.target ?? r.id.slice(0, 8),
         status: PROGRESS_LABELS[r.status] ?? r.status,
-        href: "/inspection",
+        href: "/healing",
         at: r.created_at,
       })),
       ...activeRuns.map((r) => ({
@@ -679,7 +679,21 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
 
   app.post("/healing", async (c) => {
     const userId = c.get("identity").user.id;
-    const out = await deps.triggerHealing({ trigger: "gui", userId, phase: "analyze" });
+    const selected = await getSelectedRepo(settingsRepo);
+    if (!selected) {
+      return c.html(
+        <Alert type="error" message="対象リポジトリが選択されていません。ダッシュボードでリポジトリを選択してください。" />
+      );
+    }
+    const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+    const instructionRaw = (body as Record<string, unknown>).instruction;
+    const instruction = typeof instructionRaw === "string" ? instructionRaw.trim() : "";
+    const out = await deps.triggerHealing({
+      trigger: "gui",
+      userId,
+      phase: "analyze",
+      instruction: instruction || undefined,
+    });
     if (out.error) {
       return c.html(<Alert type="error" message={out.error} />, 400);
     }

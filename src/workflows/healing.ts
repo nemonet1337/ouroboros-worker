@@ -13,6 +13,7 @@ export interface HealingParams {
   trigger: string;
   phase: "analyze" | "fix";
   autoFix?: boolean;
+  instruction?: string;
 }
 
 const STEP_OPTS_INDEX = {
@@ -62,7 +63,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
     event: WorkflowEvent<HealingParams>,
     step: WorkflowStep
   ): Promise<void> {
-    const { runId, dryRun, phase, autoFix } = event.payload;
+    const { runId, dryRun, phase, autoFix, instruction } = event.payload;
     const bindWorkflow = async () => {
       const ctx = await buildContext(this.env);
       const runs = new HealingRunRepository(ctx.ports.db);
@@ -83,7 +84,7 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
 
       await step.do("analyze", STEP_OPTS_ANALYZE, async () => {
         const ctx = await buildContext(this.env);
-        return inspectHealingRun(ctx, runId, findings);
+        return inspectHealingRun(ctx, runId, findings, instruction);
       });
     }
 
