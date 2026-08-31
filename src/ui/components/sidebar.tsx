@@ -10,7 +10,6 @@ export const Sidebar: FC<SidebarProps> = ({ user }) => {
     { href: "/", icon: "layout-dashboard", label: "ダッシュボード" },
     { href: "/healing", icon: "search", label: "コード解析" },
     { href: "/code", icon: "code", label: "コード編集" },
-    { href: "/webhooks", icon: "webhook", label: "ウェブフック" },
     { href: "/models", icon: "cpu", label: "モデル設定" },
     { href: "/settings", icon: "settings", label: "システム設定" },
   ];

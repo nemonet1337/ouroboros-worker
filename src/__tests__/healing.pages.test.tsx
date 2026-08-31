@@ -90,6 +90,8 @@ describe("healing pages", () => {
     const nav = await (await app.request("/nav")).text();
     expect(nav).toContain("コード解析");
     expect(nav).not.toContain("自己修復");
+    expect(nav).not.toContain("ウェブフック");
     expect(nav).not.toContain('href="/inspection"');
+    expect(nav).not.toContain('href="/webhooks"');
   });
 });
