@@ -86,7 +86,7 @@ describe("UI fragments", () => {
     const app = createFragments(buildDeps());
     const cases: Array<[string, string]> = [
       ["/code/sessions", "セッションはありません"],
-      ["/healing/runs", "修復実行履歴はありません"],
+      ["/healing/runs", "解析・修復の履歴はありません"],
       ["/history", "スキャン履歴はありません"],
     ];
     for (const [path, text] of cases) {
@@ -146,17 +146,107 @@ describe("UI fragments", () => {
     expect(await res.text()).toContain("この機能は現在無効化されています");
   });
 
-  it("triggers healing with dryRun parsed from the form value", async () => {
+  it("starts an analyze phase from the healing form", async () => {
     const deps = buildDeps();
     const app = createFragments(deps);
     const res = await app.request("/healing", {
       method: "POST",
       headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
+      body: "",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("解析を開始しました");
+    expect(deps.triggerHealing).toHaveBeenCalledWith({ trigger: "gui", userId: "user-1", phase: "analyze" });
+  });
+
+  it("rejects fix when the run is not analyzed", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "run-1",
+        status: "scanning",
+        summary: "{}",
+        trigger: "gui",
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      },
+    ]);
+    const app = createFragments(deps);
+    const res = await app.request("/healing/run-1/fix", {
+      method: "POST",
+      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
+      body: "",
+    });
+    expect(res.status).toBe(400);
+    expect(deps.triggerHealing).not.toHaveBeenCalled();
+  });
+
+  it("serves the fix confirmation modal for an analyzed run", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "run-1",
+        status: "analyzed",
+        summary: JSON.stringify({
+          groups: [
+            {
+              id: "g1",
+              priority: "high",
+              findings: [],
+              autoFixable: true,
+              estimatedRisk: "r",
+              fixStrategy: { title: "XSS を直す", steps: [], rationale: "" },
+            },
+          ],
+          analysis: { overall: 80, grade: "A", breakdown: {}, findingCount: 1, autoFixableCount: 1, summary: "ok" },
+        }),
+        trigger: "gui",
+        model: "minimax/m3",
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      },
+    ]);
+    const app = createFragments(deps);
+    const res = await app.request("/healing/run-1/fix-modal", authed);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("自動修復可能");
+    expect(body).toContain("XSS を直す");
+    expect(body).toContain("dryRun");
+  });
+
+  it("starts a fix phase for an analyzed run", async () => {
+    const deps = buildDeps();
+    (deps.ports.db.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "run-1",
+        status: "analyzed",
+        summary: JSON.stringify({ groups: [], analysis: { overall: 80, grade: "A", breakdown: {}, findingCount: 0, autoFixableCount: 0, summary: "ok" } }),
+        trigger: "gui",
+        model: "minimax/m3",
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      },
+    ]);
+    const app = createFragments(deps);
+    const res = await app.request("/healing/run-1/fix", {
+      method: "POST",
+      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
       body: "dryRun=true",
     });
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("ドライラン");
-    expect(deps.triggerHealing).toHaveBeenCalledWith({ trigger: "gui", userId: "user-1", dryRun: true });
+    expect(res.headers.get("HX-Redirect")).toBe("/healing");
+    expect(deps.triggerHealing).toHaveBeenCalledWith({
+      trigger: "gui",
+      userId: "user-1",
+      dryRun: true,
+      phase: "fix",
+      runId: "run-1",
+    });
   });
 
   it("history cards include status and link to inspection detail", async () => {

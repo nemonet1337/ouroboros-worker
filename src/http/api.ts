@@ -47,9 +47,19 @@ const API_VERSION = "v1";
 const SETTINGS_KEY = "app_settings";
 const DEFAULT_SETTINGS = DEFAULT_APP_SETTINGS;
 
+export interface TriggerHealingOpts {
+  trigger: string;
+  userId?: string;
+  dryRun?: boolean;
+  phase?: "analyze" | "fix";
+  runId?: string;
+  autoFix?: boolean;
+}
+
 export interface TriggerHealingResult {
   runId: string;
   workflowId?: string;
+  error?: string;
 }
 
 export interface ApiDeps {
@@ -58,7 +68,7 @@ export interface ApiDeps {
   auth: AuthService;
   logger: Logger;
   /** Platform-specific kickoff: Workflow instance (worker). */
-  triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
+  triggerHealing: (opts: TriggerHealingOpts) => Promise<TriggerHealingResult>;
   /** Healing workflow terminate */
   cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
   cookieSecure?: boolean;
@@ -481,12 +491,32 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   // ── Self-healing ─────────────────────────────────────────────────────────
   app.post("/healing", requireAuth(), heavyLimit, async (c) => {
+    const body = await c.req.json<{ dryRun?: boolean; autoFix?: boolean }>().catch(() => ({ dryRun: false, autoFix: false }));
+    const out = await deps.triggerHealing({
+      trigger: "api",
+      userId: c.get("identity")!.user.id,
+      dryRun: body.dryRun ?? false,
+      autoFix: body.autoFix ?? false,
+      phase: "analyze",
+    });
+    if (out.error) {
+      return c.json({ error: { code: "healing_rejected", message: out.error } }, 400);
+    }
+    return c.json(out, 202);
+  });
+
+  app.post("/healing/:runId/fix", requireAuth(), heavyLimit, async (c) => {
     const body = await c.req.json<{ dryRun?: boolean }>().catch(() => ({ dryRun: false }));
     const out = await deps.triggerHealing({
       trigger: "api",
       userId: c.get("identity")!.user.id,
       dryRun: body.dryRun ?? false,
+      phase: "fix",
+      runId: c.req.param("runId")!,
     });
+    if (out.error) {
+      return c.json({ error: { code: "healing_rejected", message: out.error } }, 400);
+    }
     return c.json(out, 202);
   });
 

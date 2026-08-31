@@ -182,4 +182,16 @@ export const MIGRATIONS: Migration[] = [
       `DELETE FROM settings WHERE key = 'webhooks_enabled'`,
     ],
   },
+  {
+    id: "0012_healing_analyze_fix",
+    statements: [
+      `ALTER TABLE healing_runs ADD COLUMN inspection_id TEXT`,
+      `ALTER TABLE healing_runs ADD COLUMN model TEXT`,
+      `ALTER TABLE healing_runs ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN fix_model TEXT`,
+      `ALTER TABLE healing_runs ADD COLUMN fix_prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN fix_completion_tokens INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
 ];

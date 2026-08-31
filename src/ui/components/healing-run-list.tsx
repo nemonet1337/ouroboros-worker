@@ -1,70 +1,28 @@
 import type { FC } from "hono/jsx";
 import type { HealingRunRow } from "../../db/repositories";
+import {
+  HEALING_STATUS_LABELS,
+  HEALING_TRIGGER_LABELS,
+  isHealingActive,
+} from "../../healing/status";
+import { parseHealingSummary } from "../../healing/summary";
 
 export interface HealingRunListProps {
   runs: HealingRunRow[];
-  /** true にすると hx-swap-oob 付きで出力され、別レスポンスに同梱してリストを差し替えられる */
   oob?: boolean;
-  /** 現在ページ（1 始まり）。1 ページ目のみ 5 秒ポーリングで自動更新する */
   page?: number;
-  /** 次ページが存在するか（ページングボタンの活性制御） */
   hasNext?: boolean;
-  /** ステータスフィルタ（空文字 = すべて） */
   statusFilter?: string;
 }
 
-interface HealingSummaryPr {
-  number: number;
-  title?: string;
-  branch?: string;
-  url?: string;
-}
-
-interface HealingSummary {
-  riskScore?: number;
-  prsCreated?: number;
-  prs?: Array<HealingSummaryPr | number>;
-  error?: string;
-}
-
-function parseSummary(raw: string | null): HealingSummary | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as HealingSummary) : null;
-  } catch {
-    return null;
-  }
-}
-
-const ACTIVE_STATUSES = new Set(["queued", "scanning", "analyzing", "fixing", "running"]);
-
-export const STATUS_CONFIG: Record<string, { label: string; class: string }> = {
-  queued: { label: "待機中", class: "bg-amber-500/10 text-amber-400 border border-amber-500/20" },
-  scanning: { label: "スキャン中", class: "bg-sky-500/10 text-sky-400 border border-sky-500/20" },
-  analyzing: { label: "解析中", class: "bg-sky-500/10 text-sky-400 border border-sky-500/20" },
-  fixing: { label: "修復中", class: "bg-sky-500/10 text-sky-400 border border-sky-500/20" },
-  running: { label: "実行中", class: "bg-sky-500/10 text-sky-400 border border-sky-500/20" },
-  done: { label: "完了", class: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" },
-  failed: { label: "失敗", class: "bg-rose-500/10 text-rose-400 border border-rose-500/20" },
-  canceled: { label: "キャンセル", class: "bg-base-300/50 text-base-content/60 border border-base-300" },
-};
-
-/** フィルタ UI 用の選択肢（value はクエリにそのまま載る） */
 const FILTER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "すべて" },
   { value: "active", label: "進行中" },
-  { value: "queued", label: "待機中" },
-  { value: "done", label: "完了" },
+  { value: "analyzed", label: "解析完了" },
+  { value: "done", label: "修復完了" },
   { value: "failed", label: "失敗" },
   { value: "canceled", label: "キャンセル" },
 ];
-
-const TRIGGER_LABELS: Record<string, string> = {
-  api: "API",
-  gui: "GUI",
-  cron: "スケジュール",
-};
 
 function runsUrl(page: number, statusFilter: string): string {
   const q = new URLSearchParams();
@@ -73,10 +31,20 @@ function runsUrl(page: number, statusFilter: string): string {
   return `/ui/fragments/healing/runs?${q.toString()}`;
 }
 
+function TokenLine(props: { model?: string | null; prompt?: number; completion?: number; label: string }) {
+  const prompt = props.prompt ?? 0;
+  const completion = props.completion ?? 0;
+  if (!props.model && prompt === 0 && completion === 0) return null;
+  return (
+    <div class="text-xs opacity-60 font-mono truncate" title={props.model ?? ""}>
+      {props.label}: {props.model ? props.model.replace(/^@[^/]+\//, "") : "—"} · in {prompt} / out {completion}
+    </div>
+  );
+}
+
 /**
- * 自己修復の実行履歴テーブル（ステータスフィルタ + ページング付き）。
- * 実行 ID クリックでページ上のログモーダル（#healing_log_modal）を開く。
- * 1 ページ目のみ 5 秒間隔で自動リフレッシュする。
+ * 自己修復の解析・修復履歴（カード）。
+ * カードクリックで詳細（レーダー）、解析完了時は修復ボタンでモーダルを開く。
  */
 export const HealingRunList: FC<HealingRunListProps> = ({
   runs,
@@ -103,9 +71,7 @@ export const HealingRunList: FC<HealingRunListProps> = ({
           <button
             type="button"
             class={`btn btn-sm rounded-full ${
-              active
-                ? "btn-primary"
-                : "btn-outline border-[var(--glass-border)] hover:bg-base-200"
+              active ? "btn-primary" : "btn-outline border-[var(--glass-border)] hover:bg-base-200"
             }`}
             hx-get={runsUrl(1, opt.value)}
             hx-target="#healing-runs-list"
@@ -155,12 +121,12 @@ export const HealingRunList: FC<HealingRunListProps> = ({
         <div class="card card-glass p-8 text-center text-base-content/50">
           <i data-lucide="wrench" class="w-12 h-12 mx-auto text-base-content/30 mb-3" />
           <p class="font-bold">
-            {statusFilter ? "該当する修復実行はありません" : "修復実行履歴はありません"}
+            {statusFilter ? "該当する実行はありません" : "解析・修復の履歴はありません"}
           </p>
           <p class="text-xs opacity-75 mt-1">
             {statusFilter
-              ? "別のステータスフィルタを試すか、手動トリガーで新しい実行を開始してください。"
-              : "手動トリガーまたはスケジュール実行されるとここに表示されます。"}
+              ? "別のステータスフィルタを試すか、解析を実行してください。"
+              : "解析を実行すると、結果がここにサマリとして残ります。"}
           </p>
         </div>
         {page > 1 && pager}
@@ -171,116 +137,102 @@ export const HealingRunList: FC<HealingRunListProps> = ({
   return (
     <div {...wrapperAttrs}>
       {filterBar}
-      <div class="card card-glass shadow-lg overflow-x-auto">
-        <table class="table-modern w-full text-left text-sm">
-          <thead>
-            <tr class="text-base-content/60 font-semibold border-b border-[var(--glass-border)]">
-              <th class="p-3">実行 ID</th>
-              <th class="p-3">トリガー</th>
-              <th class="p-3">ステータス</th>
-              <th class="p-3">結果</th>
-              <th class="p-3">バージョン</th>
-              <th class="p-3">実行日時</th>
-              <th class="p-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => {
-              const status = STATUS_CONFIG[run.status] ?? { label: run.status, class: "badge-ghost" };
-              const summary = parseSummary(run.summary);
-              const prs = (summary?.prs ?? []).map((p) =>
-                typeof p === "number" ? ({ number: p } as HealingSummaryPr) : p
-              );
-              return (
-                <tr key={run.id} class="border-b border-[var(--glass-border)]/30 align-top">
-                  <td class="p-3 font-mono text-xs">
-                    <button
-                      type="button"
-                      class="link link-primary inline-flex items-center gap-1"
-                      title="実行ログを表示"
-                      {...{
-                        "hx-get": `/ui/fragments/healing/runs/${run.id}/logs`,
-                        "hx-target": "#healing-log-modal-body",
-                        "hx-swap": "innerHTML",
-                        "hx-indicator": "#healing-log-modal-loading",
-                        "hx-on::before-request":
-                          "document.getElementById('healing_log_modal')?.showModal(); var b=document.getElementById('healing-log-modal-body'); if(b) b.innerHTML='';",
-                        "hx-on::after-request": "if(window.lucide) lucide.createIcons()",
-                      }}
-                    >
-                      <i data-lucide="file-text" class="w-3.5 h-3.5 opacity-70" />
-                      {run.id.slice(0, 8)}
-                    </button>
-                  </td>
-                  <td class="p-3 text-xs">{TRIGGER_LABELS[run.trigger] ?? run.trigger}</td>
-                  <td class="p-3">
-                    <span class={`badge badge-sm rounded-full font-bold ${status.class}`}>
-                      {status.label}
-                    </span>
-                  </td>
-                  <td class="p-3 text-xs">
-                    {run.status === "failed" && summary?.error ? (
-                      <span class="text-rose-400">{summary.error}</span>
-                    ) : run.status === "done" ? (
-                      <div class="space-y-1">
-                        {summary?.riskScore !== undefined && (
-                          <div class="opacity-70">
-                            リスクスコア: <span class="font-bold">{summary.riskScore}</span>
-                          </div>
-                        )}
-                        {prs.length > 0 ? (
-                          <details class="rounded-lg bg-base-200/40">
-                            <summary class="min-h-0 cursor-pointer px-2 py-1 text-xs font-semibold">
-                              作成 PR: {prs.length} 件
-                            </summary>
-                            <div class="space-y-1 px-2 pb-2">
-                              {prs.map((pr) => (
-                                <div class="text-xs">
-                                  {pr.url ? (
-                                    <a href={pr.url} target="_blank" class="link link-primary font-mono">
-                                      #{pr.number}
-                                    </a>
-                                  ) : (
-                                    <span class="font-mono">#{pr.number}</span>
-                                  )}
-                                  {pr.title && <span class="opacity-70"> {pr.title}</span>}
-                                </div>
-                              ))}
-                            </div>
-                          </details>
-                        ) : (
-                          <span class="opacity-50">PR なし</span>
-                        )}
-                      </div>
-                    ) : run.status === "canceled" ? (
-                      <span class="opacity-50">キャンセル済み</span>
-                    ) : (
-                      <span class="opacity-40">—</span>
+      <div class="space-y-3">
+        {runs.map((run) => {
+          const status = HEALING_STATUS_LABELS[run.status] ?? { label: run.status, class: "badge-ghost" };
+          const summary = parseHealingSummary(run.summary);
+          const analysis = summary.analysis;
+          const prs = (summary.prs ?? []).map((p) => (typeof p === "number" ? { number: p } : p));
+          const overall = analysis?.overall;
+          return (
+            <div
+              key={run.id}
+              class="card card-glass border border-[var(--glass-border)] p-4 flex flex-col sm:flex-row sm:items-center gap-4"
+            >
+              <a href={`/healing/${run.id}`} class="flex flex-1 min-w-0 items-center gap-4 hover:opacity-90">
+                <span
+                  class={`text-2xl font-black tracking-tight w-12 text-center ${
+                    overall !== undefined ? "text-primary" : "opacity-40"
+                  }`}
+                >
+                  {overall !== undefined ? overall : "—"}
+                </span>
+                <div class="flex-1 min-w-0 space-y-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class={`badge badge-sm rounded-full font-bold ${status.class}`}>{status.label}</span>
+                    <span class="text-xs opacity-50">{HEALING_TRIGGER_LABELS[run.trigger] ?? run.trigger}</span>
+                    <span class="font-mono text-xs opacity-40">{run.id.slice(0, 8)}</span>
+                  </div>
+                  {analysis?.summary ? (
+                    <p class="text-sm opacity-80 line-clamp-2">{analysis.summary}</p>
+                  ) : summary.error ? (
+                    <p class="text-sm text-rose-400 line-clamp-2">{summary.error}</p>
+                  ) : (
+                    <p class="text-xs opacity-50">
+                      {new Date(run.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                    </p>
+                  )}
+                  <div class="flex flex-wrap gap-x-4 gap-y-1">
+                    {analysis && (
+                      <span class="text-xs opacity-60">
+                        検出 {analysis.findingCount} · 自動修復可 {analysis.autoFixableCount}
+                        {analysis.grade ? ` · ${analysis.grade}` : ""}
+                      </span>
                     )}
-                  </td>
-                  <td class="p-3 font-mono text-xs opacity-60">{run.tag ?? "—"}</td>
-                  <td class="p-3 text-xs opacity-70">
-                    {new Date(run.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
-                  </td>
-                  <td class="p-3">
-                    {ACTIVE_STATUSES.has(run.status) && (
-                      <button
-                        type="button"
-                        class="btn btn-xs btn-outline btn-error rounded-lg"
-                        hx-post={`/ui/fragments/healing/${run.id}/cancel`}
-                        hx-target="#healing-result"
-                        hx-swap="innerHTML"
-                        hx-confirm="この修復実行をキャンセルしますか？"
-                      >
-                        キャンセル
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {prs.length > 0 && <span class="text-xs opacity-60">PR {prs.length} 件</span>}
+                  </div>
+                  <TokenLine
+                    label="解析"
+                    model={run.model}
+                    prompt={run.prompt_tokens}
+                    completion={run.completion_tokens}
+                  />
+                  {(run.fix_model || run.fix_prompt_tokens || run.fix_completion_tokens) && (
+                    <TokenLine
+                      label="修復"
+                      model={run.fix_model}
+                      prompt={run.fix_prompt_tokens}
+                      completion={run.fix_completion_tokens}
+                    />
+                  )}
+                </div>
+              </a>
+              <div class="flex sm:flex-col gap-2 shrink-0">
+                {run.status === "analyzed" && (
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-gradient rounded-lg"
+                    {...{
+                      "hx-get": `/ui/fragments/healing/${run.id}/fix-modal`,
+                      "hx-target": "#healing-fix-modal-body",
+                      "hx-swap": "innerHTML",
+                      "hx-on::before-request":
+                        "document.getElementById('healing_fix_modal')?.showModal()",
+                      "hx-on::after-request": "if(window.lucide) lucide.createIcons()",
+                    }}
+                  >
+                    修復
+                  </button>
+                )}
+                {isHealingActive(run.status) && (
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-outline btn-error rounded-lg"
+                    hx-post={`/ui/fragments/healing/${run.id}/cancel`}
+                    hx-target="#healing-result"
+                    hx-swap="innerHTML"
+                    hx-confirm="この実行をキャンセルしますか？"
+                  >
+                    キャンセル
+                  </button>
+                )}
+                <a href={`/healing/${run.id}`} class="btn btn-xs btn-ghost rounded-lg">
+                  詳細
+                </a>
+              </div>
+            </div>
+          );
+        })}
       </div>
       {pager}
     </div>

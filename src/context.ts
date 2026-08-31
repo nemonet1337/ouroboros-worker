@@ -13,6 +13,7 @@ import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
 import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 import { AiUsageTracker } from "./analytics/ai.usage.tracker";
+import { UsageAccumulator } from "./analytics/usage.accumulator";
 import { SettingsRepository } from "./db/repositories";
 import { getSelectedRepo } from "./config/settings.keys";
 import { RepoRunner } from "./healing/repo.runner";
@@ -28,6 +29,8 @@ export interface WorkerContext {
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
   analytics?: AiUsageTracker;
+  /** このコンテキスト寿命の AI トークン合計（Workflow ステップごとに新しい context）。 */
+  usage: UsageAccumulator;
   versionMetadata?: VersionMetadata;
   /** 現在の対象リポジトリ（settings.selected_repo 優先で解決済み）。 */
   currentRepo: { owner: string; repo: string };
@@ -47,13 +50,15 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     : env.WORKERS_AI_API_TOKEN;
 
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
+  const usage = new UsageAccumulator();
   const ai = new WorkersAiProvider(env.AI, {
     model: DEFAULT_WORKERS_AI_MODEL,
     apiToken: workersAiApiToken,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
-    onUsage: analytics
-      ? (event) => analytics.record(event)
-      : undefined,
+    onUsage: (event) => {
+      usage.record(event);
+      analytics?.record(event);
+    },
   });
 
   const githubToken = env.GITHUB_TOKEN_SECRET
@@ -138,6 +143,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
         : env.OURO_REGISTRATION_ENABLED === "true",
     githubTokenSet: !!githubToken,
     analytics,
+    usage,
     versionMetadata: env.CF_VERSION_METADATA,
     currentRepo,
     refreshRepo,

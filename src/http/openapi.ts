@@ -84,7 +84,19 @@ export const OPENAPI_SPEC = {
     "/metrics": { get: { summary: "ダッシュボード指標", responses: { "200": { description: "OK" } } } },
     "/healing": {
       get: { summary: "自己修復ラン一覧", responses: { "200": { description: "OK" } } },
-      post: { summary: "自己修復サイクル起動（scope: heal）", responses: { "202": { description: "Accepted" } } },
+      post: {
+        summary: "解析フェーズ起動（autoFix=true で修復まで連続実行）",
+        responses: { "202": { description: "Accepted" }, "400": { description: "Rejected" } },
+      },
+    },
+    "/healing/{runId}/fix": {
+      post: {
+        summary: "解析済みランの修復フェーズ起動",
+        responses: { "202": { description: "Accepted" }, "400": { description: "Rejected" } },
+      },
+    },
+    "/healing/{runId}/cancel": {
+      post: { summary: "進行中ランのキャンセル", responses: { "200": { description: "OK" }, "400": { description: "Rejected" } } },
     },
     "/logs": { get: { summary: "ログファイル一覧（admin）", responses: { "200": { description: "OK" } } } },
     "/logs/{file}": { get: { summary: "ログ内容（admin）", responses: { "200": { description: "OK" } } } },

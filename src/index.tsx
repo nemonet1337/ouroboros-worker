@@ -21,6 +21,9 @@ import {
 import type { GuiEvent } from "./ports/queue";
 import type { Env } from "./env";
 import { buildContext, type WorkerContext } from "./context";
+import type { TriggerHealingOpts } from "./http/api";
+import { isHealingActive } from "./healing/status";
+import { mergeHealingSummary } from "./healing/summary";
 import { handleGuiEvents } from "./queues/gui-events";
 import { HomePage } from "./ui/pages/home";
 import { LoginPage } from "./ui/pages/login";
@@ -30,6 +33,7 @@ import { CodeNewPage } from "./ui/pages/code-new";
 import { CodeSessionPage } from "./ui/pages/code-session";
 import { createFragments } from "./ui/fragments";
 import { HealingPage } from "./ui/pages/healing";
+import { HealingAnalysisPage } from "./ui/pages/healing-analysis";
 import { InspectionPage } from "./ui/pages/inspection";
 import { SettingsPage } from "./ui/pages/settings";
 import { ModelsPage } from "./ui/pages/models";
@@ -55,9 +59,31 @@ async function ensureMigrated(env: Env): Promise<void> {
 
 function makeTriggerHealing(env: Env, ctx: WorkerContext) {
   const runs = new HealingRunRepository(ctx.ports.db);
-  return async (opts: { trigger: string; userId?: string; dryRun: boolean }) => {
-    const runId = crypto.randomUUID();
+  return async (opts: TriggerHealingOpts) => {
     const now = Date.now();
+    const phase = opts.phase ?? "analyze";
+    const autoFix = opts.autoFix ?? opts.trigger === "cron";
+    const dryRun = opts.dryRun ?? false;
+
+    if (phase === "fix") {
+      const runId = opts.runId ?? "";
+      if (!runId) return { runId: "", error: "runId required" };
+      const run = await runs.find(runId);
+      if (!run) return { runId, error: "run not found" };
+      if (run.status !== "analyzed") return { runId, error: `cannot fix status: ${run.status}` };
+      await runs.update(runId, { status: "queued" });
+      const event: GuiEvent = {
+        id: crypto.randomUUID(),
+        type: "healing.requested",
+        userId: opts.userId,
+        payload: { runId, dryRun, trigger: opts.trigger, phase: "fix", autoFix: false },
+        enqueuedAt: now,
+      };
+      await ctx.ports.queue.send(event);
+      return { runId };
+    }
+
+    const runId = crypto.randomUUID();
     await runs.create({
       id: runId,
       user_id: opts.userId ?? null,
@@ -66,6 +92,13 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
       workflow_id: null,
       summary: null,
       tag: env.CF_VERSION_METADATA?.tag ?? null,
+      inspection_id: null,
+      model: null,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      fix_model: null,
+      fix_prompt_tokens: 0,
+      fix_completion_tokens: 0,
       created_at: now,
       updated_at: now,
     });
@@ -73,7 +106,7 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
       id: crypto.randomUUID(),
       type: "healing.requested",
       userId: opts.userId,
-      payload: { runId, dryRun: opts.dryRun, trigger: opts.trigger },
+      payload: { runId, dryRun, trigger: opts.trigger, phase: "analyze", autoFix },
       enqueuedAt: now,
     };
     await ctx.ports.queue.send(event);
@@ -86,8 +119,7 @@ function makeCancelHealing(env: Env, ctx: WorkerContext) {
   return async (runId: string): Promise<{ ok: boolean; error?: string }> => {
     const run = await runs.find(runId);
     if (!run) return { ok: false, error: "run not found" };
-    const active = ["queued", "scanning", "analyzing", "fixing", "running"];
-    if (!active.includes(run.status)) {
+    if (!isHealingActive(run.status)) {
       return { ok: false, error: `cannot cancel status: ${run.status}` };
     }
     if (run.workflow_id) {
@@ -101,7 +133,7 @@ function makeCancelHealing(env: Env, ctx: WorkerContext) {
     }
     await runs.update(runId, {
       status: "canceled",
-      summary: JSON.stringify({ canceled: true, at: Date.now() }),
+      summary: mergeHealingSummary(run.summary, { canceled: true, at: Date.now() }),
     });
     return { ok: true };
   };
@@ -179,6 +211,27 @@ async function buildApp(env: Env): Promise<Hono> {
   app.get("/healing", requireAuthMiddleware, (c) => {
     const identity = c.get("identity");
     return c.html(<HealingPage user={identity?.user} />);
+  });
+
+  app.get("/healing/:runId", requireAuthMiddleware, async (c) => {
+    const identity = c.get("identity");
+    const runId = c.req.param("runId")!;
+    const runRepo = new HealingRunRepository(ctx.ports.db);
+    const inspectionRepo = new InspectionRepository(ctx.ports.db);
+    const run = await runRepo.find(runId);
+    if (!run) return c.notFound();
+    let result = null;
+    if (run.inspection_id) {
+      const row = await inspectionRepo.findById(run.inspection_id);
+      if (row?.result) {
+        try {
+          result = JSON.parse(row.result);
+        } catch {
+          result = null;
+        }
+      }
+    }
+    return c.html(<HealingAnalysisPage user={identity?.user} run={run} result={result} />);
   });
 
   app.get("/inspection", requireAuthMiddleware, (c) => {
@@ -298,7 +351,7 @@ export default {
 
     if (await shouldRunScheduledHealing(wctx, new Date())) {
       const trigger = makeTriggerHealing(env, wctx);
-      await trigger({ trigger: "cron", dryRun: false });
+      await trigger({ trigger: "cron", dryRun: false, autoFix: true, phase: "analyze" });
     }
   },
 };

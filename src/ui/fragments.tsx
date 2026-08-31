@@ -17,7 +17,7 @@ import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
 import type { AuthService, AuthedUser } from "../auth/service";
 import type { Logger } from "../logging/logger";
-import type { TriggerHealingResult } from "../http/api";
+import type { TriggerHealingOpts, TriggerHealingResult } from "../http/api";
 import type { InspectionRequest, InspectionResult, Language } from "../types";
 import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
 import {
@@ -43,6 +43,7 @@ import { InspectionDetail } from "./components/inspection-detail";
 import { InspectionProgress } from "./components/inspection-progress";
 import { CodeSessionList } from "./components/code-session-list";
 import { HealingRunList } from "./components/healing-run-list";
+import { HealingFixModalBody } from "./components/healing-fix-modal";
 import { RepoSelector } from "./components/repo-selector";
 import { NotificationBell, type NotificationItem } from "./components/notification-bell";
 import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
@@ -68,7 +69,7 @@ export interface FragmentDeps {
   /** 環境変数 OURO_REGISTRATION_ENABLED による上書き。未設定なら DB 設定に従う。 */
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
-  triggerHealing: (opts: { trigger: string; userId?: string; dryRun: boolean }) => Promise<TriggerHealingResult>;
+  triggerHealing: (opts: TriggerHealingOpts) => Promise<TriggerHealingResult>;
   cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -200,7 +201,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
         kind: "自己修復",
         title: r.id.slice(0, 8),
         status: PROGRESS_LABELS[r.status] ?? r.status,
-        href: "/healing",
+        href: `/healing/${r.id}`,
         at: r.created_at,
       })),
       ...activeSessions.map((r) => ({
@@ -488,8 +489,10 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     "",
     "active",
     "queued",
+    "indexing",
     "scanning",
     "analyzing",
+    "analyzed",
     "fixing",
     "running",
     "done",
@@ -551,10 +554,12 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
         {
           queued: "待機中",
           scanning: "スキャン中",
+          indexing: "インデックス中",
           analyzing: "解析中",
+          analyzed: "解析完了",
           fixing: "修復中",
           running: "実行中",
-          done: "完了",
+          done: "修復完了",
           failed: "失敗",
           canceled: "キャンセル",
         } as Record<string, string>
@@ -633,21 +638,54 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     );
   });
 
-  app.post("/healing", async (c) => {
+  app.get("/healing/:runId/fix-modal", async (c) => {
+    const run = await runs.find(c.req.param("runId")!);
+    if (!run) return c.html(<Alert type="error" message="実行が見つかりません。" />, 404);
+    if (run.status !== "analyzed") {
+      return c.html(<Alert type="error" message="解析が完了した実行だけ修復できます。" />, 400);
+    }
+    return c.html(<HealingFixModalBody run={run} />);
+  });
+
+  app.post("/healing/:runId/fix", async (c) => {
     const userId = c.get("identity").user.id;
+    const runId = c.req.param("runId")!;
+    const current = await runs.find(runId);
+    if (!current) return c.html(<Alert type="error" message="実行が見つかりません。" />, 404);
+    if (current.status !== "analyzed") {
+      return c.html(<Alert type="error" message="解析が完了した実行だけ修復できます。" />, 400);
+    }
     const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
     const dryRun = (body as Record<string, unknown>).dryRun === "true";
-    const out = await deps.triggerHealing({ trigger: "gui", userId, dryRun });
+    const out = await deps.triggerHealing({ trigger: "gui", userId, dryRun, phase: "fix", runId });
+    if (out.error) {
+      return c.html(<Alert type="error" message={out.error} />, 400);
+    }
+    c.header("HX-Redirect", "/healing");
     return c.html(
       <>
         <Alert
           type="success"
           message={
             dryRun
-              ? `ドライランを開始しました (実行 ID: ${out.runId.slice(0, 8)})。変更は適用されません。`
-              : `自己修復サイクルを開始しました (実行 ID: ${out.runId.slice(0, 8)})。`
+              ? `ドライラン修復を開始しました (実行 ID: ${out.runId.slice(0, 8)})。`
+              : `自動修復を開始しました (実行 ID: ${out.runId.slice(0, 8)})。`
           }
         />
+        {await renderHealingRuns(1, "", true)}
+      </>
+    );
+  });
+
+  app.post("/healing", async (c) => {
+    const userId = c.get("identity").user.id;
+    const out = await deps.triggerHealing({ trigger: "gui", userId, phase: "analyze" });
+    if (out.error) {
+      return c.html(<Alert type="error" message={out.error} />, 400);
+    }
+    return c.html(
+      <>
+        <Alert type="success" message={`解析を開始しました (実行 ID: ${out.runId.slice(0, 8)})。`} />
         {await renderHealingRuns(1, "", true)}
       </>
     );

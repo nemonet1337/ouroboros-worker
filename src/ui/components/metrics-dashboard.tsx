@@ -10,9 +10,14 @@ interface MetricsDashboardProps {
 }
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {
-  done: { label: "完了", class: "badge-success" },
+  done: { label: "修復完了", class: "badge-success" },
   running: { label: "実行中", class: "badge-info" },
   queued: { label: "待機中", class: "badge-warning" },
+  indexing: { label: "インデックス中", class: "badge-info" },
+  scanning: { label: "スキャン中", class: "badge-info" },
+  analyzing: { label: "解析中", class: "badge-info" },
+  analyzed: { label: "解析完了", class: "badge-primary" },
+  fixing: { label: "修復中", class: "badge-info" },
   failed: { label: "失敗", class: "badge-error" },
 };
 

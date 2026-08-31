@@ -1,4 +1,6 @@
 import type { DbAdapter } from "../ports/db";
+import { HEALING_ACTIVE_SQL, HEALING_INSPECTION_TARGET_PREFIX } from "../healing/status";
+import { mergeHealingSummary } from "../healing/summary";
 
 export interface UserRow {
   id: string;
@@ -26,9 +28,29 @@ export interface HealingRunRow {
   workflow_id: string | null;
   summary: string | null;
   tag: string | null;
+  inspection_id: string | null;
+  model: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  fix_model: string | null;
+  fix_prompt_tokens: number;
+  fix_completion_tokens: number;
   created_at: number;
   updated_at: number;
 }
+
+export type HealingRunPatch = {
+  status?: string;
+  workflow_id?: string;
+  summary?: string;
+  inspection_id?: string | null;
+  model?: string | null;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  fix_model?: string | null;
+  fix_prompt_tokens?: number;
+  fix_completion_tokens?: number;
+};
 
 export class UserRepository {
   constructor(private readonly db: DbAdapter) {}
@@ -217,15 +239,26 @@ export class InspectionRepository {
 
   async listByUser(userId: string, limit = 30): Promise<InspectionRow[]> {
     return this.db.query<InspectionRow>(
-      `SELECT * FROM inspections WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`,
-      [userId, limit]
+      `SELECT * FROM inspections
+       WHERE user_id = ? AND (target IS NULL OR target NOT LIKE ?)
+       ORDER BY created_at DESC LIMIT ?`,
+      [userId, `${HEALING_INSPECTION_TARGET_PREFIX}%`, limit]
     );
+  }
+
+  async findById(id: string): Promise<InspectionRow | undefined> {
+    const rows = await this.db.query<InspectionRow>(
+      `SELECT * FROM inspections WHERE id = ?`,
+      [id]
+    );
+    return rows[0];
   }
 
   async countSince(userId: string, sinceMs: number): Promise<number> {
     const rows = await this.db.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM inspections WHERE user_id = ? AND created_at >= ?`,
-      [userId, sinceMs]
+      `SELECT COUNT(*) AS n FROM inspections
+       WHERE user_id = ? AND created_at >= ? AND (target IS NULL OR target NOT LIKE ?)`,
+      [userId, sinceMs, `${HEALING_INSPECTION_TARGET_PREFIX}%`]
     );
     return Number(rows[0]?.n ?? 0);
   }
@@ -291,32 +324,66 @@ export class HealingRunRepository {
 
   async create(row: HealingRunRow): Promise<void> {
     await this.db.exec(
-      `INSERT INTO healing_runs (id, user_id, status, trigger, workflow_id, summary, tag, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [row.id, row.user_id, row.status, row.trigger, row.workflow_id, row.summary, row.tag, row.created_at, row.updated_at]
+      `INSERT INTO healing_runs (
+         id, user_id, status, trigger, workflow_id, summary, tag,
+         inspection_id, model, prompt_tokens, completion_tokens,
+         fix_model, fix_prompt_tokens, fix_completion_tokens,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.id,
+        row.user_id,
+        row.status,
+        row.trigger,
+        row.workflow_id,
+        row.summary,
+        row.tag,
+        row.inspection_id ?? null,
+        row.model ?? null,
+        row.prompt_tokens ?? 0,
+        row.completion_tokens ?? 0,
+        row.fix_model ?? null,
+        row.fix_prompt_tokens ?? 0,
+        row.fix_completion_tokens ?? 0,
+        row.created_at,
+        row.updated_at,
+      ]
     );
   }
 
-  async update(id: string, patch: { status?: string; workflow_id?: string; summary?: string }): Promise<void> {
+  async update(id: string, patch: HealingRunPatch): Promise<void> {
     const sets: string[] = [];
     const params: (string | number | null)[] = [];
-    if (patch.status !== undefined) { sets.push("status = ?"); params.push(patch.status); }
-    if (patch.workflow_id !== undefined) { sets.push("workflow_id = ?"); params.push(patch.workflow_id); }
-    if (patch.summary !== undefined) { sets.push("summary = ?"); params.push(patch.summary); }
-    sets.push("updated_at = ?"); params.push(Date.now());
+    const assign = (col: string, value: string | number | null | undefined, present: boolean) => {
+      if (!present) return;
+      sets.push(`${col} = ?`);
+      params.push(value ?? null);
+    };
+    assign("status", patch.status, patch.status !== undefined);
+    assign("workflow_id", patch.workflow_id, patch.workflow_id !== undefined);
+    assign("summary", patch.summary, patch.summary !== undefined);
+    assign("inspection_id", patch.inspection_id, patch.inspection_id !== undefined);
+    assign("model", patch.model, patch.model !== undefined);
+    assign("prompt_tokens", patch.prompt_tokens, patch.prompt_tokens !== undefined);
+    assign("completion_tokens", patch.completion_tokens, patch.completion_tokens !== undefined);
+    assign("fix_model", patch.fix_model, patch.fix_model !== undefined);
+    assign("fix_prompt_tokens", patch.fix_prompt_tokens, patch.fix_prompt_tokens !== undefined);
+    assign("fix_completion_tokens", patch.fix_completion_tokens, patch.fix_completion_tokens !== undefined);
+    sets.push("updated_at = ?");
+    params.push(Date.now());
     params.push(id);
     await this.db.exec(`UPDATE healing_runs SET ${sets.join(", ")} WHERE id = ?`, params);
   }
 
   /**
    * 実行履歴を新しい順で取得。
-   * status を渡すと一致するものだけ。`active` は進行中（queued/scanning/analyzing/fixing/running）の別名。
+   * status を渡すと一致するものだけ。`active` は進行中の別名。
    */
   async recent(limit = 50, offset = 0, status?: string): Promise<HealingRunRow[]> {
     if (status === "active") {
       return this.db.query<HealingRunRow>(
         `SELECT * FROM healing_runs
-         WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+         WHERE status IN (${HEALING_ACTIVE_SQL})
          ORDER BY created_at DESC LIMIT ? OFFSET ?`,
         [limit, offset]
       );
@@ -341,29 +408,29 @@ export class HealingRunRepository {
     return rows[0];
   }
 
-  /** 進行中（queued/scanning/analyzing/fixing/running）の修復実行。通知欄用。 */
+  /** 進行中の修復実行。通知欄用。analyzed（修復待ち）は含まない。 */
   async listActive(limit = 10): Promise<HealingRunRow[]> {
     return this.db.query<HealingRunRow>(
       `SELECT * FROM healing_runs
-       WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+       WHERE status IN (${HEALING_ACTIVE_SQL})
        ORDER BY created_at DESC LIMIT ?`,
       [limit]
     );
   }
 
-  /** 60 分以上進行中のままの修復を failed にする。 */
+  /** 60 分以上進行中のままの修復を failed にする。解析サマリは残す。 */
   async failStale(olderThanMs: number): Promise<number> {
     const cutoff = Date.now() - olderThanMs;
-    const rows = await this.db.query<{ id: string }>(
-      `SELECT id FROM healing_runs
-       WHERE status IN ('queued', 'scanning', 'analyzing', 'fixing', 'running')
+    const rows = await this.db.query<{ id: string; summary: string | null }>(
+      `SELECT id, summary FROM healing_runs
+       WHERE status IN (${HEALING_ACTIVE_SQL})
          AND updated_at < ?`,
       [cutoff]
     );
     for (const r of rows) {
       await this.update(r.id, {
         status: "failed",
-        summary: JSON.stringify({ error: "タイムアウト" }),
+        summary: mergeHealingSummary(r.summary, { error: "タイムアウト" }),
       });
     }
     return rows.length;

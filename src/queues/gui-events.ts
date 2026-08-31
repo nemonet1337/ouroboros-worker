@@ -25,9 +25,14 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
               runId: String(event.payload.runId ?? crypto.randomUUID()),
               dryRun: Boolean(event.payload.dryRun),
               trigger: String(event.payload.trigger ?? "gui"),
+              phase: event.payload.phase === "fix" ? "fix" : "analyze",
+              autoFix: Boolean(event.payload.autoFix),
             },
           });
-          await log.info("started healing workflow", { runId: event.payload.runId });
+          await log.info("started healing workflow", {
+            runId: event.payload.runId,
+            phase: String(event.payload.phase ?? "analyze"),
+          });
           break;
         }
         case "inspection.requested": {

@@ -12,7 +12,7 @@ import type { InspectionRequest, Language } from "../types";
 import { newId } from "../auth/tokens";
 
 const INDEX_STALE_MS = 24 * 60 * 60 * 1000; // 24 時間（同期 reindex を避ける）
-const MAX_ANALYSIS_FILES = 6;
+export const MAX_ANALYSIS_FILES = 6;
 
 export interface ProgressStep {
   step: string;
@@ -38,7 +38,7 @@ const EXT_TO_LANGUAGE: Record<string, Language> = {
   dart: "flutter",
 };
 
-function detectLanguage(paths: string[]): Language {
+export function detectLanguage(paths: string[]): Language {
   for (const p of paths) {
     const ext = p.split(".").pop()?.toLowerCase() ?? "";
     if (EXT_TO_LANGUAGE[ext]) return EXT_TO_LANGUAGE[ext];
@@ -224,7 +224,7 @@ function needsReindex(status: CodeIndexStatus | null): boolean {
   return Date.now() - status.updatedAt > INDEX_STALE_MS;
 }
 
-function uniqueTopPaths(paths: string[], limit: number): string[] {
+export function uniqueTopPaths(paths: string[], limit: number): string[] {
   const out: string[] = [];
   for (const p of paths) {
     if (!out.includes(p)) out.push(p);
