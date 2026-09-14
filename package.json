@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "diff": "^9.0.0",
-    "hono": "^4.13.5"
+    "hono": "^4.13.7"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260903.1",
