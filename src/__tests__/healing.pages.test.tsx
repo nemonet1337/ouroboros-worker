@@ -44,6 +44,10 @@ function sampleRun(overrides: Partial<HealingRunRow> = {}): HealingRunRow {
     fix_model: null,
     fix_prompt_tokens: 0,
     fix_completion_tokens: 0,
+    cached_prompt_tokens: 0,
+    cache_write_prompt_tokens: 0,
+    fix_cached_prompt_tokens: 0,
+    fix_cache_write_prompt_tokens: 0,
     created_at: Date.now(),
     updated_at: Date.now(),
     ...overrides,
@@ -78,6 +82,52 @@ describe("healing pages", () => {
     expect(html).toContain("glm-5.3-flash");
     expect(html).toContain('aria-label="6 次元スコアのレーダーチャート"');
     expect(html).not.toContain("リファクタ提案を生成");
+  });
+
+  it("shows the cached prompt token share on the analysis detail page", async () => {
+    const app = new Hono();
+    app.get("/healing/:id", (c) =>
+      c.html(
+        <HealingAnalysisPage
+          run={sampleRun({
+            prompt_tokens: 4000,
+            completion_tokens: 40,
+            cached_prompt_tokens: 3000,
+            fix_model: "openai/gpt-6-luna",
+            fix_prompt_tokens: 2000,
+            fix_completion_tokens: 30,
+            fix_cached_prompt_tokens: 1000,
+          })}
+          result={null}
+        />
+      )
+    );
+    const html = await (await app.request("/healing/run-1")).text();
+    expect(html).toContain("cache 3,000 (75%)");
+    expect(html).toContain("cache 1,000 (50%)");
+  });
+
+  it("shows the cache write amount when there is no hit yet", async () => {
+    const app = new Hono();
+    app.get("/healing/:id", (c) =>
+      c.html(
+        <HealingAnalysisPage
+          run={sampleRun({ prompt_tokens: 4000, cache_write_prompt_tokens: 4000 })}
+          result={null}
+        />
+      )
+    );
+    const html = await (await app.request("/healing/run-1")).text();
+    expect(html).toContain("cache write 4,000");
+    expect(html).not.toContain("cache 4,000 (100%)");
+  });
+
+  it("omits the cache note when nothing was cached", async () => {
+    const app = new Hono();
+    app.get("/healing/:id", (c) => c.html(<HealingAnalysisPage run={sampleRun()} result={null} />));
+    const html = await (await app.request("/healing/run-1")).text();
+    expect(html).toContain("in 120 / out 40");
+    expect(html).not.toContain("cache");
   });
 
   it("dashboard and sidebar point only at /healing for analysis", async () => {

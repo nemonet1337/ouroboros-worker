@@ -2,6 +2,16 @@ import type { HealingRunRepository, HealingRunRow } from "../db/repositories";
 import type { UsageSnapshot } from "../analytics/usage.accumulator";
 import { mergeHealingSummary, parseHealingSummary, usageTotals, type HealingSummary } from "./summary";
 
+function toUsage(snap: UsageSnapshot, model: string) {
+  return {
+    model: snap.model || model,
+    promptTokens: snap.promptTokens,
+    completionTokens: snap.completionTokens,
+    cachedTokens: snap.cachedTokens,
+    cacheWriteTokens: snap.cacheWriteTokens,
+  };
+}
+
 export async function persistAnalyzeUsage(
   runs: HealingRunRepository,
   run: HealingRunRow,
@@ -10,7 +20,7 @@ export async function persistAnalyzeUsage(
   model: string
 ): Promise<void> {
   const summary = parseHealingSummary(run.summary);
-  const usage = { model: snap.model || model, promptTokens: snap.promptTokens, completionTokens: snap.completionTokens };
+  const usage = toUsage(snap, model);
   if (step === "index") {
     summary.index = { ...(summary.index ?? { files: 0, chunks: 0 }), usage };
   } else {
@@ -31,6 +41,8 @@ export async function persistAnalyzeUsage(
     model: totals.analyze.model || model,
     prompt_tokens: totals.analyze.promptTokens,
     completion_tokens: totals.analyze.completionTokens,
+    cached_prompt_tokens: totals.analyze.cachedTokens ?? 0,
+    cache_write_prompt_tokens: totals.analyze.cacheWriteTokens ?? 0,
   });
 }
 
@@ -40,13 +52,15 @@ export async function persistFixUsage(
   snap: UsageSnapshot,
   model: string
 ): Promise<void> {
-  const usage = { model: snap.model || model, promptTokens: snap.promptTokens, completionTokens: snap.completionTokens };
+  const usage = toUsage(snap, model);
   const summary = mergeHealingSummary(run.summary, { fix: { usage } });
   await runs.update(run.id, {
     summary,
     fix_model: usage.model,
     fix_prompt_tokens: usage.promptTokens,
     fix_completion_tokens: usage.completionTokens,
+    fix_cached_prompt_tokens: usage.cachedTokens,
+    fix_cache_write_prompt_tokens: usage.cacheWriteTokens,
   });
 }
 

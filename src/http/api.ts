@@ -370,12 +370,25 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // ── Clef によるモデル階層ルーティング（管理者のみ） ──
+  // ── 用途別モデル設定（管理者のみ） ──
   app.put("/settings/routing", requireAdmin, async (c) => {
-    const saved = await setRoutingConfig(settingsRepo, await c.req.json().catch(() => null));
+    // htmx の json-enc 拡張は JSON を送るが、拡張が未ロードの場合は form 形式になる
+    const contentType = c.req.header("content-type") ?? "";
+    let payload: unknown;
+    if (contentType.includes("application/json")) {
+      payload = await c.req.json().catch(() => null);
+    } else {
+      const form = await c.req.parseBody();
+      const asRecord: Record<string, string> = {};
+      for (const [k, v] of Object.entries(form)) {
+        if (typeof v === "string") asRecord[k] = v;
+      }
+      payload = asRecord;
+    }
+    const saved = await setRoutingConfig(settingsRepo, payload);
     if (c.req.header("HX-Request")) {
       return c.html(
-        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>ルーティング設定を保存しました。</span></div><script>lucide.createIcons()</script>`
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。</span></div><script>lucide.createIcons()</script>`
       );
     }
     return c.json({ ok: true, routing: saved });
@@ -461,13 +474,6 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   });
 
   app.get("/healing", requireAuth(), async (c) => c.json({ runs: await runs.recent(50) }));
-
-  // ── Logs (admin) ─────────────────────────────────────────────────────────
-  app.get("/logs", requireAdmin, async (c) => c.json({ files: await ports.logs.list() }));
-  app.get("/logs/:file", requireAdmin, async (c) => {
-    const content = await ports.logs.read(c.req.param("file")!, 200_000).catch(() => "");
-    return c.text(content);
-  });
 
   // ── Metrics ─────────────────────────────────────────────────────────────
   app.get("/metrics", requireAuth(), async (c) => {

@@ -45,6 +45,8 @@ export async function rankChunks(opts: {
   query: string;
   files: Array<{ path: string; content: string }>;
   topK: number;
+  /** 埋め込みモデル ID。省略時はプロバイダの既定。 */
+  embedModel?: string;
 }): Promise<CodeSnippet[]> {
   const embed = opts.ai.embed?.bind(opts.ai);
   if (!embed) return [];
@@ -60,14 +62,14 @@ export async function rankChunks(opts: {
 
   let vectors: number[][];
   try {
-    vectors = await embed(candidates.map((c) => c.chunk.text));
+    vectors = await embed(candidates.map((c) => c.chunk.text), opts.embedModel);
   } catch (err) {
     console.warn("[retrieval] embedding failed:", err instanceof Error ? err.message : err);
     return [];
   }
   if (vectors.length !== candidates.length) return [];
 
-  const [queryVector] = await embed([opts.query]);
+  const [queryVector] = await embed([opts.query], opts.embedModel);
   if (!queryVector || queryVector.length === 0) return [];
 
   return candidates

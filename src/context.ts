@@ -7,7 +7,6 @@ import type { HealingConfig } from "./config/healing.config";
 import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
 import type { Env, VersionMetadata } from "./env";
 import { D1Adapter } from "./adapters/d1.adapter";
-import { R2LogStore } from "./adapters/r2.logstore";
 import { CfQueueAdapter } from "./adapters/cf.queue";
 import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
@@ -39,9 +38,8 @@ export interface WorkerContext {
 
 export async function buildContext(env: Env): Promise<WorkerContext> {
   const db = new D1Adapter(env.DB);
-  const logs = new R2LogStore(env.LOGS);
-  // ベース名のみ指定。Logger が UTC 日付付きファイル（ouroboros-YYYY-MM-DD.log）へ日次切替する
-  const logger = new Logger(logs, { file: "ouroboros", minLevel: "info" });
+  // 出力先は Workers Logs（console）のみ。永続化は Cloudflare Observability に任せる。
+  const logger = new Logger({ minLevel: "info" });
 
   // カタログモデルは AI binding。パートナーモデルのみ REST（401/403 後は isolate 内で binding 固定）。
   const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET
@@ -99,7 +97,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     ai,
     vcs,
     db,
-    logs,
     queue,
     runner,
     codeRunner: runner,

@@ -147,6 +147,8 @@ export async function retrieveContext(opts: {
   maxChars?: number;
   topK?: number;
   targetPaths?: string[];
+  /** 埋め込みモデル ID。省略時はプロバイダの既定。 */
+  embedModel?: string;
 }): Promise<RetrievalResult> {
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
   const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
@@ -180,6 +182,7 @@ export async function retrieveContext(opts: {
     query: opts.instruction,
     files: [...candidates].map(([path, content]) => ({ path, content })),
     topK,
+    embedModel: opts.embedModel,
   });
 
   const selectedPaths = selectPaths({

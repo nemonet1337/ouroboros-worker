@@ -31,13 +31,33 @@ function runsUrl(page: number, statusFilter: string): string {
   return `/ui/fragments/healing/runs?${q.toString()}`;
 }
 
-function TokenLine(props: { model?: string | null; prompt?: number; completion?: number; label: string }) {
+function TokenLine(props: {
+  model?: string | null;
+  prompt?: number;
+  completion?: number;
+  /** プロンプトキャッシュのヒット分。prompt に含まれる。 */
+  cached?: number;
+  /** キャッシュ書き込みで消費した分。 */
+  cacheWrite?: number;
+  label: string;
+}) {
   const prompt = props.prompt ?? 0;
   const completion = props.completion ?? 0;
+  const cached = props.cached ?? 0;
+  const cacheWrite = props.cacheWrite ?? 0;
   if (!props.model && prompt === 0 && completion === 0) return null;
+  // キャッシュ書き込みが非ゼロの場合のみ表示（ヒット 0 のときは in/out のみ）
+  const cacheNote =
+    cached > 0
+      ? ` · cache ${cached.toLocaleString()} (${prompt > 0 ? Math.round((cached / prompt) * 100) : 0}%)`
+      : cacheWrite > 0
+        ? ` · cache write ${cacheWrite.toLocaleString()}`
+        : "";
   return (
     <div class="text-xs opacity-60 font-mono truncate" title={props.model ?? ""}>
-      {props.label}: {props.model ? props.model.replace(/^@[^/]+\//, "") : "—"} · in {prompt} / out {completion}
+      {props.label}: {props.model ? props.model.replace(/^@[^/]+\//, "") : "—"} · in {prompt} / out{" "}
+      {completion}
+      {cacheNote}
     </div>
   );
 }
@@ -185,6 +205,8 @@ export const HealingRunList: FC<HealingRunListProps> = ({
                     model={run.model}
                     prompt={run.prompt_tokens}
                     completion={run.completion_tokens}
+                    cached={run.cached_prompt_tokens}
+                    cacheWrite={run.cache_write_prompt_tokens}
                   />
                   {(run.fix_model || run.fix_prompt_tokens || run.fix_completion_tokens) && (
                     <TokenLine
@@ -192,6 +214,8 @@ export const HealingRunList: FC<HealingRunListProps> = ({
                       model={run.fix_model}
                       prompt={run.fix_prompt_tokens}
                       completion={run.fix_completion_tokens}
+                      cached={run.fix_cached_prompt_tokens}
+                      cacheWrite={run.fix_cache_write_prompt_tokens}
                     />
                   )}
                 </div>

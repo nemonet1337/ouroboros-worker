@@ -1,9 +1,12 @@
 /**
- * Clef によるモデル階層のルーティング設定。
+ * モデル選定の設定。3 つの役割（Efficiency / Performance / Embed）を
+ * システム全体で 1 つずつ選ぶ。
  *
  * codegen の前に Clef が実装難易度を判定し、`solThreshold` 以上なら
- * Performance（Sol）、未満なら Efficiency（Luna）を使う。
+ * Performance、未満なら Efficiency を使う。
  */
+import { DEFAULT_EMBEDDING_MODEL } from "./deployment";
+
 export type ReasoningEffort = "none" | "low" | "medium" | "high";
 
 export interface RoutingConfig {
@@ -11,10 +14,14 @@ export interface RoutingConfig {
   clefModel: string;
   /** difficulty がこの値以上なら Performance を使う（1〜5）。 */
   solThreshold: number;
+  /** 効率系モデル。inspection / healing / refactor もこれを使う。 */
   efficiencyModel: string;
   efficiencyEffort: ReasoningEffort;
+  /** 性能系モデル。Clef が「難しい」と判定したときの codegen に使う。 */
   performanceModel: string;
   performanceEffort: ReasoningEffort;
+  /** コード検索の埋め込みモデル。インデックスは持たないため影響はembedding に限られる。 */
+  embedModel: string;
 }
 
 export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
@@ -24,6 +31,7 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
   efficiencyEffort: "low",
   performanceModel: "openai/gpt-6-sol",
   performanceEffort: "medium",
+  embedModel: DEFAULT_EMBEDDING_MODEL,
 };
 
 const EFFORTS: ReadonlySet<string> = new Set(["none", "low", "medium", "high"]);
@@ -51,5 +59,6 @@ export function parseRoutingConfig(raw: unknown): RoutingConfig {
     efficiencyEffort: effort(o.efficiencyEffort, DEFAULT_ROUTING_CONFIG.efficiencyEffort),
     performanceModel: str(o.performanceModel, DEFAULT_ROUTING_CONFIG.performanceModel),
     performanceEffort: effort(o.performanceEffort, DEFAULT_ROUTING_CONFIG.performanceEffort),
+    embedModel: str(o.embedModel, DEFAULT_ROUTING_CONFIG.embedModel),
   };
 }

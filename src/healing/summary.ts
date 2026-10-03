@@ -4,6 +4,10 @@ export interface HealingUsage {
   model: string;
   promptTokens: number;
   completionTokens: number;
+  /** プロンプトキャッシュのヒット分。promptTokens に含まれる。 */
+  cachedTokens?: number;
+  /** キャッシュ書き込みで消費した分。 */
+  cacheWriteTokens?: number;
 }
 
 export interface HealingSummaryPr {
@@ -76,6 +80,8 @@ export function usageTotals(summary: HealingSummary): {
       model: analysis?.model || index?.model || "",
       promptTokens: (index?.promptTokens ?? 0) + (analysis?.promptTokens ?? 0),
       completionTokens: (index?.completionTokens ?? 0) + (analysis?.completionTokens ?? 0),
+      cachedTokens: (index?.cachedTokens ?? 0) + (analysis?.cachedTokens ?? 0),
+      cacheWriteTokens: (index?.cacheWriteTokens ?? 0) + (analysis?.cacheWriteTokens ?? 0),
     },
     fix: summary.fix?.usage ?? zero,
   };

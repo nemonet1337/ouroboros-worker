@@ -31,9 +31,14 @@ export interface HealingRunRow {
   model: string | null;
   prompt_tokens: number;
   completion_tokens: number;
+  /** プロンプトキャッシュのヒット分（prompt_tokens に含まれる）。 */
+  cached_prompt_tokens: number;
+  cache_write_prompt_tokens: number;
   fix_model: string | null;
   fix_prompt_tokens: number;
   fix_completion_tokens: number;
+  fix_cached_prompt_tokens: number;
+  fix_cache_write_prompt_tokens: number;
   created_at: number;
   updated_at: number;
 }
@@ -46,9 +51,13 @@ export type HealingRunPatch = {
   model?: string | null;
   prompt_tokens?: number;
   completion_tokens?: number;
+  cached_prompt_tokens?: number;
+  cache_write_prompt_tokens?: number;
   fix_model?: string | null;
   fix_prompt_tokens?: number;
   fix_completion_tokens?: number;
+  fix_cached_prompt_tokens?: number;
+  fix_cache_write_prompt_tokens?: number;
 };
 
 export class UserRepository {
@@ -303,9 +312,11 @@ export class HealingRunRepository {
       `INSERT INTO healing_runs (
          id, user_id, status, trigger, workflow_id, summary, tag,
          inspection_id, model, prompt_tokens, completion_tokens,
+         cached_prompt_tokens, cache_write_prompt_tokens,
          fix_model, fix_prompt_tokens, fix_completion_tokens,
+         fix_cached_prompt_tokens, fix_cache_write_prompt_tokens,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id,
         row.user_id,
@@ -318,9 +329,13 @@ export class HealingRunRepository {
         row.model ?? null,
         row.prompt_tokens ?? 0,
         row.completion_tokens ?? 0,
+        row.cached_prompt_tokens ?? 0,
+        row.cache_write_prompt_tokens ?? 0,
         row.fix_model ?? null,
         row.fix_prompt_tokens ?? 0,
         row.fix_completion_tokens ?? 0,
+        row.fix_cached_prompt_tokens ?? 0,
+        row.fix_cache_write_prompt_tokens ?? 0,
         row.created_at,
         row.updated_at,
       ]
@@ -342,9 +357,25 @@ export class HealingRunRepository {
     assign("model", patch.model, patch.model !== undefined);
     assign("prompt_tokens", patch.prompt_tokens, patch.prompt_tokens !== undefined);
     assign("completion_tokens", patch.completion_tokens, patch.completion_tokens !== undefined);
+    assign("cached_prompt_tokens", patch.cached_prompt_tokens, patch.cached_prompt_tokens !== undefined);
+    assign(
+      "cache_write_prompt_tokens",
+      patch.cache_write_prompt_tokens,
+      patch.cache_write_prompt_tokens !== undefined
+    );
     assign("fix_model", patch.fix_model, patch.fix_model !== undefined);
     assign("fix_prompt_tokens", patch.fix_prompt_tokens, patch.fix_prompt_tokens !== undefined);
     assign("fix_completion_tokens", patch.fix_completion_tokens, patch.fix_completion_tokens !== undefined);
+    assign(
+      "fix_cached_prompt_tokens",
+      patch.fix_cached_prompt_tokens,
+      patch.fix_cached_prompt_tokens !== undefined
+    );
+    assign(
+      "fix_cache_write_prompt_tokens",
+      patch.fix_cache_write_prompt_tokens,
+      patch.fix_cache_write_prompt_tokens !== undefined
+    );
     sets.push("updated_at = ?");
     params.push(Date.now());
     params.push(id);

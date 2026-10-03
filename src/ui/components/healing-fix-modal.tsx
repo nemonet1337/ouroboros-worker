@@ -37,6 +37,15 @@ export const HealingFixModalBody: FC<HealingFixModalBodyProps> = ({ run }) => {
           <div class="text-xs opacity-50">解析トークン</div>
           <div class="font-mono text-xs">
             in {run.prompt_tokens ?? 0} / out {run.completion_tokens ?? 0}
+            {(run.cached_prompt_tokens ?? 0) > 0 && (
+              <span class="opacity-70">
+                {" "}
+                · cache {(run.cached_prompt_tokens ?? 0).toLocaleString()}
+                {run.prompt_tokens
+                  ? ` (${Math.round(((run.cached_prompt_tokens ?? 0) / run.prompt_tokens) * 100)}%)`
+                  : ""}
+              </span>
+            )}
           </div>
         </div>
         <div>

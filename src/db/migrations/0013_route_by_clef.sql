@@ -17,6 +17,12 @@ ALTER TABLE code_sessions DROP COLUMN plan;
 ALTER TABLE code_sessions DROP COLUMN mode;
 ALTER TABLE users DROP COLUMN mode_models;
 
+-- Prompt cache accounting so the GUI can show the cached share of input tokens.
+ALTER TABLE healing_runs ADD COLUMN cached_prompt_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE healing_runs ADD COLUMN cache_write_prompt_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE healing_runs ADD COLUMN fix_cached_prompt_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE healing_runs ADD COLUMN fix_cache_write_prompt_tokens INTEGER NOT NULL DEFAULT 0;
+
 -- Vectorize 廃止の設定キー
 DELETE FROM settings WHERE key = 'embedding_model';
 DELETE FROM settings WHERE key = 'code_index_status';

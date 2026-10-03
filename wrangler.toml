@@ -27,13 +27,11 @@ database_name = "ouroboros"
 database_id = "fa58b005-a39c-41ea-b029-19736281f6e6"
 migrations_dir = "src/db/migrations"
 
-# R2 — フラット .log テレメトリの保存先
-[[r2_buckets]]
-binding = "LOGS"
-bucket_name = "ouroboros-logs"
+# ログは Cloudflare Workers Logs（console）に出力する。永続 R2 バケットは持たない。
+# 永続的に見たい場合は `wrangler tail` か Cloudflare Observability の Logs を使う。
 
 # Queues — GUI イベントの非同期取り込み
-# 重イベント（inspection / codeindex / codegen）が 1 invocation に複数入ると
+# 重イベント（inspection / codegen）が 1 invocation に複数入ると
 # subrequest 予算を共有して枯渇するため batch size は 1。
 [[queues.producers]]
 binding = "GUI_EVENTS"

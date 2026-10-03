@@ -35,6 +35,8 @@ export async function assembleContext(opts: {
   maxFiles?: number;
   maxChars?: number;
   targetPaths?: string[];
+  /** 埋め込みモデル ID。省略時はプロバイダの既定。 */
+  embedModel?: string;
 }): Promise<AssembledContext> {
   const result = await retrieveContext({
     ai: opts.ai,
@@ -44,6 +46,7 @@ export async function assembleContext(opts: {
     maxChars: opts.maxChars ?? DEFAULT_MAX_CHARS,
     topK: opts.topK ?? DEFAULT_TOP_K,
     targetPaths: opts.targetPaths,
+    embedModel: opts.embedModel,
   });
   return {
     query: opts.query,
@@ -62,12 +65,14 @@ export async function selectPathsForAnalysis(opts: {
   ai: AiProvider;
   files: Array<{ path: string; content: string }>;
   maxFiles: number;
+  embedModel?: string;
 }): Promise<{ paths: string[]; snippets: CodeSnippet[]; source: ContextSource }> {
   const assembled = await assembleContext({
     query: opts.query,
     ai: opts.ai,
     files: opts.files,
     maxFiles: opts.maxFiles,
+    embedModel: opts.embedModel,
   });
   return {
     paths: assembled.selectedPaths,

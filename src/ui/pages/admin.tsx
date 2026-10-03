@@ -17,7 +17,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
             <span>管理者コントロールパネル</span>
           </h1>
           <p class="text-sm opacity-60 mt-1">
-            システム稼働ログの監視、アプリケーション環境設定の確認、および新規登録の開放制御
+            システム構成とアプリケーション環境設定の確認、および新規登録の開放制御
           </p>
         </div>
         <div class="badge badge-primary font-bold px-3 py-3 rounded-lg flex gap-1">
@@ -47,28 +47,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* システムログカード */}
-          <div class="card card-glass shadow-lg">
-            <div class="card-body p-6">
-              <h2 class="card-title text-lg font-bold flex items-center gap-2 mb-4">
-                <i data-lucide="file-text" class="w-5 h-5 text-primary" />
-                <span>システムログ (R2 バケット)</span>
-              </h2>
-              
-              <div
-                hx-get="/ui/fragments/admin/logs"
-                hx-trigger="load"
-                hx-target="#logs-list"
-                hx-swap="innerHTML"
-              >
-                <div id="logs-list">
-                  <div class="skeleton h-48 w-full rounded-xl"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <div class="grid grid-cols-1 gap-6">
           {/* システム構成・環境変数カード */}
           <div class="card card-glass shadow-lg">
             <div class="card-body p-6">
@@ -76,7 +55,7 @@ export const AdminPage: FC<AdminPageProps> = ({ user }) => {
                 <i data-lucide="settings" class="w-5 h-5 text-secondary" />
                 <span>システム環境設定 (読み取り専用)</span>
               </h2>
-              
+
               <div
                 hx-get="/ui/fragments/admin/config"
                 hx-trigger="load"

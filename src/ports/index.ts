@@ -1,7 +1,6 @@
 export * from "./ai";
 export * from "./vcs";
 export * from "./db";
-export * from "./logstore";
 export * from "./queue";
 export * from "./runner";
 export * from "./ratelimit";
@@ -9,7 +8,6 @@ export * from "./ratelimit";
 import type { AiProvider } from "./ai";
 import type { VcsProvider } from "./vcs";
 import type { DbAdapter } from "./db";
-import type { LogStore } from "./logstore";
 import type { QueueAdapter } from "./queue";
 import type { HealingRunner, CodeRunner } from "./runner";
 import type { RateLimiter } from "./ratelimit";
@@ -23,7 +21,6 @@ export interface Ports {
   ai: AiProvider;
   vcs: VcsProvider;
   db: DbAdapter;
-  logs: LogStore;
   queue: QueueAdapter;
   runner: HealingRunner;
   /** 本番では `runner` と同じ RepoRunner。テストだけ別インスタンス可。 */

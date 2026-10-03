@@ -104,7 +104,7 @@ describe("UI fragments", () => {
       .fn()
       .mockResolvedValue({ id: "user-2", email: "member@test.com", role: "member", model: null });
     const app = createFragments(deps);
-    for (const path of ["/admin/registration", "/admin/logs", "/admin/config"]) {
+    for (const path of ["/admin/registration", "/admin/config"]) {
       const res = await app.request(path, authed);
       expect(res.status).toBe(403);
       expect(await res.text()).toContain("管理者権限が必要です");
@@ -113,10 +113,6 @@ describe("UI fragments", () => {
 
   it("renders admin fragments for an admin user", async () => {
     const app = createFragments(buildDeps());
-    const logs = await app.request("/admin/logs", authed);
-    expect(logs.status).toBe(200);
-    expect(await logs.text()).toContain("ouroboros.log");
-
     const config = await app.request("/admin/config", authed);
     expect(config.status).toBe(200);
     expect(await config.text()).toContain("test/test");

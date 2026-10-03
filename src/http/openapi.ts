@@ -97,7 +97,5 @@ export const OPENAPI_SPEC = {
     "/healing/{runId}/cancel": {
       post: { summary: "進行中ランのキャンセル", responses: { "200": { description: "OK" }, "400": { description: "Rejected" } } },
     },
-    "/logs": { get: { summary: "ログファイル一覧（admin）", responses: { "200": { description: "OK" } } } },
-    "/logs/{file}": { get: { summary: "ログ内容（admin）", responses: { "200": { description: "OK" } } } },
   },
 } as const;

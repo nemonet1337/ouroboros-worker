@@ -9,8 +9,8 @@
 Ouroboros detects issues, uses an LLM to analyze and generate patches, and opens pull
 requests automatically — with authentication, multi-tenant API tokens, and telemetry logging.
 
-It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues + Workflows +
-Workers AI + Vectorize).
+It is **built exclusively for Cloudflare Workers** (Workers + D1 + Queues + Workflows +
+Workers AI).
 
 > **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
 > (default model: `openai/gpt-6-luna`). Every model Workers AI serves is selectable from the GUI
@@ -24,7 +24,7 @@ Workers AI + Vectorize).
 
 ```
 src/
-├── adapters/      Cloudflare service adapters (D1, R2, Queues, Workers AI, Vectorize …)
+├── adapters/      Cloudflare service adapters (D1, Queues, Workers AI …)
 ├── analytics/     AI usage tracker and cost estimator
 ├── analyzers/     AI analysis engine (finding grouping, risk scoring)
 ├── auth/          Authentication, sessions, API token management
@@ -35,7 +35,7 @@ src/
 ├── healing/       Self-healing orchestrator
 ├── http/          Hono-based REST API
 ├── inspection/    AI scoring engine (6 dimensions, 32 aspects)
-├── logging/       Structured logger (R2-persisted)
+├── logging/       Structured logger (Workers Logs)
 ├── ports/         Adapter interfaces (Ports & Adapters pattern)
 ├── pr/            PR body/title generation, dedup
 ├── queues/        Cloudflare Queues handler
@@ -55,16 +55,15 @@ src/
 | Port           | Implementation (Cloudflare Worker)      |
 | -------------- | --------------------------------------- |
 | `DbAdapter`    | D1                                      |
-| `LogStore`     | R2 objects                              |
 | `QueueAdapter` | Cloudflare Queues                       |
 | `AiProvider`   | Workers AI (the only AI gateway)        |
 | `VcsProvider`  | GitHub (fetch)                          |
 | `HealingRunner`| `RepoRunner` (in-process, GitHub REST API) |
 | `RateLimiter`  | Workers Rate Limiting API               |
-| `VectorizePort`| Cloudflare Vectorize (code-index RAG)   |
 
 Note: scan, fix, commit, and PR creation run **in-process via `RepoRunner`** using the GitHub REST API
 (the old Service Binding to `ouroborous-runner` has been removed).
+Logs go to Workers Logs (`console`); R2 persistence and Vectorize have both been removed.
 A **Cloudflare Workflow** drives the durable scan → analyze → fix → PR lifecycle.
 
 ---
@@ -78,7 +77,6 @@ npm install
 npm run build:web                                   # GUI → web/.output/public (served via ASSETS)
 
 wrangler d1 create ouroboros                         # paste the id into wrangler.toml
-wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from src/db/migrations/
 
@@ -90,7 +88,7 @@ wrangler secret put GITHUB_TOKEN
 wrangler deploy                                      # or: wrangler dev
 ```
 
-`wrangler.toml` wires D1, R2, Queues, Workflows, Workers AI, Vectorize, the Rate Limiting binding,
+`wrangler.toml` wires D1, Queues, Workflows, Workers AI, the Rate Limiting binding,
 and the hourly cron trigger (no runner Service Binding required).
 
 ### Admin account
@@ -102,18 +100,23 @@ and the hourly cron trigger (no runner Service Binding required).
 
 ### AI models
 
-- The default model is **`openai/gpt-6-luna`** (efficiency tier). GLM is retired; stored
-  preferences are remapped to Luna on read.
+Pick three models by role on `/models` (shared system-wide).
+
+| Role | Default | Used for |
+| --- | --- | --- |
+| Efficiency | `openai/gpt-6-luna` | Easy tasks, plus all inspection / healing / refactor work |
+| Performance | `openai/gpt-6-sol` | Code generation when Clef scores the task as hard |
+| Embed | `@cf/qwen/qwen3-embedding-0.6b` | Code-search embeddings |
+
 - **For code generation only**, Clef (`@cf/cloudflare/clef-flash`) scores implementation
-  difficulty and picks `openai/gpt-6-sol` (performance tier) above the threshold, Luna below.
-  Both the threshold and the model ids are configurable from `/models`.
-- inspection / healing / refactor are pinned to Luna.
-- Embedding is fixed to `@cf/qwen/qwen3-embedding-0.6b`. There is no index: Luna selects the
-  relevant files first, then they are chunked, embedded and cosine-ranked per request.
+  difficulty from 1 to 5 and picks Performance at or above the threshold, Efficiency below.
+  The threshold is configurable on `/models` too.
+- Embed keeps no index: files are chunked and embedded per request, so there is nothing to
+  provision, rebuild or migrate.
+- Each user can set a personal override via `PUT /api/v1/settings/models`; setting one makes
+  codegen skip the Clef decision and use that model.
 - `GET /api/v1/models` discovers every model from your account's Workers AI catalog, and
   **all of them are selectable from the GUI settings screen**.
-- Each user can set their personal model preference via `GET/PUT /api/v1/settings/model`;
-  setting one makes codegen skip the Clef decision and use that model.
 - The only AI credential is **`WORKERS_AI_API_TOKEN`**, and GPT-6 runs on the in-Worker AI
   binding so it is normally not needed; without it the binding is used directly.
 
@@ -127,15 +130,17 @@ and the hourly cron trigger (no runner Service Binding required).
   and scoped, revocable **API tokens** (`read` / `inspect` / `heal` / `admin`).
 - **Registration control** — admin toggle for public registration; the first registered
   user becomes the admin.
-- **Telemetry** — structured logs persisted as flat `.log` files in R2.
+- **Telemetry** — structured logs go to Workers Logs (`console`); persist them with Cloudflare
+  Observability. Cached prompt tokens are surfaced in the heal history.
 - **Async orchestration** — GUI events via Cloudflare Queues; healing lifecycle via Workflows.
 - **Rate limiting** — Workers Rate Limiting on public endpoints.
 - **Code inspection** — AI scoring engine exposed at `POST /api/v1/inspect`.
   Scores six weighted dimensions (security / performance / redundancy / readability / design /
   correctness) per file or per function/method/class (`granularity: "function"`), and returns
   prioritised `refactorCandidates` selected heuristically from low-scoring units.
-- **Adaptive weighting** — Vectorize stores 32-aspect scores as 32-dimensional vectors and
-  automatically adjusts aspect weights based on historical performance.
+- **Automatic model tier selection** — Clef scores implementation difficulty before code
+  generation and picks GPT-6 Sol at or above the threshold, GPT-6 Luna below. The decision is
+  recorded on the session.
 - **Code sessions** — Request AI code generation by specifying repository, branch, and
   instructions. Generated patches are automatically applied as pull requests.
 - **Refactoring proposals** — AI generates concrete improvement suggestions from inspection

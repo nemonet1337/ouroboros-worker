@@ -97,6 +97,7 @@ describe("CodeSessionManager", () => {
       efficiencyEffort: "low" as const,
       performanceModel: "openai/gpt-6-sol",
       performanceEffort: "medium" as const,
+      embedModel: "@cf/qwen/qwen3-embedding-0.6b",
     };
 
     await manager.generate("session-123", "user-1", { routing });

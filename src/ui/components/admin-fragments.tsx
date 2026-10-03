@@ -51,63 +51,13 @@ export const RegistrationToggle: FC<RegistrationToggleProps> = ({ enabled, first
   );
 };
 
-// ─── システムログ (R2 バケット) ────────────────────────────────────────────────
-
-interface LogFileListProps {
-  files: string[];
-}
-
-export const LogFileList: FC<LogFileListProps> = ({ files }) => {
-  return (
-    <div class="space-y-3">
-      <p class="text-xs opacity-50 px-1">
-        システムログは UTC 日付ごとに別ファイル（例: <code class="font-mono">ouroboros-2026-07-26.log</code>）へ保存されます。新しい日付が上です。
-      </p>
-      {files.length === 0 ? (
-        <div class="card card-glass p-8 text-center text-base-content/50">
-          <i data-lucide="file-text" class="w-12 h-12 mx-auto text-base-content/30 mb-3" />
-          <p class="font-bold">ログファイルはありません</p>
-          <p class="text-xs opacity-75 mt-1">システムが稼働するとログが R2 バケットに日次ファイルとして保存されます。</p>
-        </div>
-      ) : (
-        <ul class="space-y-2">
-          {files.map((file) => (
-            <li key={file}>
-              <button
-                class="btn btn-sm btn-outline rounded-lg w-full justify-start gap-2 font-mono text-xs"
-                hx-get={`/ui/fragments/admin/logs/${encodeURIComponent(file)}`}
-                hx-target="#log-viewer"
-                hx-swap="innerHTML"
-                hx-disabled-elt="this"
-              >
-                <i data-lucide="file-text" class="w-3.5 h-3.5" />
-                <span>{file}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div id="log-viewer" class="empty:hidden"></div>
-    </div>
-  );
-};
-
-/** ログファイル本文のビューア。hono/jsx の自動エスケープで XSS 安全に表示する。 */
-export const LogFileViewer: FC<{ file: string; content: string }> = ({ file, content }) => {
-  return (
-    <div class="space-y-2">
-      <div class="text-xs opacity-60 font-mono">{file}</div>
-      <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
-        {content || "（ログは空です）"}
-      </pre>
-    </div>
-  );
-};
-
-// ─── システム環境設定 (読み取り専用) ──────────────────────────────────────────
+// ─── システム構成 (読み取り専用) ───────────────────────────────────────────────
 
 interface ConfigViewProps {
-  config: PublicConfig;
+  config: {
+    gitRepository?: string | null;
+    gitTokenSet?: boolean;
+  };
 }
 
 export const ConfigView: FC<ConfigViewProps> = ({ config }) => {

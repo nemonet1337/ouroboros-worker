@@ -12,6 +12,43 @@ describe("UsageAccumulator", () => {
       model: "@cf/gen",
       promptTokens: 120,
       completionTokens: 50,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  it("accumulates prompt cache hits and writes", () => {
+    const acc = new UsageAccumulator();
+    acc.record({
+      model: "openai/gpt-6-luna",
+      promptTokens: 4000,
+      completionTokens: 100,
+      cachedTokens: 3500,
+      cacheWriteTokens: 500,
+    });
+    acc.record({
+      model: "openai/gpt-6-luna",
+      promptTokens: 1000,
+      completionTokens: 50,
+      cachedTokens: 900,
+    });
+    const snap = acc.snapshot();
+    expect(snap.cachedTokens).toBe(4400);
+    expect(snap.cacheWriteTokens).toBe(500);
+    // キャッシュヒット分は promptTokens に含まれる（二重計上しない）
+    expect(snap.promptTokens).toBe(5000);
+  });
+
+  it("reset clears the cache counters too", () => {
+    const acc = new UsageAccumulator();
+    acc.record({ model: "m", promptTokens: 10, completionTokens: 1, cachedTokens: 8, cacheWriteTokens: 2 });
+    acc.reset();
+    expect(acc.snapshot()).toEqual({
+      model: "",
+      promptTokens: 0,
+      completionTokens: 0,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
     });
   });
 });
@@ -41,7 +78,34 @@ describe("healing summary merge", () => {
         usage: { model: "gen", promptTokens: 2, completionTokens: 9 },
       },
     });
-    expect(totals.analyze).toEqual({ model: "gen", promptTokens: 10, completionTokens: 9 });
+    expect(totals.analyze).toEqual({
+      model: "gen",
+      promptTokens: 10,
+      completionTokens: 9,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  it("sums cache hits across index + analyze", () => {
+    const totals = usageTotals({
+      index: {
+        files: 1,
+        chunks: 1,
+        usage: { model: "emb", promptTokens: 800, completionTokens: 0, cachedTokens: 400, cacheWriteTokens: 200 },
+      },
+      analysis: {
+        overall: 80,
+        grade: "A",
+        breakdown: {},
+        findingCount: 1,
+        autoFixableCount: 1,
+        summary: "ok",
+        usage: { model: "gen", promptTokens: 2000, completionTokens: 9, cachedTokens: 1600 },
+      },
+    });
+    expect(totals.analyze.cachedTokens).toBe(2000);
+    expect(totals.analyze.cacheWriteTokens).toBe(200);
   });
 });
 

@@ -71,14 +71,28 @@ describe("parseRoutingConfig", () => {
     expect(parseRoutingConfig({ performanceEffort: "high" }).performanceEffort).toBe("high");
   });
 
+  it("defaults the three roles to Luna / Sol / Qwen3", () => {
+    expect(DEFAULT_ROUTING_CONFIG.efficiencyModel).toBe("openai/gpt-6-luna");
+    expect(DEFAULT_ROUTING_CONFIG.performanceModel).toBe("openai/gpt-6-sol");
+    expect(DEFAULT_ROUTING_CONFIG.embedModel).toBe("@cf/qwen/qwen3-embedding-0.6b");
+  });
+
   it("keeps model ids and thresholds that are valid", () => {
     const parsed = parseRoutingConfig({
       clefModel: "@cf/cloudflare/clef",
       solThreshold: 5,
       efficiencyModel: "openai/gpt-6-luna",
       performanceModel: "openai/gpt-6-sol",
+      embedModel: "@cf/baai/bge-base-en-v1.5",
     });
     expect(parsed.clefModel).toBe("@cf/cloudflare/clef");
     expect(parsed.solThreshold).toBe(5);
+    expect(parsed.embedModel).toBe("@cf/baai/bge-base-en-v1.5");
+  });
+
+  it("falls back to the default embed model when it is missing or blank", () => {
+    expect(parseRoutingConfig({}).embedModel).toBe("@cf/qwen/qwen3-embedding-0.6b");
+    expect(parseRoutingConfig({ embedModel: "" }).embedModel).toBe("@cf/qwen/qwen3-embedding-0.6b");
+    expect(parseRoutingConfig({ embedModel: 42 }).embedModel).toBe("@cf/qwen/qwen3-embedding-0.6b");
   });
 });

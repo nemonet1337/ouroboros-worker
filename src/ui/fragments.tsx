@@ -45,7 +45,7 @@ import { HealingRunList } from "./components/healing-run-list";
 import { HealingFixModalBody } from "./components/healing-fix-modal";
 import { RepoSelector } from "./components/repo-selector";
 import { NotificationBell, type NotificationItem } from "./components/notification-bell";
-import { RegistrationToggle, LogFileList, LogFileViewer, ConfigView } from "./components/admin-fragments";
+import { RegistrationToggle, ConfigView } from "./components/admin-fragments";
 import { getSelectedRepo, setSelectedRepo, setFeatureFlags } from "../config/settings.keys";
 import { ModelPricingPanel } from "./components/model-pricing";
 
@@ -510,18 +510,11 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     return c.html(await renderHealingRuns(page, statusFilter));
   });
 
-  // 修復実行のログ（R2 の healing/<runId>.log をモーダル表示用に取得）
+  // 修復実行の詳細（R2 のログは廃止。サマリ JSON とメタ情報のみ表示する）
   app.get("/healing/runs/:id/logs", async (c) => {
     const runId = c.req.param("id");
     const run = await runs.find(runId);
     if (!run) return c.html(<Alert type="error" message="実行が見つかりません。" />, 404);
-    const file = `healing/${runId}.log`;
-    let content = "";
-    try {
-      content = await ports.logs.read(file);
-    } catch {
-      content = "";
-    }
     let summary: unknown = null;
     if (run.summary) {
       try {
@@ -589,14 +582,9 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
           </div>
         )}
 
-        <div>
-          <div class="text-xs font-semibold opacity-70 mb-1 flex items-center gap-1">
-            <i data-lucide="file-text" class="w-3.5 h-3.5" />
-            ログ出力
-          </div>
-          <pre class="text-xs font-mono leading-relaxed bg-base-200 border border-[var(--glass-border)] rounded-xl p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">
-            {content || "（ログはまだ出力されていません）"}
-          </pre>
+        <div class="text-xs opacity-60">
+          <i data-lucide="info" class="w-3.5 h-3.5" />
+          ログは Cloudflare Workers Logs に出力されます。`wrangler tail` で確認できます。
         </div>
       </div>
     );
@@ -767,14 +755,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       await auth.setRegistrationEnabled((body as Record<string, unknown>).enabled === "on");
     }
     return c.html(await renderRegistrationToggle());
-  });
-
-  app.get("/admin/logs", requireAdmin, async (c) => c.html(<LogFileList files={await ports.logs.list()} />));
-
-  app.get("/admin/logs/:file", requireAdmin, async (c) => {
-    const file = c.req.param("file")!;
-    const content = await ports.logs.read(file, 200_000).catch(() => "");
-    return c.html(<LogFileViewer file={file} content={content} />);
   });
 
   app.get("/admin/config", requireAdmin, async (c) => {

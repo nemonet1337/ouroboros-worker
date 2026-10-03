@@ -24,7 +24,6 @@ export interface VersionMetadata {
 export interface Env {
   // bindings
   DB: D1Database;
-  LOGS: R2Bucket;
   GUI_EVENTS: Queue<GuiEvent>;
   AI: Ai;
   HEALING_WORKFLOW: Workflow;

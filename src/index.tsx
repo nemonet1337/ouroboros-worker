@@ -91,9 +91,13 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
       model: null,
       prompt_tokens: 0,
       completion_tokens: 0,
+      cached_prompt_tokens: 0,
+      cache_write_prompt_tokens: 0,
       fix_model: null,
       fix_prompt_tokens: 0,
       fix_completion_tokens: 0,
+      fix_cached_prompt_tokens: 0,
+      fix_cache_write_prompt_tokens: 0,
       created_at: now,
       updated_at: now,
     });

@@ -17,6 +17,22 @@ interface HealingAnalysisPageProps {
   result: (InspectionResult & { healingGroups?: unknown; instruction?: string }) | null;
 }
 
+/**
+ * プロンプトキャッシュの表示。ヒット分（prompt に含まれる）とその割合を返す。
+ * ヒットが無く書き込みだけある場合は書き込み分を返す。どちらも 0 なら null。
+ */
+function cacheNote(prompt?: number, cached?: number, cacheWrite?: number): string | null {
+  const hit = cached ?? 0;
+  if (hit > 0) {
+    const total = prompt ?? 0;
+    const pct = total > 0 ? Math.round((hit / total) * 100) : 0;
+    return ` · cache ${hit.toLocaleString()} (${pct}%)`;
+  }
+  const write = cacheWrite ?? 0;
+  if (write > 0) return ` · cache write ${write.toLocaleString()}`;
+  return null;
+}
+
 export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, result }) => {
   const summary = parseHealingSummary(run.summary);
   const status = HEALING_STATUS_LABELS[run.status] ?? { label: run.status, class: "badge-ghost" };
@@ -68,11 +84,17 @@ export const HealingAnalysisPage: FC<HealingAnalysisPageProps> = ({ user, run, r
                 <span>
                   解析モデル: {(run.model ?? "—").replace(/^@[^/]+\//, "")} · in {run.prompt_tokens ?? 0} / out{" "}
                   {run.completion_tokens ?? 0}
+                  {cacheNote(run.prompt_tokens, run.cached_prompt_tokens, run.cache_write_prompt_tokens)}
                 </span>
                 {(run.fix_model || run.fix_prompt_tokens) && (
                   <span>
                     修復モデル: {(run.fix_model ?? "—").replace(/^@[^/]+\//, "")} · in {run.fix_prompt_tokens ?? 0} / out{" "}
                     {run.fix_completion_tokens ?? 0}
+                    {cacheNote(
+                      run.fix_prompt_tokens,
+                      run.fix_cached_prompt_tokens,
+                      run.fix_cache_write_prompt_tokens
+                    )}
                   </span>
                 )}
                 {summary.index && (

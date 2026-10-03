@@ -28,7 +28,6 @@ function buildDeps(): ApiDeps {
         updateIssue: vi.fn(),
         listRepos: vi.fn().mockResolvedValue([]),
       },
-      logs: { kind: "r2" as const, append: vi.fn(), read: vi.fn(), list: vi.fn().mockResolvedValue([]) },
       queue: { kind: "cf-queue" as const, send: vi.fn() },
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),

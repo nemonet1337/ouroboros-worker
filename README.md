@@ -9,7 +9,7 @@
 Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull Request を自動作成します。
 認証・マルチテナントな API トークン・テレメトリログを備えています。
 
-**Cloudflare Workers 特化** — Workers + D1 + R2 + Queues + Workflows + Workers AI + Vectorize の
+**Cloudflare Workers 特化** — Workers + D1 + Queues + Workflows + Workers AI の
 エッジネイティブ構成だけをサポートします。
 
 > **AI ゲートウェイ:** Ouroboros が接続する LLM は **Cloudflare Workers AI 上の
@@ -24,7 +24,7 @@ Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull R
 
 ```
 src/
-├── adapters/      Cloudflare サービスアダプター（D1, R2, Queues, Workers AI, Vectorize …）
+├── adapters/      Cloudflare サービスアダプター（D1, Queues, Workers AI …）
 ├── analytics/     AI 使用量トラッカー・コスト見積もり
 ├── analyzers/     AI 解析エンジン（findings のグルーピング・リスク評価）
 ├── auth/          認証・セッション・API トークン管理
@@ -35,7 +35,7 @@ src/
 ├── healing/       自己修復オーケストレーター
 ├── http/          Hono ベース REST API
 ├── inspection/    AI スコアリングエンジン（6 次元・32 観点）
-├── logging/       構造化ロガー（R2 永続化）
+├── logging/       構造化ロガー（Workers Logs 出力）
 ├── ports/         アダプターインターフェース（Ports & Adapters パターン）
 ├── pr/            PR タイトル・本文生成・重複排除
 ├── queues/        Cloudflare Queues ハンドラー
@@ -55,16 +55,15 @@ src/
 | ポート          | 実装（Cloudflare Worker）         |
 | -------------- | -------------------------------- |
 | `DbAdapter`    | D1                               |
-| `LogStore`     | R2 オブジェクト                   |
 | `QueueAdapter` | Cloudflare Queues                |
 | `AiProvider`   | Workers AI（唯一の AI ゲートウェイ）|
 | `VcsProvider`  | GitHub (fetch)                   |
 | `HealingRunner`| `RepoRunner`（同一 Worker 内、GitHub REST API） |
 | `RateLimiter`  | Workers Rate Limiting API        |
-| `VectorizePort`| Cloudflare Vectorize（コードインデックス RAG）|
 
 注記: スキャン・修正・コミット・PR 作成は **同一 Worker の `RepoRunner`** が GitHub REST API で実行します
 （旧 `ouroborous-runner` への Service Binding 委譲は廃止済み）。
+ログは Workers Logs（`console`）へ出力します。R2 への永続ログと Vectorize はいずれも廃止しました。
 **Cloudflare Workflow** が「スキャン → 解析 → 修正 → PR」という永続的なライフサイクルを駆動します。
 
 ---
@@ -79,7 +78,6 @@ npm install
 npm run build:web                                   # GUI → web/.output/public（ASSETS で配信）
 
 wrangler d1 create ouroboros                         # 出力された id を wrangler.toml に貼り付け
-wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migrations/
 
@@ -91,7 +89,7 @@ wrangler secret put GITHUB_TOKEN
 wrangler deploy                                      # または: wrangler dev
 ```
 
-`wrangler.toml` が D1・R2・Queues・Workflows・Workers AI・Vectorize・レート制限バインディング・
+`wrangler.toml` が D1・Queues・Workflows・Workers AI・レート制限バインディング・
 毎時 cron トリガーを配線します（runner Service Binding は不要）。
 
 ### 管理者アカウント
@@ -103,18 +101,22 @@ wrangler deploy                                      # または: wrangler dev
 
 ### AI モデル
 
-- デフォルトモデルは **`openai/gpt-6-luna`**（効率系）。GLM は廃止モデルで、保存済みの
-  設定は読み取り時に Luna へ寄せられます。
-- **コード生成時のみ**、Clef（`@cf/cloudflare/clef-flash`）が実装難易度を判定し、
-  閾値以上なら `openai/gpt-6-sol`（性能系）、未満なら Luna を使います。
-  閾値と各モデルは `/models` から変更できます。
-- inspection / healing / refactor は Luna 固定です。
-- Embedding は `@cf/qwen/qwen3-embedding-0.6b` で固定。インデックスは持たず、
-  関連ファイルを Luna で選んだ後にリクエストごとに埋め込み順位付けします。
+`/models` で用途ごとに 3 つ選択します（システム全体で共有）。
+
+| 役割 | 既定 | 用途 |
+| --- | --- | --- |
+| Efficiency | `openai/gpt-6-luna` | 容易なタスク。inspection / healing / refactor もここ |
+| Performance | `openai/gpt-6-sol` | コード生成で Clef が「難しい」と判定したとき |
+| Embed | `@cf/qwen/qwen3-embedding-0.6b` | コード検索の埋め込み |
+
+- **コード生成時のみ**、Clef（`@cf/cloudflare/clef-flash`）が実装難易度を 1〜5 で判定し、
+  閾値以上で Performance、未満で Efficiency を使います。閾値も `/models` から変更できます。
+- Embed はインデックスを持たないため、リクエストごとに chunk 化して埋め込みます。
+  インデックス作成・再構築・次元移行は不要です。
+- 各ユーザーは `PUT /api/v1/settings/models` で個人上書きモデルを設定できます。
+  設定すると codegen の Clef 判定を無視してそのモデルを使います。
 - `GET /api/v1/models` がアカウントの Workers AI から全モデルを動的に検出し、
   **GUI の設定画面で Workers AI が提供するすべてのモデルを選択**できます。
-- 各ユーザーは `GET/PUT /api/v1/settings/model` で個人のモデル設定を保存できます。
-  明示すると codegen の Clef 判定を無視してそのモデルを使います。
 - AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。GPT-6 系はバインディングで動くため
   通常は不要で、未設定なら AI バインディングを直接使用します。
 
@@ -127,15 +129,15 @@ wrangler deploy                                      # または: wrangler dev
 - **認証とマルチテナント** — メール/パスワード（WebCrypto PBKDF2）、httpOnly セッション、
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
 - **登録制御** — 公開登録の管理者トグル。最初に登録したユーザーが管理者になります。
-- **テレメトリ** — 構造化ログをフラット `.log` ファイルとして R2 に永続化。
+- **テレメトリ** — 構造化ログは Workers Logs（`console`）へ。永続化は Cloudflare Observability 側で行う。プロンプトキャッシュのヒット量も heal履歴に表示。
 - **非同期オーケストレーション** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。
 - **レート制限** — 公開エンドポイントに Workers Rate Limiting。
 - **コードインスペクション** — AI スコアリングエンジンを `POST /api/v1/inspect` で提供。
   6 次元（セキュリティ / パフォーマンス / 冗長性 / 可読性 / 設計 / 正確性）の重み付きスコアを、
   ファイル単位または関数・メソッド・クラス単位（`granularity: "function"`）で算出し、
   低スコアのユニットをヒューリスティックに選別した改修候補（`refactorCandidates`）を優先度付きで返します。
-- **適応的重み付け** — Vectorize が 32 観点のスコアを 32 次元ベクターとして蓄積し、
-  過去実績から観点ごとの重みを自動調整します。
+- **モデル階層の自動選択** — コード生成前に Clef が実装難易度を判定し、
+  閾値以上で GPT-6 Sol、未満で GPT-6 Luna を使います。判定結果はセッションに記録されます。
 - **コードセッション** — リポジトリ・ブランチ・指示を指定して AI にコード生成を依頼。
   生成されたパッチは自動的に PR として適用されます。
 - **リファクタリング提案** — インスペクション結果から AI が具体的な改善提案を生成し、

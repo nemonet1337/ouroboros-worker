@@ -479,16 +479,17 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         // proceed without tarball
       }
 
+      const config = opts.routing ?? DEFAULT_ROUTING_CONFIG;
       const assembled = await assembleContext({
         query: opts.instruction,
         ai: this.ai,
         files,
         maxFiles: 8,
         maxChars: 12_000,
+        embedModel: config.embedModel,
       });
 
       // 明示指定があれば Clef を飛ばす。無指定なら難易度で Luna / Sol を選ぶ。
-      const config = opts.routing ?? DEFAULT_ROUTING_CONFIG;
       const route: RouteDecision | undefined = opts.modelOverride
         ? {
             model: explicitModel,

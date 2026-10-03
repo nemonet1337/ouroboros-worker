@@ -15,7 +15,7 @@ Ouroboros は **Cloudflare Workers 専用**のエッジネイティブな AI 自
 
 ```
 src/                   Worker ソース（全ビジネスロジック + CF アダプター）
-  adapters/            Cloudflare サービスの具体実装（D1, R2, Queues, Workers AI …）
+  adapters/            Cloudflare サービスの具体実装（D1, Queues, Workers AI …）
   analyzers/           AI による findings のグルーピング・リスク評価
   auth/                認証・セッション・API トークン（WebCrypto PBKDF2）
   code/                Code モード（セッション管理・codegen）
@@ -25,7 +25,7 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   healing/             RepoRunner（scan/applyFix/code）+ scanner
   http/                Hono ベース REST API（ルート・バリデーション・OpenAPI）
   inspection/          AI スコアリングエンジン（6 次元・32 観点）
-  logging/             構造化ロガー（R2 永続化）
+  logging/             構造化ロガー（Workers Logs のみ。R2 永続化は廃止）
   ports/               アダプターインターフェース（Ports & Adapters）
   pr/                  PR 生成・重複排除
   queues/              Cloudflare Queues コンシューマー
@@ -62,11 +62,19 @@ Workflows (healing.ts)
 ```
 
 ### AI モデル解決
-- テキスト生成: `users.model` → `DEFAULT_WORKERS_AI_MODEL`（`openai/gpt-6-luna`）。`AuthService.resolveModel(userId)` を必ず経由する
-- Embedding: `DEFAULT_EMBEDDING_MODEL`（`@cf/qwen/qwen3-embedding-0.6b`、1024 次元）で固定。インデックスを持たないため選択 UI はない
-- **codegen のみ** Clef（`@cf/cloudflare/clef-flash`）で実装難易度を判定し、`solThreshold` 以上なら `openai/gpt-6-sol`（effort=medium）、未満なら Luna（effort=low）を使う。判定できない場合は Luna にフォールバック
-- inspection / healing / refactor は Luna 固定。Sol を意図的に混ぜない
-- 専用画面 `/models`。判定結果は `code_sessions.difficulty` / `tier` / `route_model` に記録する
+`/models` で用途ごとに 3 つ選択する（システム全体で共有、admin のみ変更可）:
+
+| 役割 | 既定 | 用途 |
+| --- | --- | --- |
+| Efficiency | `openai/gpt-6-luna` | Clef が容易と判定した codegen。inspection / healing / refactor もここ |
+| Performance | `openai/gpt-6-sol` | Clef が `solThreshold` 以上と判定した codegen |
+| Embed | `@cf/qwen/qwen3-embedding-0.6b` | コード検索の埋め込み（インデックスなし・リクエストごと） |
+
+- 保存先: `settings.routing_config`（`src/config/routing.ts` の `RoutingConfig`）。不正値は既定へ落ちる
+- **codegen のみ** Clef（`@cf/cloudflare/clef-flash`）が `score`(難易度 1〜5) + `choice`(tier) を判定する。判定不能・失敗時は Efficiency にフォールバック
+- 判定結果は `code_sessions.difficulty` / `tier` / `route_model` / `route_effort` に記録
+- `users.model` は個人上書き。設定すると codegen の Clef 判定を無視してそのモデルを使う
+- テキスト生成の解決は `AuthService.resolveModel(userId)` → `remapRetiredModel()`（廃止済み GLM は Luna へ寄せる）
 - partner モデル（`vendor/model`）は AI バインディングを第一候補にし、失敗時のみ REST へフォールバック。`reasoning_effort` と `prompt_cache_key` は partner モデルにのみ付与する
 
 ### コード検索（インデックスなし）
