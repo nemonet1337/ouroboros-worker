@@ -167,11 +167,10 @@ export const HealingRunList: FC<HealingRunListProps> = ({
                     <p class="text-sm opacity-80 line-clamp-2">{analysis.summary}</p>
                   ) : summary.error ? (
                     <p class="text-sm text-rose-400 line-clamp-2">{summary.error}</p>
-                  ) : (
-                    <p class="text-xs opacity-50">
-                      {new Date(run.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
-                    </p>
-                  )}
+                  ) : null}
+                  <p class="text-xs opacity-50">
+                    実行: {new Date(run.created_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+                  </p>
                   <div class="flex flex-wrap gap-x-4 gap-y-1">
                     {analysis && (
                       <span class="text-xs opacity-60">
