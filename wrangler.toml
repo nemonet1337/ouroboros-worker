@@ -88,7 +88,6 @@ crons = ["0 * * * *"]
 #                            AI バインディング直接使用に戻すこと。
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
 #   GITHUB_TOKEN             PR/Issue 作成。owner/repo はこのトークンから自動検出される
-#   GITHUB_REPOSITORY        （非推奨）owner/repo を手動指定する場合のみ
 #
 # 管理者アカウント: 初回リクエスト時（ユーザーが 0 人のとき）に /register から
 # 最初に登録したアカウントが自動的に管理者になります。

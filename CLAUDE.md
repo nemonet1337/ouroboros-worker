@@ -100,8 +100,7 @@ npm run worker:deploy   # build:css + wrangler deploy
 ```
 WORKERS_AI_API_TOKEN     （任意）無効なトークンは 2021 エラーになるため、不要なら削除して AI バインディングを使う
 CLOUDFLARE_ACCOUNT_ID    Workers AI REST API 使用時に必要（任意）
-GITHUB_TOKEN             PR/Issue 作成用
-GITHUB_REPOSITORY        owner/repo 形式（非推奨・トークンから自動検出可）
+GITHUB_TOKEN             PR/Issue 作成用（owner/repo はトークンから自動検出）
 ```
 
 ## コード規約

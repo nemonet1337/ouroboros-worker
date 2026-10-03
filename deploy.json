@@ -19,16 +19,6 @@
       "name": "GITHUB_TOKEN",
       "description": "PR / Issue を作成するための GitHub Personal Access Token（repo スコープ）。",
       "type": "secret"
-    },
-    {
-      "name": "GITHUB_REPOSITORY",
-      "description": "スキャン対象リポジトリ（owner/repo 形式、例: acme/my-api）。",
-      "type": "text"
-    },
-    {
-      "name": "GITHUB_REPOSITORY_OWNER",
-      "description": "リポジトリオーナー名（GitHub ユーザー名または組織名）。",
-      "type": "text"
     }
   ]
 }

@@ -90,7 +90,6 @@ wrangler queues create ouroboros-dlq                 # dead-letter queue for fai
 
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
 wrangler secret put GITHUB_TOKEN
-wrangler secret put GITHUB_REPOSITORY               # owner/repo (auto-detected from token if omitted)
 
 wrangler deploy                                      # or: wrangler dev
 ```

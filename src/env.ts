@@ -45,10 +45,6 @@ export interface Env {
   // secrets（wrangler secret put）
   WORKERS_AI_API_TOKEN?: string;
   GITHUB_TOKEN?: string;
-  /** @deprecated GITHUB_TOKEN から自動検出。明示上書きのみ */
-  GITHUB_REPOSITORY?: string;
-  /** @deprecated GITHUB_TOKEN から自動検出。明示上書きのみ */
-  GITHUB_REPOSITORY_OWNER?: string;
 }
 
 /** Minimal RateLimit binding shape (Workers Rate Limiting API). */

@@ -67,30 +67,17 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
 
   // 対象リポジトリの解決順:
   //   1. settings.selected_repo（D1、システム全体で 1 つ・最優先）
-  //   2. GITHUB_REPOSITORY / GITHUB_REPOSITORY_OWNER env
-  //   3. GITHUB_TOKEN からの自動検出
+  //   2. GITHUB_TOKEN からの自動検出
   const settingsRepo = new SettingsRepository(db);
   const selected = await getSelectedRepo(settingsRepo).catch(() => null);
 
-  let owner = selected?.owner || env.GITHUB_REPOSITORY_OWNER || "";
-  let repo = selected?.repo || "";
-  if (!selected && env.GITHUB_REPOSITORY) {
-    const parts = env.GITHUB_REPOSITORY.split("/");
-    owner = owner || parts[0] || "";
-    repo = parts[1] || "";
-  }
-  if (!owner || !repo) {
-    const resolved = githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null;
-    if (resolved) {
-      owner = owner || resolved.owner;
-      repo = repo || resolved.repo;
-    }
-  }
+  const resolved = selected ?? (githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null);
+  const currentRepo = { owner: resolved?.owner ?? "", repo: resolved?.repo ?? "" };
 
   const vcs = new GitHubProvider({
     token: githubToken ?? "",
-    owner,
-    repo,
+    owner: currentRepo.owner,
+    repo: currentRepo.repo,
   });
 
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
@@ -104,8 +91,8 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     ...defaultHealingConfig,
     vcs: {
       ...defaultHealingConfig.vcs,
-      owner,
-      repo,
+      owner: currentRepo.owner,
+      repo: currentRepo.repo,
       baseBranch: defaultHealingConfig.vcs.baseBranch,
     },
   };
@@ -123,7 +110,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   };
   const auth = new AuthService(db);
 
-  const currentRepo = { owner, repo };
   const refreshRepo = (nextOwner: string, nextRepo: string): void => {
     currentRepo.owner = nextOwner;
     currentRepo.repo = nextRepo;

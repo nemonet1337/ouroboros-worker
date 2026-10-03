@@ -8,8 +8,6 @@ WORKERS_AI_API_TOKEN=
 CLOUDFLARE_ACCOUNT_ID=
 
 GITHUB_TOKEN=ghp_...
-GITHUB_REPOSITORY=your-org/your-repo
-GITHUB_REPOSITORY_OWNER=your-org
 RUNNER_SHARED_SECRET=change-me
 OURO_ALERT_EMAILS=alerts@example.com
 RUNNER_URL=https://runner.example.com

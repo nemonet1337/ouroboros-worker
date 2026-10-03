@@ -91,7 +91,6 @@ wrangler queues create ouroboros-dlq                 # 失敗イベントの DLQ
 
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
 wrangler secret put GITHUB_TOKEN
-wrangler secret put GITHUB_REPOSITORY               # owner/repo（省略時はトークンから自動検出）
 
 wrangler deploy                                      # または: wrangler dev
 ```
