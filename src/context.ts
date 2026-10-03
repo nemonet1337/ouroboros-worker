@@ -42,15 +42,12 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
   const logger = new Logger({ minLevel: "info" });
 
   // カタログモデルは AI binding。パートナーモデルのみ REST（401/403 後は isolate 内で binding 固定）。
-  const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET
-    ? await env.WORKERS_AI_TOKEN_SECRET.get()
-    : env.WORKERS_AI_API_TOKEN;
-
+  // WORKERS_AI_API_TOKEN は任意。GPT-6 系は binding で動くため通常は未設定。
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
   const usage = new UsageAccumulator();
   const ai = new WorkersAiProvider(env.AI, {
     model: DEFAULT_WORKERS_AI_MODEL,
-    apiToken: workersAiApiToken,
+    apiToken: env.WORKERS_AI_API_TOKEN,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
     onUsage: (event) => {
       usage.record(event);
@@ -58,9 +55,7 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     },
   });
 
-  const githubToken = env.GITHUB_TOKEN_SECRET
-    ? await env.GITHUB_TOKEN_SECRET.get()
-    : env.GITHUB_TOKEN;
+  const githubToken = env.GITHUB_TOKEN;
 
   // 対象リポジトリの解決順:
   //   1. settings.selected_repo（D1、システム全体で 1 つ・最優先）

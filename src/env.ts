@@ -10,10 +10,6 @@ export interface AnalyticsEngineDataset {
   }): void;
 }
 
-export interface SecretsStoreSecret {
-  get(): Promise<string>;
-}
-
 export interface VersionMetadata {
   id: string;
   tag: string;
@@ -31,16 +27,12 @@ export interface Env {
   AI_ANALYTICS?: AnalyticsEngineDataset;
   CF_VERSION_METADATA?: VersionMetadata;
 
-  // secrets（Secrets Store）
-  GITHUB_TOKEN_SECRET?: SecretsStoreSecret;
-  WORKERS_AI_TOKEN_SECRET?: SecretsStoreSecret;
-
   // vars
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** "true" to open registration; anything else (or absent) means closed. Default: false. */
   OURO_REGISTRATION_ENABLED?: string;
 
-  // secrets（wrangler secret put）
+  // secrets（`wrangler secret put`）
   WORKERS_AI_API_TOKEN?: string;
   GITHUB_TOKEN?: string;
 }
