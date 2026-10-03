@@ -4,7 +4,7 @@
 import type { WorkerContext } from "../context";
 import type { Logger } from "../logging/logger";
 import { InspectionRepository, SettingsRepository } from "../db/repositories";
-import { CodeIndexer, CODE_INDEX_STATUS_KEY, type CodeIndexStatus } from "../vectorize/code.indexer";
+import { CodeIndexer, type CodeIndexStatus } from "../vectorize/code.indexer";
 import { selectPathsForAnalysis } from "../code/context.assembler";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
@@ -225,5 +225,3 @@ function needsReindex(status: CodeIndexStatus | null): boolean {
   if (status.status !== "done") return true;
   return Date.now() - status.updatedAt > INDEX_STALE_MS;
 }
-
-export { CODE_INDEX_STATUS_KEY };

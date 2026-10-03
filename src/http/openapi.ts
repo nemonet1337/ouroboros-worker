@@ -60,7 +60,6 @@ export const OPENAPI_SPEC = {
     "/auth/me": { get: { summary: "現在のユーザー", responses: { "200": { description: "OK" }, "401": { description: "未認証" } } } },
     "/config": {
       get: { summary: "アプリ設定の取得（秘匿値はマスク）", responses: { "200": { description: "OK" } } },
-      put: { summary: "アプリ設定の保存（admin）", responses: { "200": { description: "OK" } } },
     },
     "/settings": {
       get: { summary: "設定の取得（weights/thresholds/schedule/registration）", responses: { "200": { description: "OK" } } },

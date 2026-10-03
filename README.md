@@ -154,7 +154,7 @@ wrangler deploy                                      # または: wrangler dev
 | POST    | `/api/v1/auth/login`          | 公開             |
 | GET     | `/api/v1/auth/me`             | セッション/トークン |
 | GET/POST/DELETE | `/api/v1/tokens`     | セッション/トークン |
-| GET/PUT | `/api/v1/config`             | admin（PUT）      |
+| GET     | `/api/v1/config`             | セッション/トークン |
 | GET/PUT | `/api/v1/settings`           | admin（PUT）      |
 | GET/PUT | `/api/v1/settings/model`     | セッション/トークン |
 | GET     | `/api/v1/models`              | セッション/トークン |

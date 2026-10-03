@@ -1,12 +1,5 @@
 import type { AnalyticsEngineDataset } from "../env";
 
-export const AI_USAGE_EVENTS = {
-  PROMPT_TOKENS: "prompt_tokens",
-  COMPLETION_TOKENS: "completion_tokens",
-  MODEL: "model",
-  DURATION_MS: "duration_ms",
-} as const;
-
 export class AiUsageTracker {
   constructor(private readonly dataset?: AnalyticsEngineDataset) {}
 

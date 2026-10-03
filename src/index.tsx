@@ -5,7 +5,7 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { mountApi } from "./http/api";
-import { runMigrations } from "./db";
+import { runMigrations } from "./db/migrate";
 import {
   HealingRunRepository,
   SettingsRepository,

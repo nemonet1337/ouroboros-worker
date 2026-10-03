@@ -63,48 +63,6 @@ export const ASPECT_CATEGORY: Record<InspectionAspect, InspectionCategory> = Obj
   )
 ) as Record<InspectionAspect, InspectionCategory>;
 
-/** Japanese labels for GUI / prompt display. */
-export const ASPECT_LABELS: Record<InspectionAspect, string> = {
-  // security
-  injection: "インジェクション (SQL/コマンド/XSS)",
-  authn_authz: "認証・認可",
-  secrets: "機密情報の取り扱い",
-  input_validation: "入力検証・サニタイズ",
-  deps_supply_chain: "依存関係・サプライチェーン",
-  crypto_transport: "暗号・通信路保護",
-  // performance
-  algo_complexity: "アルゴリズム計算量 (Big-O)",
-  memory_alloc: "メモリ・アロケーション効率",
-  async_concurrency: "非同期・並行処理パターン",
-  io_network: "I/O・ネットワーク効率",
-  caching: "キャッシュ・メモ化",
-  // redundancy
-  duplication: "コード重複",
-  dead_code: "デッドコード・到達不能コード",
-  over_engineering: "過剰実装・不要な抽象化",
-  redundant_compute: "冗長な再計算",
-  dep_bloat: "依存肥大化",
-  // readability
-  naming: "命名の明確さ",
-  cognitive_complexity: "認知的複雑度・ネスト",
-  comments_docs: "コメント・ドキュメント",
-  formatting_consistency: "整形・一貫性",
-  idiomatic_usage: "言語イディオムの活用",
-  // design
-  srp_cohesion: "単一責任・凝集度",
-  coupling: "結合度・依存方向",
-  abstraction_interface: "抽象化・インターフェース設計",
-  error_handling: "エラーハンドリング戦略",
-  modularity_extensibility: "モジュール性・拡張性",
-  pattern_fit: "設計パターンの妥当性",
-  // correctness
-  logic_intent: "ロジックと意図の整合",
-  edge_cases: "エッジケース処理",
-  null_boundary: "null・境界値の安全性",
-  concurrency_correctness: "並行処理の正しさ (競合状態)",
-  type_contract: "型安全性・契約遵守",
-};
-
 /** One-line description per aspect, injected into the system prompt. */
 export const ASPECT_DESCRIPTIONS: Record<InspectionAspect, string> = {
   injection: "SQL/コマンド/XSS等のインジェクション余地",

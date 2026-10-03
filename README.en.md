@@ -155,7 +155,7 @@ Machine-readable: `GET /api/v1/openapi.json`.
 | POST   | `/api/v1/auth/login`          | public          |
 | GET    | `/api/v1/auth/me`             | session/token   |
 | GET/POST/DELETE | `/api/v1/tokens`     | session/token   |
-| GET/PUT | `/api/v1/config`             | admin (PUT)     |
+| GET    | `/api/v1/config`             | session/token   |
 | GET/PUT | `/api/v1/settings`           | admin (PUT)     |
 | GET/PUT | `/api/v1/settings/model`     | session/token   |
 | GET     | `/api/v1/models`              | session/token   |

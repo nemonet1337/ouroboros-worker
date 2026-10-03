@@ -20,5 +20,3 @@ export interface QueueAdapter {
   readonly kind: "cf-queue";
   send(event: GuiEvent): Promise<void>;
 }
-
-export type GuiEventHandler = (event: GuiEvent) => Promise<void>;

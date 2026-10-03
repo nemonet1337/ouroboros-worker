@@ -166,19 +166,6 @@ export interface HarnessTrace {
   repairAttempts: number;
 }
 
-export interface ValidationResult {
-  success: boolean;
-  output: string;
-}
-
-export interface FixResult {
-  success: boolean;
-  appliedPatches: Patch[];
-  failedFindings: FindingGroup[];
-  validationOutput: string;
-  iterations: number;
-}
-
 export interface AllFindings {
   staticAnalysis: StaticAnalysisFinding[];
   dependency: DependencyFinding[];
@@ -195,13 +182,6 @@ export interface AnalysisResult {
   summary: string;
   riskScore: number;
   estimatedFixTime: number;
-}
-
-export interface CreatedPR {
-  number: number;
-  url: string;
-  branch: string;
-  title: string;
 }
 
 // ─── Inspection scoring primitives ───────────────────────────────────────────
@@ -463,22 +443,6 @@ export interface InspectionResult {
   aiModel: string;
   /** Cached AST digest; used to skip re-analysis on identical content */
   contentHash: string;
-}
-
-// ─── Historical record (database row shape) ──────────────────────────────────
-
-export interface InspectionRecord {
-  id: string;
-  projectId: string;
-  requestId: string;
-  completedAt: string;
-  language: Language;
-  overallScore: Score;
-  grade: Grade;
-  findingCount: number;
-  recommendationCount: number;
-  /** Full InspectionResult stored as JSONB */
-  result: InspectionResult;
 }
 
 // ─── Code Session types ─────────────────────────────────────────────────────────

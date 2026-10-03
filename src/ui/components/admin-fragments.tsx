@@ -111,28 +111,8 @@ interface ConfigViewProps {
 }
 
 export const ConfigView: FC<ConfigViewProps> = ({ config }) => {
-  const languages = Array.isArray(config.selectedLanguages) ? (config.selectedLanguages as string[]) : [];
-
   return (
     <dl class="space-y-4 text-sm">
-      <div>
-        <dt class="text-xs font-semibold uppercase tracking-wider opacity-50">対象言語</dt>
-        <dd class="mt-1.5 flex gap-1.5 flex-wrap">
-          {languages.length > 0 ? (
-            languages.map((lang) => (
-              <span
-                key={lang}
-                class="badge badge-sm rounded-full font-bold bg-primary/10 text-primary border border-primary/20"
-              >
-                {lang}
-              </span>
-            ))
-          ) : (
-            <span class="opacity-50">未設定</span>
-          )}
-        </dd>
-      </div>
-
       <div>
         <dt class="text-xs font-semibold uppercase tracking-wider opacity-50">連携リポジトリ</dt>
         <dd class="mt-1.5">

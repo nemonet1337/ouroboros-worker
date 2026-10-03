@@ -25,7 +25,6 @@ import {
   profileUpdateSchema,
   inspectSchema,
   settingsSchema,
-  configSchema,
   codeSessionCreateSchema,
   codeSessionActionSchema,
   modelSchema,
@@ -39,8 +38,6 @@ import {
   loadPublicConfig,
   parseHistoryEntry,
   runUserInspection,
-  CONFIG_KEY,
-  LEGACY_GATEWAY_CONFIG_KEYS,
 } from "./data";
 
 const SESSION_COOKIE = "ouro_session";
@@ -285,23 +282,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ user });
   });
 
-  // ── App config (languages; git + AI credentials come from CF Secrets) ──────
+  // ── App config (read-only: git + AI credentials come from CF Secrets) ──────
   app.get("/config", requireAuth(), async (c) => {
     return c.json(await loadPublicConfig(settingsRepo, deps.config.vcs, deps.githubTokenSet ?? false));
-  });
-
-  app.put("/config", requireAdmin, validateBody(configSchema), async (c) => {
-    const incoming = c.get("body") as Record<string, unknown>;
-    const raw = await settingsRepo.get(CONFIG_KEY);
-    const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    // Git credentials are managed via CF Secrets — never store in DB.
-    for (const k of ["gitToken", "gitPackage", "gitService", ...LEGACY_GATEWAY_CONFIG_KEYS]) delete existing[k];
-    const toSave: Record<string, unknown> = { ...existing };
-    if (Array.isArray(incoming.selectedLanguages)) {
-      toSave.selectedLanguages = incoming.selectedLanguages;
-    }
-    await settingsRepo.set(CONFIG_KEY, JSON.stringify(toSave));
-    return c.json({ ok: true });
   });
 
   // ── AI models — every model served by the Workers AI binding ──────────────

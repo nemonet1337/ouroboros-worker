@@ -6,12 +6,6 @@
 import type { Context, Next } from "hono";
 import { isWorkersAiModelId } from "../config/deployment";
 
-export class ValidationError extends Error {
-  constructor(message: string, readonly details: string[]) {
-    super(message);
-  }
-}
-
 type Validator<T> = (body: unknown) => { ok: true; value: T } | { ok: false; errors: string[] };
 
 export function validateBody<T>(validator: Validator<T>) {
@@ -94,11 +88,6 @@ export const settingsSchema: Validator<Record<string, unknown>> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   if (body.registrationEnabled !== undefined && typeof body.registrationEnabled !== "boolean")
     return { ok: false, errors: ["registrationEnabled must be a boolean"] };
-  return { ok: true, value: body };
-};
-
-export const configSchema: Validator<Record<string, unknown>> = (body) => {
-  if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   return { ok: true, value: body };
 };
 

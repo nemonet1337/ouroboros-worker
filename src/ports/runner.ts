@@ -50,11 +50,7 @@ export interface CodeWriteResult {
   files: string[];
 }
 
-export interface CodeDiffResult {
-  diffs: { path: string; diff: string }[];
-}
-
-export interface CodeCommitResult {
+export interface CodeInitResult {
   success: boolean;
   commitHash: string;
 }
