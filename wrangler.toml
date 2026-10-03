@@ -1,6 +1,6 @@
 name = "ouroboros-worker"
 main = "src/index.tsx"
-compatibility_date = "2026-08-30"
+compatibility_date = "2026-10-03"
 compatibility_flags = ["nodejs_compat"]
 
 # Workers Observability — console.log/warn/error とリクエストトレースを
@@ -49,9 +49,6 @@ dead_letter_queue = "ouroboros-dlq"
 binding = "HEALING_WORKFLOW"
 name = "ouroboros-healing"
 class_name = "HealingWorkflow"
-
-# Vectorize は廃止。コード検索は Luna による関連ファイルの事前選択 → 埋め込み →
-# Worker 内 cosine でリクエストごとに行う。インデックス・次元移行・再構築は不要。
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]

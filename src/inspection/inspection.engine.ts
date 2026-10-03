@@ -85,6 +85,17 @@ const COMPACT_JSON_SHAPE = `{
 
 const BATCH_CHAR_BUDGET = 24_000;
 
+/**
+ * 複数ファイルを 1 回で解析できなかった原因が「プロンプトが大きすぎた」場合だけ
+ * per-file に逃がす。プロバイダ障害（クレジット不足・認証失敗など）はファイル数 ×
+ * リトライ分の subrequest を空振りで消費するため、そのまま投げ返す。
+ */
+const PROMPT_TOO_LARGE = /maximum context length|context length|too long|token limit|prompt is too/i;
+
+function isPromptTooLarge(err: unknown): boolean {
+  return PROMPT_TOO_LARGE.test(err instanceof Error ? err.message : String(err));
+}
+
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
 export class InspectionEngine {
@@ -261,7 +272,7 @@ export class InspectionEngine {
       try {
         return await this.callAIOnce(request);
       } catch (err) {
-        if (request.files.length === 1) throw err;
+        if (request.files.length === 1 || !isPromptTooLarge(err)) throw err;
         console.warn("[InspectionEngine] batched analysis failed, falling back per-file:", err);
       }
     }
