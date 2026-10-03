@@ -5,7 +5,6 @@ export * from "./logstore";
 export * from "./queue";
 export * from "./runner";
 export * from "./ratelimit";
-export * from "./vectorize";
 
 import type { AiProvider } from "./ai";
 import type { VcsProvider } from "./vcs";
@@ -14,7 +13,6 @@ import type { LogStore } from "./logstore";
 import type { QueueAdapter } from "./queue";
 import type { HealingRunner, CodeRunner } from "./runner";
 import type { RateLimiter } from "./ratelimit";
-import type { VectorizePort } from "./vectorize";
 
 /**
  * The full set of platform adapters an Ouroboros deployment wires up.
@@ -31,6 +29,4 @@ export interface Ports {
   /** 本番では `runner` と同じ RepoRunner。テストだけ別インスタンス可。 */
   codeRunner: CodeRunner;
   rateLimiter: RateLimiter;
-  /** コード埋め込み検索用インデックス（ouroboros-code-index） */
-  vectorize?: VectorizePort;
 }

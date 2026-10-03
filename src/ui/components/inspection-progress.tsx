@@ -15,7 +15,7 @@ interface InspectionProgressProps {
 const STEP_LABELS: Record<string, string> = {
   queued: "待機中",
   indexing: "インデックス構築",
-  searching: "Vectorize 検索",
+  searching: "ファイル選択",
   analyzing: "AI 解析",
   completed: "完了",
   failed: "失敗",

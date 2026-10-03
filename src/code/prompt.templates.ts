@@ -1,4 +1,4 @@
-import type { CodeSnippet } from "../vectorize/code.indexer";
+import type { CodeSnippet } from "../retrieval/chunk.rank";
 
 export interface BuildCodeGenPromptOptions {
   instruction: string;

@@ -1,11 +1,21 @@
 import {
   DEFAULT_EMBEDDING_MODEL,
   DEFAULT_WORKERS_AI_MODEL,
+  EMBED_BATCH_LIMIT,
+  isDecisionModel,
   isEmbeddingTask,
   isTextGenerationTask,
   isWorkersAiModelId,
 } from "../config/deployment";
-import type { AiProvider, AiCompletionRequest, AiModelInfo, AiModelPrice } from "../ports";
+import { DEFAULT_ROUTING_CONFIG } from "../config/routing";
+import type {
+  AiProvider,
+  AiCompletionRequest,
+  AiDecisionRequest,
+  AiDecisionResult,
+  AiModelInfo,
+  AiModelPrice,
+} from "../ports";
 
 const AI_TIMEOUT_MS = 120_000;
 const MODELS_TTL_MS = 60 * 60 * 1000;
@@ -13,10 +23,20 @@ const MODELS_TTL_MS = 60 * 60 * 1000;
 /** カタログに出ない／出にくいモデルを datalist に載せる。 */
 const PARTNER_MODELS: AiModelInfo[] = [
   {
-    value: DEFAULT_WORKERS_AI_MODEL,
-    label: "GLM-5.3 Flash (Z.ai)",
+    value: "openai/gpt-6-luna",
+    label: "GPT-6 Luna (OpenAI)",
     provider: "workers-ai",
     task: "Text Generation",
+    description: "効率系。集中的な大量処理向け。",
+    contextWindow: 1_050_000,
+  },
+  {
+    value: "openai/gpt-6-sol",
+    label: "GPT-6 Sol (OpenAI)",
+    provider: "workers-ai",
+    task: "Text Generation",
+    description: "性能系。複雑なコーディングと推論向け。",
+    contextWindow: 1_050_000,
   },
   {
     value: "minimax/m3",
@@ -26,10 +46,10 @@ const PARTNER_MODELS: AiModelInfo[] = [
   },
   {
     value: DEFAULT_EMBEDDING_MODEL,
-    label: "EmbeddingGemma 300M (Google)",
+    label: "Qwen3 Embedding 0.6B",
     provider: "workers-ai",
     task: "Text Embeddings",
-    outputDimensions: 768,
+    outputDimensions: 1024,
   },
 ];
 
@@ -90,7 +110,8 @@ export function mapCatalogModel(raw: unknown, provider: string): AiModelInfo | n
   };
 }
 
-function isSelectableCatalogTask(task: string | undefined): boolean {
+function isSelectableCatalogTask(name: string, task: string | undefined): boolean {
+  if (isDecisionModel(name)) return false;
   return isTextGenerationTask(task) || isEmbeddingTask(task);
 }
 
@@ -110,13 +131,33 @@ export function extractCompletionText(result: unknown): string {
   return "";
 }
 
-function extractUsage(result: unknown): { promptTokens: number; completionTokens: number } | undefined {
+export interface AiTokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  /** プロンプトキャッシュヒット分（Chat Completions / Responses 両形式を拾う）。 */
+  cachedTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * token 使用量を読む。`prompt_tokens_details`（Chat Completions）と
+ * `input_tokens_details`（Responses）の両方を拾い、cache 分は二重計上しない。
+ */
+export function extractUsage(result: unknown): AiTokenUsage | undefined {
   if (!result || typeof result !== "object") return undefined;
-  const usage = (result as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+  const usage = (result as { usage?: Record<string, unknown> }).usage;
   if (!usage) return undefined;
+  const detail = (usage.prompt_tokens_details ?? usage.input_tokens_details) as
+    | Record<string, unknown>
+    | undefined;
+  const cached = Number(detail?.cached_tokens ?? 0);
+  const write = Number(detail?.cache_write_tokens ?? 0);
+  const prompt = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
   return {
-    promptTokens: Number(usage.prompt_tokens ?? 0),
-    completionTokens: Number(usage.completion_tokens ?? 0),
+    promptTokens: Number.isFinite(prompt) ? prompt : 0,
+    completionTokens: Number(usage.completion_tokens ?? usage.output_tokens ?? 0),
+    cachedTokens: Number.isFinite(cached) ? cached : 0,
+    cacheWriteTokens: Number.isFinite(write) ? write : 0,
   };
 }
 
@@ -124,6 +165,8 @@ export interface AiUsageEvent {
   model: string;
   promptTokens: number;
   completionTokens: number;
+  cachedTokens?: number;
+  cacheWriteTokens?: number;
   durationMs: number;
 }
 
@@ -135,8 +178,10 @@ export interface WorkersAiProviderOptions {
 }
 
 /**
- * Workers AI binding が既定。パートナーモデル（`vendor/model`、`@` なし）だけ
- * REST `/ai/v1/chat/completions` を試す。REST が 401/403 なら isolate 内では再試行しない。
+ * Workers AI binding が既定。partner モデル（`vendor/model`、`@` なし）も
+ * まず binding を試す。binding が失敗し、かつ REST 用のトークンが有る場合のみ
+ * `/ai/v1/chat/completions` にフォールバックする。401/403 が出たら
+ * isolate 内では REST を再試行しない。
  */
 export class WorkersAiProvider implements AiProvider {
   readonly name = "workers-ai";
@@ -154,72 +199,85 @@ export class WorkersAiProvider implements AiProvider {
 
   async complete(req: AiCompletionRequest): Promise<string> {
     const model = req.model && isWorkersAiModelId(req.model) ? req.model : this.model;
-    const messages = [
-      { role: "system" as const, content: req.system },
-      { role: "user" as const, content: req.prompt },
+    const messages: Array<{ role: string; content: string }> = [
+      { role: "system", content: req.system },
+      { role: "user", content: req.prompt },
     ];
     const maxTokens = req.maxTokens ?? 4096;
+    const extras = partnerExtras(model, req);
     const started = Date.now();
 
-    const useRest =
-      !this.#restAuthFailed &&
-      !!this.opts.apiToken &&
-      !!this.opts.accountId &&
-      isPartnerModelId(model);
-
     let text: string;
-    let usage: { promptTokens: number; completionTokens: number } | undefined;
-    if (useRest) {
-      try {
-        const rest = await this.completeViaRest(model, messages, maxTokens);
-        text = rest.text;
-        usage = rest.usage;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (/\b401\b|\b403\b|Invalid User Credentials|2021/.test(msg)) {
-          this.#restAuthFailed = true;
-          console.warn("[workers-ai] REST auth failed, binding only for this isolate:", msg.slice(0, 200));
-          const bound = await this.completeViaBinding(model, messages, maxTokens);
-          text = bound.text;
-          usage = bound.usage;
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      const bound = await this.completeViaBinding(model, messages, maxTokens);
+    let usage: AiTokenUsage | undefined;
+    try {
+      const bound = await this.completeViaBinding(model, messages, maxTokens, extras);
       text = bound.text;
       usage = bound.usage;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const canFallback =
+        !this.#restAuthFailed &&
+        !!this.opts.apiToken &&
+        !!this.opts.accountId &&
+        isPartnerModelId(model);
+      if (!canFallback) throw err;
+      console.warn("[workers-ai] binding failed, falling back to REST:", msg.slice(0, 200));
+      const rest = await this.completeViaRest(model, messages, maxTokens, extras);
+      text = rest.text;
+      usage = rest.usage;
     }
 
     this.opts.onUsage?.({
       model,
       promptTokens: usage?.promptTokens ?? 0,
       completionTokens: usage?.completionTokens ?? 0,
+      cachedTokens: usage?.cachedTokens ?? 0,
+      cacheWriteTokens: usage?.cacheWriteTokens ?? 0,
       durationMs: Date.now() - started,
     });
     return text;
   }
 
+  /**
+   * Clef による裁定。decision 非対応 binding は例外になるので、
+   * 呼び出し側が Luna にフォールバックできるよう握りつぶさない。
+   */
+  async decide(req: AiDecisionRequest): Promise<AiDecisionResult> {
+    const payload = {
+      model: "clef",
+      state: req.state,
+      questions: req.questions,
+    };
+    const run = this.ai.run(DEFAULT_ROUTING_CONFIG.clefModel as keyof AiModels, payload as never) as Promise<unknown>;
+    const result = await withTimeout(run, AI_TIMEOUT_MS, "Workers AI decision timed out");
+    const answers = (result as { answers?: unknown })?.answers;
+    if (!answers || typeof answers !== "object") {
+      throw new Error("decision model returned no answers");
+    }
+    return { answers: answers as Record<string, unknown> };
+  }
+
   private async completeViaBinding(
     model: string,
     messages: Array<{ role: string; content: string }>,
-    maxTokens: number
-  ): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number } }> {
-    const payload = { messages, max_tokens: maxTokens };
+    maxTokens: number,
+    extras: Record<string, unknown>
+  ): Promise<{ text: string; usage?: AiTokenUsage }> {
+    const payload = { messages, max_tokens: maxTokens, ...extras };
     const run = this.ai.run(model as keyof AiModels, payload as never) as Promise<unknown>;
     const result = await withTimeout(run, AI_TIMEOUT_MS, `Workers AI binding timed out after ${AI_TIMEOUT_MS}ms`);
     return { text: extractCompletionText(result), usage: extractUsage(result) };
   }
 
   /**
-   * パートナーモデル用。`@cf/...` カタログモデルは binding の方が subrequest を食わない。
+   * パートナーモデルの REST フォールバック。binding が使えない場合の保険。
    */
   private async completeViaRest(
     model: string,
     messages: Array<{ role: string; content: string }>,
-    maxTokens: number
-  ): Promise<{ text: string; usage?: { promptTokens: number; completionTokens: number } }> {
+    maxTokens: number,
+    extras: Record<string, unknown>
+  ): Promise<{ text: string; usage?: AiTokenUsage }> {
     const url = `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/ai/v1/chat/completions`;
     const res = await fetch(url, {
       method: "POST",
@@ -227,26 +285,28 @@ export class WorkersAiProvider implements AiProvider {
         authorization: `Bearer ${this.opts.apiToken}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, ...extras }),
       signal: AbortSignal.timeout(AI_TIMEOUT_MS),
     });
     if (!res.ok) {
-      throw new Error(`Workers AI REST request failed: ${res.status} ${await res.text()}`);
+      const detail = `${res.status} ${await res.text()}`;
+      if (/\b401\b|\b403\b|Invalid User Credentials|2021/.test(detail)) this.#restAuthFailed = true;
+      throw new Error(`Workers AI REST request failed: ${detail}`);
     }
     const json: unknown = await res.json();
     return { text: extractCompletionText(json), usage: extractUsage(json) };
   }
 
   /**
-   * テキスト埋め込み。未指定時は EmbeddingGemma。バッチ上限 100 件。binding のみ。
-   * 呼び出し側が Vectorize 768 次元と揃うモデルを渡すこと。
+   * テキスト埋め込み。バッチ上限はモデル依存（Qwen3 は 32 件）。
+   * インデックスを持たないため、次元検証は不要。
    */
   async embed(texts: string[], model?: string): Promise<number[][]> {
     const id = model && isWorkersAiModelId(model) ? model : DEFAULT_EMBEDDING_MODEL;
     const out: number[][] = [];
     const started = Date.now();
-    for (let i = 0; i < texts.length; i += 100) {
-      const batch = texts.slice(i, i + 100);
+    for (let i = 0; i < texts.length; i += EMBED_BATCH_LIMIT) {
+      const batch = texts.slice(i, i + EMBED_BATCH_LIMIT);
       const run = this.ai.run(id as keyof AiModels, { text: batch } as never) as Promise<{
         data?: number[][];
       }>;
@@ -298,7 +358,7 @@ export class WorkersAiProvider implements AiProvider {
       const batch = await this.ai.models({ per_page: perPage, page });
       for (const raw of batch) {
         const mapped = mapCatalogModel(raw, this.name);
-        if (!mapped || !isSelectableCatalogTask(mapped.task)) continue;
+        if (!mapped || !isSelectableCatalogTask(mapped.value, mapped.task)) continue;
         models.push(mapped);
       }
       if (batch.length < perPage) break;
@@ -326,7 +386,7 @@ export class WorkersAiProvider implements AiProvider {
       const batch = Array.isArray(json.result) ? json.result : [];
       for (const raw of batch) {
         const mapped = mapCatalogModel(raw, this.name);
-        if (!mapped || !isSelectableCatalogTask(mapped.task)) continue;
+        if (!mapped || !isSelectableCatalogTask(mapped.value, mapped.task)) continue;
         models.push(mapped);
       }
       if (batch.length < perPage) break;
@@ -335,9 +395,21 @@ export class WorkersAiProvider implements AiProvider {
   }
 }
 
-/** `@cf/...` カタログ以外（`minimax/m3` 等）は REST が必要なことがある。 */
+/** `@cf/...` カタログ以外（`openai/gpt-6-luna` 等）は partner 扱い。 */
 export function isPartnerModelId(id: string): boolean {
   return !id.startsWith("@") && id.includes("/");
+}
+
+/**
+ * `@cf/` モデルは reasoning_effort / prompt_cache_key を受け取らないため、
+ * partner モデルのときだけ付与する。
+ */
+function partnerExtras(model: string, req: AiCompletionRequest): Record<string, unknown> {
+  if (!isPartnerModelId(model)) return {};
+  const extras: Record<string, unknown> = {};
+  if (req.reasoningEffort) extras.reasoning_effort = req.reasoningEffort;
+  if (req.cacheKey) extras.prompt_cache_key = req.cacheKey;
+  return extras;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

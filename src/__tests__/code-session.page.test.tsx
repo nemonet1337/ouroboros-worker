@@ -25,7 +25,7 @@ const session: CodeSessionRow = {
 
 const trace: HarnessTrace = {
   selectedPaths: ["src/a.ts", "src/a.test.ts"],
-  source: "vectorize",
+  source: "luna",
   snippetCount: 3,
   verifyErrors: [],
   verifyWarnings: ["minor"],
@@ -44,7 +44,7 @@ describe("CodeSessionPage harness trace", () => {
     expect(html).toContain("コーディングハーネス");
     expect(html).toContain("src/a.ts");
     expect(html).toContain("src/a.test.ts");
-    expect(html).toContain("vectorize");
+    expect(html).toContain("luna");
     expect(html).toContain("repair 1");
     expect(html).toContain("minor");
   });

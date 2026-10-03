@@ -4,22 +4,21 @@ import type { AssembledContext } from "./context.assembler";
 import { buildCodeGenPrompt } from "./prompt.templates";
 import { parseGeneratedPatches } from "./parse.patches";
 import { verifyPatches } from "./verifier";
+import type { ReasoningEffort } from "../config/routing";
 
 const DEFAULT_MAX_REPAIR = 1;
 const MAX_TOKENS = 8192;
 
 export async function runHarness(opts: {
   instruction: string;
-  plan?: string;
   model: string;
+  reasoningEffort?: ReasoningEffort;
   ai: AiProvider;
   assembled: AssembledContext;
   maxRepair?: number;
 }): Promise<{ patches: Patch[]; model: string; error?: string; trace: HarnessTrace }> {
   const maxRepair = opts.maxRepair ?? DEFAULT_MAX_REPAIR;
-  const instruction = opts.plan
-    ? `${opts.instruction}\n\n## 実装計画\n${opts.plan}`
-    : opts.instruction;
+  const instruction = opts.instruction;
 
   let lastErrors: string[] = [];
   let lastWarnings: string[] = [];
@@ -41,6 +40,7 @@ export async function runHarness(opts: {
       system,
       prompt: user,
       maxTokens: MAX_TOKENS,
+      reasoningEffort: opts.reasoningEffort,
     });
     const parsed = parseGeneratedPatches(raw);
     patches = parsed.patches;

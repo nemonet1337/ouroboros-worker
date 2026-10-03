@@ -12,12 +12,8 @@ import {
   CodeSessionRepository,
   InspectionRepository,
 } from "./db/repositories";
-import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
-import {
-  getEmbeddingModel,
-  getFeatureFlags,
-  DEFAULT_APP_SETTINGS,
-} from "./config/settings.keys";
+import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
+import { getFeatureFlags, getRoutingConfig, DEFAULT_APP_SETTINGS } from "./config/settings.keys";
 import type { GuiEvent } from "./ports/queue";
 import type { Env } from "./env";
 import { buildContext, type WorkerContext } from "./context";
@@ -258,7 +254,7 @@ async function buildApp(env: Env): Promise<Hono> {
     const identity = c.get("identity");
     const sessionId = c.req.param("id")!;
     const { CodeSessionManager } = await import("./code/session.manager");
-    const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner, ctx.ports.ai);
+    const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner);
     const session = await manager.get(sessionId, identity!.user.id);
     const traceRows = await ctx.ports.db.query<{ value: string }>(
       `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'harnessTrace'`,
@@ -286,19 +282,18 @@ async function buildApp(env: Env): Promise<Hono> {
     const identity = c.get("identity");
     const user = identity!.user;
     const settingsRepo = new SettingsRepository(ctx.ports.db);
-    const [models, selectedModel, selectedEmbedding] = await Promise.all([
+    const [models, selectedModel, routing] = await Promise.all([
       ctx.ports.ai.listModels?.().catch(() => []) ?? Promise.resolve([]),
       ctx.auth.getModel(user.id),
-      getEmbeddingModel(settingsRepo),
+      getRoutingConfig(settingsRepo),
     ]);
     return c.html(
       <ModelsPage
         user={user}
         models={models}
         selectedModel={selectedModel}
-        selectedEmbedding={selectedEmbedding}
         defaultModel={DEFAULT_WORKERS_AI_MODEL}
-        defaultEmbedding={DEFAULT_EMBEDDING_MODEL}
+        routing={routing}
       />
     );
   });

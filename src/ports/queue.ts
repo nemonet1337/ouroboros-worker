@@ -1,7 +1,6 @@
 export type GuiEventType =
   | "inspection.requested"
   | "healing.requested"
-  | "codeindex.requested"
   | "codegen.requested";
 
 export interface GuiEvent {

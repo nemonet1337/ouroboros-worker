@@ -29,7 +29,6 @@ export interface Env {
   AI: Ai;
   HEALING_WORKFLOW: Workflow;
   RATE_LIMITER?: RateLimit;
-  VECTORIZE?: VectorizeIndex;
   AI_ANALYTICS?: AnalyticsEngineDataset;
   CF_VERSION_METADATA?: VersionMetadata;
 

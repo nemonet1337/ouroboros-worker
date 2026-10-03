@@ -3,7 +3,7 @@ import { HealingRunRepository } from "../db/repositories";
 import type { AllFindings } from "../types";
 import type { Env } from "../env";
 import { buildContext } from "../context";
-import { indexHealingRun, inspectHealingRun, scanHealingRun } from "../healing/analyze";
+import { inspectHealingRun, scanHealingRun } from "../healing/analyze";
 import { fixHealingRun } from "../healing/fix";
 import { mergeHealingSummary } from "../healing/summary";
 
@@ -16,10 +16,6 @@ export interface HealingParams {
   instruction?: string;
 }
 
-const STEP_OPTS_INDEX = {
-  retries: { limit: 2, delay: "30 seconds" as const, backoff: "exponential" as const },
-  timeout: "10 minutes" as const,
-};
 const STEP_OPTS_SCAN = {
   retries: { limit: 2, delay: "30 seconds" as const, backoff: "exponential" as const },
   timeout: "10 minutes" as const,
@@ -72,11 +68,6 @@ export class HealingWorkflow extends WorkflowEntrypoint<Env, HealingParams> {
     await bindWorkflow();
 
     if (phase !== "fix") {
-      await step.do("index", STEP_OPTS_INDEX, async () => {
-        const ctx = await buildContext(this.env);
-        return indexHealingRun(ctx, runId);
-      });
-
       const findings = await step.do("scan", STEP_OPTS_SCAN, async (): Promise<AllFindings> => {
         const ctx = await buildContext(this.env);
         return scanHealingRun(ctx, runId);

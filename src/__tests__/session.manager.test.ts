@@ -67,104 +67,71 @@ describe("CodeSessionManager", () => {
     expect(session?.id).toBe("session-123");
   });
 
-  it("generates plan first and passes plan-augmented instruction with the coding model", async () => {
+  it("generates directly without a plan phase", async () => {
     const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
     (runner as any).generate = generateSpy;
-    const ai = {
-      name: "mock",
-      complete: vi.fn().mockResolvedValue("1. まずAを直す\n2. 次にBを直す"),
-    };
-    manager = new CodeSessionManager(mockDb, runner, ai as any);
 
     await manager.generate("session-123", "user-1", {
-      model: "@cf/meta/llama-3.1-8b-instruct",
-      planModel: "minimax/m3",
+      model: "openai/gpt-6-luna",
+      modelOverride: true,
     });
 
-    // Plan フェーズは planModel で呼ばれる
-    expect(ai.complete).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "minimax/m3" })
-    );
-    // Plan は code_sessions.plan に保存される
-    expect(queries.some((q) => q.sql.includes("SET plan = ?"))).toBe(true);
-    // 生成は coding モデル + 計画付き instruction で呼ばれる
     expect(generateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "@cf/meta/llama-3.1-8b-instruct",
-        instruction: expect.stringContaining("## 実装計画"),
+        model: "openai/gpt-6-luna",
+        instruction: "do something",
       })
     );
+    // Plan フェーズ関連の SQL は一切出ない
+    expect(queries.some((q) => q.sql.includes("SET plan = ?"))).toBe(false);
+    expect(queries.some((q) => q.sql.includes("mode = ?"))).toBe(false);
   });
 
-  it("still generates when the plan phase fails", async () => {
+  it("passes routing config through to the runner and skips Clef when overridden", async () => {
     const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
     (runner as any).generate = generateSpy;
-    const ai = {
-      name: "mock",
-      complete: vi.fn().mockRejectedValue(new Error("plan model down")),
+    const routing = {
+      clefModel: "@cf/cloudflare/clef-flash",
+      solThreshold: 4,
+      efficiencyModel: "openai/gpt-6-luna",
+      efficiencyEffort: "low" as const,
+      performanceModel: "openai/gpt-6-sol",
+      performanceEffort: "medium" as const,
     };
-    manager = new CodeSessionManager(mockDb, runner, ai as any);
 
-    await manager.generate("session-123", "user-1", { model: "m", planModel: "p/m" });
+    await manager.generate("session-123", "user-1", { routing });
 
     expect(generateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ instruction: "do something" })
+      expect.objectContaining({ routing, modelOverride: false })
     );
   });
 
-  it("code_only mode skips the plan phase and stores mode", async () => {
-    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
-    (runner as any).generate = generateSpy;
-    const ai = {
-      name: "mock",
-      complete: vi.fn().mockResolvedValue("1. plan"),
-    };
-    manager = new CodeSessionManager(mockDb, runner, ai as any);
-
-    await manager.generate("session-123", "user-1", {
-      model: "m",
-      planModel: "p/m",
-      mode: "code_only",
+  it("persists the route decision returned by the runner", async () => {
+    const generateSpy = vi.fn().mockResolvedValue({
+      patches: [{ file: "a.ts" }],
+      model: "openai/gpt-6-sol",
+      route: {
+        model: "openai/gpt-6-sol",
+        reasoningEffort: "medium",
+        difficulty: 4,
+        tier: "performance",
+        clefAvailable: true,
+      },
     });
-
-    // Plan フェーズ（ai.complete）は呼ばれない
-    expect(ai.complete).not.toHaveBeenCalled();
-    // 計画なしの instruction で生成される
-    expect(generateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ instruction: "do something" })
-    );
-    // mode カラムが code_only で保存される
-    expect(queries.some((q) => q.sql.includes("mode = ?") && q.params.includes("code_only"))).toBe(true);
-  });
-
-  it("includes retrieved snippets in the plan prompt", async () => {
-    const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
     (runner as any).generate = generateSpy;
-    const ai = {
-      name: "mock",
-      complete: vi.fn().mockResolvedValue("1. 直す"),
-    };
-    const indexer = {
-      search: vi.fn().mockResolvedValue([
-        { file: "src/a.ts", startLine: 1, endLine: 8, text: "export function a() {}", score: 0.9 },
-      ]),
-    };
-    manager = new CodeSessionManager(mockDb, runner, ai as any, indexer as any);
 
-    await manager.generate("session-123", "user-1", { model: "m", planModel: "p/m" });
+    await manager.generate("session-123", "user-1", {});
 
-    expect(indexer.search).toHaveBeenCalled();
-    expect(ai.complete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("src/a.ts"),
-      })
-    );
+    const routeQuery = queries.find((q) => q.sql.includes("difficulty = ?"));
+    expect(routeQuery).toBeDefined();
+    expect(routeQuery!.params).toContain(4);
+    expect(routeQuery!.params).toContain("performance");
+    expect(routeQuery!.params).toContain("openai/gpt-6-sol");
   });
 
   it("stores error_message when runner returns empty patches", async () => {
     const generateSpy = vi.fn().mockResolvedValue({ patches: [], model: "m", error: "empty" });
     (runner as any).generate = generateSpy;
-    manager = new CodeSessionManager(mockDb, runner);
 
     await manager.generate("session-123", "user-1", { model: "m" });
 

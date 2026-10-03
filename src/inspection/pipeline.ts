@@ -3,16 +3,14 @@
  */
 import type { WorkerContext } from "../context";
 import type { Logger } from "../logging/logger";
-import { InspectionRepository, SettingsRepository } from "../db/repositories";
-import { CodeIndexer, type CodeIndexStatus } from "../vectorize/code.indexer";
+import { InspectionRepository } from "../db/repositories";
 import { selectPathsForAnalysis } from "../code/context.assembler";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
+import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
 import type { InspectionRequest, Language } from "../types";
-import { newId } from "../auth/tokens";
 
-const INDEX_STALE_MS = 24 * 60 * 60 * 1000; // 24 時間（同期 reindex を避ける）
 export const MAX_ANALYSIS_FILES = 6;
 
 export interface ProgressStep {
@@ -58,7 +56,6 @@ export interface RunAnalysisOptions {
 export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<void> {
   const { ctx, log, inspectionId, userId, instruction } = opts;
   const inspections = new InspectionRepository(ctx.ports.db);
-  const settings = new SettingsRepository(ctx.ports.db);
   const steps: ProgressStep[] = [];
 
   const isCanceled = async (): Promise<boolean> => {
@@ -76,90 +73,49 @@ export async function runInspectionPipeline(opts: RunAnalysisOptions): Promise<v
   try {
     if (await isCanceled()) return;
 
-    const vectorize = ctx.ports.vectorize;
     const vcs = ctx.ports.vcs as unknown as GitHubProvider;
+    const query = instruction.trim() || "コード全体の品質・セキュリティ・パフォーマンス上の問題";
 
-    if (!vectorize || !ctx.ports.ai.embed) {
-      if (!(await push("analyzing", "Vectorize 未設定のため、リポジトリのファイルを直接解析します。", "analyzing"))) {
-        return;
-      }
-      const files = await vcs.getRepoFiles(MAX_ANALYSIS_FILES);
-      await analyzeAndStore({ ctx, inspections, inspectionId, userId, instruction, files, steps });
-      return;
-    }
+    // 1. selecting — Luna に関連ファイルを選んでもらう
+    if (!(await push("searching", "解析対象ファイルを選択しています…", "searching"))) return;
 
-    const indexer = new CodeIndexer(vectorize, ctx.ports.ai, vcs, settings);
-
-    // 1. indexing — stale なら非同期 reindex を enqueue し、既存インデックスのまま続行
-    const currentStatus = await indexer.getStatus();
-    let indexReady = !needsReindex(currentStatus) && currentStatus?.status === "done";
-    if (needsReindex(currentStatus)) {
-      // 同期 reindex は subrequest を食い潰すため Queue へ委譲
-      await ctx.ports.queue.send({
-        id: newId(),
-        type: "codeindex.requested",
-        userId,
-        payload: { owner: vcs.owner, repo: vcs.repo },
-        enqueuedAt: Date.now(),
-      });
-      if (currentStatus?.status === "done") {
-        if (!(await push("indexing", "インデックスが古いため再構築をキューに登録しました。既存インデックスで検索を続行します。", "indexing"))) {
-          return;
-        }
-        indexReady = true;
-      } else {
-        if (!(await push("indexing", "コードインデックス未構築のため再構築をキューに登録しました。代表ファイルを直接解析します。", "indexing"))) {
-          return;
-        }
-        indexReady = false;
-      }
-    } else {
-      if (!(await push("indexing", "既存のコードインデックスを使用します。", "indexing"))) return;
-      indexReady = true;
-    }
-
-    // 2. searching
-    let targetPaths: string[] = [];
-    if (indexReady) {
-      if (!(await push("searching", "関連するコードを Vectorize で検索しています…", "searching"))) return;
-      const query = instruction.trim() || "コード全体の品質・セキュリティ・パフォーマンス上の問題";
+    let files: Array<{ path: string; content: string }> = [];
+    try {
+      const repo = await vcs.getRepoFiles(MAX_ANALYSIS_FILES * 8);
+      const byPath = new Map(repo.map((f) => [f.path, f.content]));
       const selected = await selectPathsForAnalysis({
         query,
-        indexer,
+        ai: ctx.ports.ai,
+        files: repo,
         maxFiles: MAX_ANALYSIS_FILES,
       });
-      targetPaths = selected.paths;
+      for (const path of selected.paths) {
+        const content = byPath.get(path);
+        if (content) files.push({ path, content });
+      }
       if (
         !(await push(
           "searching",
           selected.snippets.length > 0
-            ? `関連チャンク ${selected.snippets.length} 件を取得（対象ファイル: ${targetPaths.join(", ") || "なし"}）。`
-            : "関連チャンクが見つからなかったため代表ファイルを解析します。",
+            ? `関連チャンク ${selected.snippets.length} 件を取得（対象ファイル: ${selected.paths.join(", ") || "なし"}）。`
+            : "関連ファイルが選出できなかったため代表ファイルを解析します。",
           "searching"
         ))
       ) {
         return;
       }
-    } else {
-      if (!(await push("searching", "インデックス未構築のため、代表ファイルを直接解析します。", "searching"))) {
-        return;
-      }
+    } catch (err) {
+      console.warn("[inspection] file selection failed:", err instanceof Error ? err.message : err);
+    }
+
+    if (files.length === 0) {
+      files = (await vcs.getRepoFiles(MAX_ANALYSIS_FILES)).slice(0, MAX_ANALYSIS_FILES);
     }
 
     if (await isCanceled()) return;
 
-    // 3. analyzing
+    // 2. analyzing
     if (!(await push("analyzing", "AI によるコード解析を実行しています…", "analyzing"))) return;
-    let files: Array<{ path: string; content: string }> = [];
-    if (targetPaths.length > 0) {
-      for (const path of targetPaths.slice(0, MAX_ANALYSIS_FILES)) {
-        const file = await vcs.readFileContent(path);
-        if (file) files.push({ path: file.path, content: file.content });
-      }
-    }
-    if (files.length === 0) {
-      files = (await vcs.getRepoFiles(MAX_ANALYSIS_FILES)).slice(0, MAX_ANALYSIS_FILES);
-    }
 
     if (await isCanceled()) return;
     await analyzeAndStore({ ctx, inspections, inspectionId, userId, instruction, files, steps });
@@ -195,13 +151,13 @@ async function analyzeAndStore(opts: {
 
   const language = detectLanguage(files.map((f) => f.path));
   const req: InspectionRequest = {
-    id: newId(),
+    id: crypto.randomUUID(),
     language,
     files: files.map((f) => ({ path: f.path, content: f.content })),
     requestedAt: new Date().toISOString(),
   };
 
-  const model = await ctx.auth.resolveModel(userId);
+  const model = DEFAULT_WORKERS_AI_MODEL;
   const engine = new InspectionEngine(ctx.ports.ai, {
     ai: { ...defaultInspectionConfig.ai, model, maxRetries: 1 },
   });
@@ -218,10 +174,4 @@ async function analyzeAndStore(opts: {
   });
   await inspections.updateProgress(inspectionId, userId, "completed", steps);
   await inspections.setResult(inspectionId, userId, JSON.stringify(result), "completed");
-}
-
-function needsReindex(status: CodeIndexStatus | null): boolean {
-  if (!status) return true;
-  if (status.status !== "done") return true;
-  return Date.now() - status.updatedAt > INDEX_STALE_MS;
 }

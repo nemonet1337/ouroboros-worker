@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkFile, vectorizeNamespace, codeIndexStatusKey } from "../vectorize/chunker";
+import { chunkFile, chunkId } from "../retrieval/chunker";
 
 describe("chunkFile", () => {
   it("splits TypeScript on function/class/interface boundaries", () => {
@@ -53,23 +53,6 @@ describe("chunkFile", () => {
   it("is stable for the same input", () => {
     const file = { path: "src/a.ts", content: "export function foo() {}\n" };
     expect(chunkFile(file)[0].id).toBe(chunkFile(file)[0].id);
-  });
-});
-
-describe("vectorizeNamespace", () => {
-  it("uses owner/repo when it fits", () => {
-    expect(vectorizeNamespace("acme", "app")).toBe("acme/app");
-  });
-
-  it("falls back to default when empty", () => {
-    expect(vectorizeNamespace("", "")).toBe("default");
-  });
-
-  it("hashes names that exceed 64 bytes", () => {
-    const owner = "o".repeat(40);
-    const repo = "r".repeat(40);
-    const ns = vectorizeNamespace(owner, repo);
-    expect(ns.length).toBe(32);
-    expect(codeIndexStatusKey(ns)).toBe(`code_index_status:${ns}`);
+    expect(chunkId("src/a.ts", 1, "fn")).toBe(chunkId("src/a.ts", 1, "fn"));
   });
 });

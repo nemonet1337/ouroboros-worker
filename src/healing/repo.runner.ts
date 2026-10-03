@@ -7,6 +7,7 @@ import type { AiProvider } from "../ports/ai";
 import type { DbAdapter } from "../ports/db";
 import type {
   CodeCommitResult,
+  CodeGenerateOptions,
   CodeGenerateResult,
   CodeInitOptions,
   CodeInitResult,
@@ -21,14 +22,13 @@ import type {
 } from "../ports/runner";
 import type { Patch } from "../types";
 import type { GitHubProvider } from "../vcs/github.provider";
-import type { VectorizePort } from "../ports/vectorize";
 import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
+import { DEFAULT_ROUTING_CONFIG } from "../config/routing";
 import { assembleContext } from "../code/context.assembler";
 import { runHarness } from "../code/harness";
 import { verifyFix } from "../code/verifier";
-import { SettingsRepository } from "../db/repositories";
-import { CodeIndexer } from "../vectorize/code.indexer";
-import { vectorizeNamespace } from "../vectorize/chunker";
+import { decideRoute, type RouteDecision } from "../routing/model.router";
+import { pickFilesByLuna } from "../retrieval/file.selector";
 import { scanFiles } from "./scanner";
 
 export { parseGeneratedPatches } from "../code/parse.patches";
@@ -39,8 +39,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
   constructor(
     private readonly vcs: GitHubProvider,
     private readonly ai: AiProvider,
-    private readonly db: DbAdapter,
-    private readonly vectorize?: VectorizePort
+    private readonly db: DbAdapter
   ) {}
 
   // ── Healing ──────────────────────────────────────────────────────────────
@@ -109,30 +108,28 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         })
         .join("\n");
 
-      let relatedSnippets: Array<{ file: string; startLine: number; endLine: number; text: string }> = [];
-      if (this.vectorize) {
-        try {
-          const indexer = new CodeIndexer(
-            this.vectorize,
-            this.ai,
-            this.vcs,
-            new SettingsRepository(this.db)
-          );
-          relatedSnippets = await indexer.search(findingQuery || targetPaths.join(" "), 12, {
-            namespace: vectorizeNamespace(this.vcs.owner, this.vcs.repo),
-          });
-        } catch {
-          relatedSnippets = [];
-        }
-      }
-
-      const extraPaths = uniquePaths(relatedSnippets.map((s) => s.file))
-        .filter((p) => !targetPaths.includes(p))
-        .slice(0, 3);
+      // 関連ファイルは Luna に列挙させ、tarball から取り出した内容を使う
+      // （追加の readFileContent で subrequest を消費しない）。
+      const relatedSnippets: Array<{ file: string; startLine: number; endLine: number; text: string }> = [];
       const extraFiles: Array<{ path: string; content: string }> = [];
-      for (const p of extraPaths) {
-        const extra = await this.vcs.readFileContent(p, baseBranch);
-        if (extra) extraFiles.push({ path: extra.path, content: extra.content });
+      const query = findingQuery || targetPaths.join(" ");
+      if (query.trim()) {
+        try {
+          const repo = await this.vcs.getRepoFiles(200, baseBranch);
+          const byPath = new Map(repo.map((f) => [f.path, f.content]));
+          const { picked } = await pickFilesByLuna({
+            ai: this.ai,
+            repoMap: [...byPath.keys()],
+            query,
+            maxFiles: 3,
+          });
+          for (const p of uniquePaths(picked).filter((p) => !targetPaths.includes(p)).slice(0, 3)) {
+            const content = byPath.get(p);
+            if (content) extraFiles.push({ path: p, content: content.slice(0, 2000) });
+          }
+        } catch (err) {
+          console.warn("[healing] related file selection skipped:", err instanceof Error ? err.message : err);
+        }
       }
 
       const patches: Patch[] = [];
@@ -462,23 +459,19 @@ export class RepoRunner implements HealingRunner, CodeRunner {
     });
   }
 
-  async generate(opts: {
-    sessionId: string;
-    instruction: string;
-    model?: string;
-  }): Promise<CodeGenerateResult> {
-    const model =
+  async generate(opts: CodeGenerateOptions): Promise<CodeGenerateResult> {
+    const explicitModel =
       opts.model && isWorkersAiModelId(opts.model) ? opts.model : DEFAULT_WORKERS_AI_MODEL;
 
     const session = await this.getSession(opts.sessionId);
-    if (!session) return { patches: [], model, error: "session not found" };
+    if (!session) return { patches: [], model: explicitModel, error: "session not found" };
     const parsed = this.parseOwnerRepo(session.repoUrl);
-    if (!parsed) return { patches: [], model, error: "invalid repo url" };
+    if (!parsed) return { patches: [], model: explicitModel, error: "invalid repo url" };
 
     return this.withRepo(parsed.owner, parsed.repo, async () => {
       let files: Array<{ path: string; content: string }> = [];
       try {
-        files = await this.vcs.getRepoFiles(80, session.branch);
+        files = await this.vcs.getRepoFiles(200, session.branch);
         if (files.length > 0) {
           await this.cacheSet(opts.sessionId, "fileList", JSON.stringify(files.map((f) => f.path)));
         }
@@ -486,25 +479,40 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         // proceed without tarball
       }
 
-      const indexer = this.vectorize
-        ? new CodeIndexer(this.vectorize, this.ai, this.vcs, new SettingsRepository(this.db))
-        : undefined;
       const assembled = await assembleContext({
         query: opts.instruction,
-        indexer,
+        ai: this.ai,
         files,
-        namespace: vectorizeNamespace(this.vcs.owner, this.vcs.repo),
         maxFiles: 8,
         maxChars: 12_000,
       });
+
+      // 明示指定があれば Clef を飛ばす。無指定なら難易度で Luna / Sol を選ぶ。
+      const config = opts.routing ?? DEFAULT_ROUTING_CONFIG;
+      const route: RouteDecision | undefined = opts.modelOverride
+        ? {
+            model: explicitModel,
+            reasoningEffort: opts.reasoningEffort ?? config.efficiencyEffort,
+            difficulty: null,
+            tier: "unknown",
+            clefAvailable: false,
+          }
+        : await decideRoute({
+            ai: this.ai,
+            instruction: opts.instruction,
+            summary: { repoFileCount: files.length, snippets: assembled.snippets },
+            config,
+          });
+
       const result = await runHarness({
         instruction: opts.instruction,
-        model,
+        model: route.model,
+        reasoningEffort: route.reasoningEffort,
         ai: this.ai,
         assembled,
       });
       await this.cacheSet(opts.sessionId, "harnessTrace", JSON.stringify(result.trace));
-      return result;
+      return { ...result, model: route.model, route };
     });
   }
 }

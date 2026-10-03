@@ -1,9 +1,8 @@
 import type { GuiEvent } from "../ports/queue";
 import type { Env } from "../env";
 import { buildContext } from "../context";
-import { CodeIndexer } from "../vectorize/code.indexer";
 import { SettingsRepository } from "../db/repositories";
-import { GitHubProvider } from "../vcs/github.provider";
+import { getRoutingConfig } from "../config/settings.keys";
 import { runInspectionPipeline } from "../inspection/pipeline";
 import { CodeSessionManager } from "../code/session.manager";
 
@@ -53,29 +52,6 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           });
           break;
         }
-        case "codeindex.requested": {
-          if (!ctx.ports.vectorize) {
-            await log.error("code index requested but VECTORIZE is not bound", {});
-            break;
-          }
-          const owner = typeof event.payload.owner === "string" ? event.payload.owner : "";
-          const repo = typeof event.payload.repo === "string" ? event.payload.repo : "";
-          if (owner && repo) ctx.refreshRepo(owner, repo);
-          const indexer = new CodeIndexer(
-            ctx.ports.vectorize,
-            ctx.ports.ai,
-            ctx.ports.vcs as unknown as GitHubProvider,
-            new SettingsRepository(ctx.ports.db)
-          );
-          const status = await indexer.reindex();
-          await log.info("code index rebuilt", {
-            status: status.status,
-            files: status.files,
-            chunks: status.chunks,
-            error: status.error ?? "",
-          });
-          break;
-        }
         case "codegen.requested": {
           const sessionId = String(event.payload.sessionId ?? "");
           const userId = event.userId ?? "";
@@ -83,25 +59,15 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
             await log.error("codegen.requested missing sessionId/userId", {});
             break;
           }
-          const mode =
-            event.payload.mode === "code_only" ? ("code_only" as const) : ("plan_code" as const);
-          const model = await ctx.auth.resolveModel(userId);
-          const planModel = model;
-          const indexer = ctx.ports.vectorize
-            ? new CodeIndexer(
-                ctx.ports.vectorize,
-                ctx.ports.ai,
-                ctx.ports.vcs as unknown as GitHubProvider,
-                new SettingsRepository(ctx.ports.db)
-              )
-            : undefined;
-          const manager = new CodeSessionManager(
-            ctx.ports.db,
-            ctx.ports.codeRunner,
-            ctx.ports.ai,
-            indexer
-          );
-          await manager.generate(sessionId, userId, { model, planModel, mode });
+          const settings = new SettingsRepository(ctx.ports.db);
+          const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner);
+          // モデルが明示されていれば Clef を飛ばす。未指定なら Runner 側で判定する。
+          const model = typeof event.payload.model === "string" ? event.payload.model : undefined;
+          await manager.generate(sessionId, userId, {
+            model,
+            routing: await getRoutingConfig(settings),
+            ...(model ? { modelOverride: true } : {}),
+          });
           await log.info("codegen complete", { sessionId });
           break;
         }

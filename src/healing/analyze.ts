@@ -1,6 +1,5 @@
 import type { WorkerContext } from "../context";
-import { HealingRunRepository, InspectionRepository, SettingsRepository } from "../db/repositories";
-import { CodeIndexer } from "../vectorize/code.indexer";
+import { HealingRunRepository, InspectionRepository } from "../db/repositories";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
@@ -18,45 +17,6 @@ const ANALYSIS_QUERY = "コード全体の品質・セキュリティ・パフ�
 export async function assertNotCanceled(runId: string, runs: HealingRunRepository): Promise<void> {
   const current = await runs.find(runId);
   if (current?.status === "canceled") throw new Error("canceled");
-}
-
-export async function indexHealingRun(
-  ctx: WorkerContext,
-  runId: string
-): Promise<{ files: number; chunks: number; commitSha?: string; error?: string }> {
-  const runs = new HealingRunRepository(ctx.ports.db);
-  await assertNotCanceled(runId, runs);
-  await runs.update(runId, { status: "indexing" });
-
-  const empty = { files: 0, chunks: 0 };
-  if (!ctx.ports.vectorize || !ctx.ports.ai.embed) {
-    await patchSummary(runs, runId, { index: { ...empty, error: "Vectorize 未設定" } });
-    return { ...empty, error: "Vectorize 未設定" };
-  }
-
-  const indexer = new CodeIndexer(
-    ctx.ports.vectorize,
-    ctx.ports.ai,
-    ctx.ports.vcs as unknown as GitHubProvider,
-    new SettingsRepository(ctx.ports.db)
-  );
-  const status = await indexer.reindex();
-  const run = await runs.find(runId);
-  if (run) {
-    await persistAnalyzeUsage(runs, run, "index", ctx.usage.snapshot(), "");
-    await patchSummary(runs, runId, {
-      index: {
-        files: status.files,
-        chunks: status.chunks,
-        commitSha: status.commitSha,
-        error: status.error,
-      },
-    });
-  }
-  if (status.status === "failed") {
-    return { files: status.files, chunks: status.chunks, commitSha: status.commitSha, error: status.error };
-  }
-  return { files: status.files, chunks: status.chunks, commitSha: status.commitSha };
 }
 
 export async function scanHealingRun(ctx: WorkerContext, runId: string): Promise<AllFindings> {
@@ -85,30 +45,30 @@ export async function inspectHealingRun(
   const vcs = ctx.ports.vcs as unknown as GitHubProvider;
 
   let files: Array<{ path: string; content: string }> = [];
-  if (ctx.ports.vectorize && ctx.ports.ai.embed) {
+  const query = instruction?.trim() || ANALYSIS_QUERY;
+  if (typeof vcs.getRepoFiles === "function") {
     try {
-      const indexer = new CodeIndexer(
-        ctx.ports.vectorize,
-        ctx.ports.ai,
-        vcs,
-        new SettingsRepository(ctx.ports.db)
-      );
-      const query = instruction?.trim() || ANALYSIS_QUERY;
+      const repo = await vcs.getRepoFiles(MAX_ANALYSIS_FILES * 4);
+      const byPath = new Map(repo.map((f) => [f.path, f.content]));
       const selected = await selectPathsForAnalysis({
         query,
-        indexer,
+        ai: ctx.ports.ai,
+        files: repo,
         maxFiles: MAX_ANALYSIS_FILES,
       });
       for (const path of selected.paths) {
-        const file = await vcs.readFileContent?.(path);
-        if (file) files.push({ path: file.path, content: file.content });
+        const content = byPath.get(path);
+        if (content) files.push({ path, content });
+      }
+      if (files.length === 0) {
+        files = repo.slice(0, MAX_ANALYSIS_FILES).map((f) => ({ path: f.path, content: f.content }));
       }
     } catch (err) {
-      console.warn("[healing] vectorize search failed:", err instanceof Error ? err.message : err);
+      console.warn("[healing] related file selection failed:", err instanceof Error ? err.message : err);
+      files = typeof vcs.getRepoFiles === "function"
+        ? (await vcs.getRepoFiles(MAX_ANALYSIS_FILES)).slice(0, MAX_ANALYSIS_FILES)
+        : [];
     }
-  }
-  if (files.length === 0 && typeof vcs.getRepoFiles === "function") {
-    files = (await vcs.getRepoFiles(MAX_ANALYSIS_FILES)).slice(0, MAX_ANALYSIS_FILES);
   }
 
   let inspection: InspectionResult | null = null;

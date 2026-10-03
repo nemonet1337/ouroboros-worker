@@ -7,7 +7,11 @@ import {
 } from "../db/repositories";
 import { hashPassword, verifyPassword } from "./password";
 import { newId, newSessionId } from "./tokens";
-import { isWorkersAiModelId, DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
+import {
+  isWorkersAiModelId,
+  remapRetiredModel,
+  DEFAULT_WORKERS_AI_MODEL,
+} from "../config/deployment";
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 const MAX_SESSIONS_PER_USER = 5;
@@ -79,7 +83,6 @@ export class AuthService {
       password_hash: await hashPassword(password),
       role: isFirstUser ? "admin" : "member",
       model: null,
-      mode_models: null,
       created_at: now,
       updated_at: now,
     };
@@ -165,10 +168,12 @@ export class AuthService {
 
   /**
    * users.model → DEFAULT_WORKERS_AI_MODEL。
+   * 廃止済みモデル（GLM）は保存値を書き換えず、読み取り時に既定へ寄せる。
    * userId が無い場合（cron トリガー等）はデフォルトを返す。
    */
   async resolveModel(userId: string | null | undefined): Promise<string> {
     if (!userId) return DEFAULT_WORKERS_AI_MODEL;
-    return (await this.users.getModel(userId)) ?? DEFAULT_WORKERS_AI_MODEL;
+    const stored = await this.users.getModel(userId);
+    return remapRetiredModel(stored) ?? DEFAULT_WORKERS_AI_MODEL;
   }
 }

@@ -14,11 +14,6 @@ class MockDbAdapter implements DbAdapter {
       const found = this.users.find(u => u.id === id);
       return found ? [{ model: found.model ?? null } as any] : [];
     }
-    if (sql.includes("SELECT mode_models FROM users WHERE id = ?")) {
-      const id = params[0] as string;
-      const found = this.users.find(u => u.id === id);
-      return found ? [{ mode_models: found.mode_models ?? null } as any] : [];
-    }
     if (sql.includes("SELECT * FROM users WHERE email = ?")) {
       const email = params[0] as string;
       const found = this.users.find(u => u.email === email);
@@ -45,13 +40,6 @@ class MockDbAdapter implements DbAdapter {
       const user = this.users.find(u => u.id === id);
       if (user) {
         user.model = params[0];
-        user.updated_at = params[1];
-      }
-    } else if (sql.includes("UPDATE users SET mode_models = ?, updated_at = ? WHERE id = ?")) {
-      const id = params[2];
-      const user = this.users.find(u => u.id === id);
-      if (user) {
-        user.mode_models = params[0];
         user.updated_at = params[1];
       }
     } else if (sql.includes("INSERT INTO users")) {
@@ -242,7 +230,6 @@ describe("AuthService", () => {
       password_hash: "hash",
       role: "member",
       model: null,
-      mode_models: null,
       created_at: Date.now(),
       updated_at: Date.now(),
     });
@@ -252,5 +239,20 @@ describe("AuthService", () => {
 
     await auth.setModel("user-1", "@cf/meta/llama-3.1-8b-instruct");
     expect(await auth.resolveModel("user-1")).toBe("@cf/meta/llama-3.1-8b-instruct");
+  });
+
+  it("resolveModel remaps retired GLM ids without rewriting the stored value", async () => {
+    db.users.push({
+      id: "user-2",
+      email: "glm@example.com",
+      password_hash: "hash",
+      role: "member",
+      model: "@cf/zai-org/glm-5.3-flash",
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    expect(await auth.resolveModel("user-2")).toBe("openai/gpt-6-luna");
+    expect(db.users.find((u) => u.id === "user-2")?.model).toBe("@cf/zai-org/glm-5.3-flash");
   });
 });

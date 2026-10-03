@@ -8,7 +8,6 @@ export interface UserRow {
   password_hash: string;
   role: string;
   model: string | null;
-  mode_models: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -116,30 +115,7 @@ export class UserRepository {
   }
 
   async getModeModels(id: string): Promise<Record<string, string>> {
-    const rows = await this.db.query<{ mode_models: string | null }>(
-      `SELECT mode_models FROM users WHERE id = ?`,
-      [id]
-    );
-    const raw = rows[0]?.mode_models;
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return Object.fromEntries(
-          Object.entries(parsed).filter(([, v]) => typeof v === "string" && v.length > 0)
-        ) as Record<string, string>;
-      }
-    } catch {
-      // 不正な JSON は未設定として扱う
-    }
     return {};
-  }
-
-  async setModeModels(id: string, models: Record<string, string>): Promise<void> {
-    await this.db.exec(
-      `UPDATE users SET mode_models = ?, updated_at = ? WHERE id = ?`,
-      [Object.keys(models).length > 0 ? JSON.stringify(models) : null, Date.now(), id]
-    );
   }
 }
 
@@ -467,13 +443,13 @@ export class CodeSessionRepository {
       `INSERT INTO code_sessions
         (id, user_id, repo_url, branch, base_branch, title, instruction, status,
          generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at,
-         error_message, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         error_message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id, row.user_id, row.repo_url, row.branch, row.base_branch,
         row.title, row.instruction, row.status, row.generated_patches,
         row.applied_branch, row.pr_number, row.pr_url, row.created_at, row.updated_at,
-        row.error_message ?? null, row.mode ?? "plan_code",
+        row.error_message ?? null,
       ]
     );
   }
@@ -527,17 +503,17 @@ export class CodeSessionRepository {
     );
   }
 
-  async setPatches(id: string, userId: string, patches: unknown[], mode?: string): Promise<void> {
+  async setPatches(id: string, userId: string, patches: unknown[]): Promise<void> {
     await this.db.exec(
-      `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-      [JSON.stringify(patches), "generated", mode ?? "plan_code", Date.now(), id, userId]
+      `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, updated_at = ? WHERE id = ? AND user_id = ?`,
+      [JSON.stringify(patches), "generated", Date.now(), id, userId]
     );
   }
 
-  async setError(id: string, userId: string, errorMessage: string, mode?: string): Promise<void> {
+  async setError(id: string, userId: string, errorMessage: string): Promise<void> {
     await this.db.exec(
-      `UPDATE code_sessions SET status = ?, error_message = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-      ["failed", errorMessage, mode ?? "plan_code", Date.now(), id, userId]
+      `UPDATE code_sessions SET status = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["failed", errorMessage, Date.now(), id, userId]
     );
   }
 

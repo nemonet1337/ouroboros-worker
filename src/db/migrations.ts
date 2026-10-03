@@ -194,4 +194,20 @@ export const MIGRATIONS: Migration[] = [
       `ALTER TABLE healing_runs ADD COLUMN fix_completion_tokens INTEGER NOT NULL DEFAULT 0`,
     ],
   },
+  {
+    id: "0013_route_by_clef",
+    statements: [
+      `ALTER TABLE code_sessions ADD COLUMN difficulty REAL`,
+      `ALTER TABLE code_sessions ADD COLUMN tier TEXT`,
+      `ALTER TABLE code_sessions ADD COLUMN route_model TEXT`,
+      `ALTER TABLE code_sessions ADD COLUMN route_effort TEXT`,
+      // Plan フェーズ廃止。残った plan / mode 列は読み取り側で無視される。
+      `ALTER TABLE code_sessions DROP COLUMN plan`,
+      `ALTER TABLE code_sessions DROP COLUMN mode`,
+      `ALTER TABLE users DROP COLUMN mode_models`,
+      // Vectorize 廃止の設定キー
+      `DELETE FROM settings WHERE key = 'embedding_model'`,
+      `DELETE FROM settings WHERE key = 'code_index_status'`,
+    ],
+  },
 ];

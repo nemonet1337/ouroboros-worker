@@ -102,7 +102,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
+  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
   const makeProposalManager = async () => {
     const selected = await getSelectedRepo(settingsRepo);
     const repoUrl = selected
@@ -361,8 +361,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   app.post("/code/sessions/:id/generate", requireFlag(FLAGS.CODE_NEEDS_FIX, true), async (c) => {
     const userId = c.get("identity").user.id;
     const sessionId = c.req.param("id")!;
-    const body = await c.req.parseBody();
-    const mode = body.codeMode === "code_only" ? "code_only" : "plan_code";
     const row = await codeManager.get(sessionId, userId);
     if (!row) return c.html(<Alert type="error" message="セッションが見つかりません。" />);
     if (row.status !== "ready" && row.status !== "failed") {
@@ -372,11 +370,13 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       ["generating", Date.now(), sessionId, userId]
     );
+    // model を渡さないと Queue 側で Clef の判定が走る
+    const model = await auth.resolveModel(userId);
     await ports.queue.send({
       id: newId(),
       type: "codegen.requested",
       userId,
-      payload: { sessionId, mode },
+      payload: { sessionId, ...(model ? { model } : {}) },
       enqueuedAt: Date.now(),
     });
     // ページを generating 状態で再描画し、status poller を起動する

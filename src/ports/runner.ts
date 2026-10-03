@@ -1,4 +1,6 @@
 import type { AllFindings, FindingGroup, HarnessTrace, Patch } from "../types";
+import type { ReasoningEffort, RoutingConfig } from "../config/routing";
+import type { RouteDecision } from "../routing/model.router";
 
 export type RunnerKind = "local" | "noop";
 
@@ -67,6 +69,19 @@ export interface CodeGenerateResult {
   /** 生成失敗時の理由（JSON パース失敗等）。成功時は undefined */
   error?: string;
   trace?: HarnessTrace;
+  /** Clef で決めたモデル階層。判定できなかった場合は undefined。 */
+  route?: RouteDecision;
+}
+export interface CodeGenerateOptions {
+  sessionId: string;
+  instruction: string;
+  /** 明示指定されたモデル。Clef の判定より優先される。 */
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  /** Clef によるモデル階層判定に使う設定。 */
+  routing?: RoutingConfig;
+  /** true なら Clef を呼ばず model / routing の既定をそのまま使う。 */
+  modelOverride?: boolean;
 }
 
 export interface CodeRunner {
@@ -77,7 +92,7 @@ export interface CodeRunner {
   write(opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult>;
   commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult>;
   push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }>;
-  generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult>;
+  generate(opts: CodeGenerateOptions): Promise<CodeGenerateResult>;
 }
 
 /**
@@ -134,7 +149,7 @@ export class NoopRunner implements HealingRunner, CodeRunner {
     return { success: false };
   }
 
-  async generate(_opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult> {
+  async generate(_opts: CodeGenerateOptions): Promise<CodeGenerateResult> {
     return { patches: [], model: "", error: "no runner configured" };
   }
 }

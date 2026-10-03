@@ -33,7 +33,6 @@ function buildDeps(): ApiDeps {
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),
       rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
-      vectorize: undefined,
     },
     config: {
       ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },

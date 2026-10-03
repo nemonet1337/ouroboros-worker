@@ -13,7 +13,7 @@ Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull R
 エッジネイティブ構成だけをサポートします。
 
 > **AI ゲートウェイ:** Ouroboros が接続する LLM は **Cloudflare Workers AI 上の
-> モデルに限定**されます（デフォルト: `@cf/zai-org/glm-5.3-flash`）。利用可能な全モデルは GUI の
+> モデルに限定**されます（デフォルト: `openai/gpt-6-luna`）。利用可能な全モデルは GUI の
 > 設定画面から選択できます。AI の認証情報は Workers AI 専用の API トークン
 > **`WORKERS_AI_API_TOKEN`**（Worker シークレット）のみで管理され、Anthropic /
 > OpenAI などの外部ゲートウェイのトークンは API レベルで拒否されます。
@@ -83,10 +83,6 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migrations/
 
-# Vectorize インデックス（コード RAG 用）
-wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
-wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string
-wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string
 wrangler queues create ouroboros-dlq                 # 失敗イベントの DLQ
 
 wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
@@ -107,13 +103,20 @@ wrangler deploy                                      # または: wrangler dev
 
 ### AI モデル
 
-- デフォルトモデルは **`@cf/zai-org/glm-5.3-flash`**。
+- デフォルトモデルは **`openai/gpt-6-luna`**（効率系）。GLM は廃止モデルで、保存済みの
+  設定は読み取り時に Luna へ寄せられます。
+- **コード生成時のみ**、Clef（`@cf/cloudflare/clef-flash`）が実装難易度を判定し、
+  閾値以上なら `openai/gpt-6-sol`（性能系）、未満なら Luna を使います。
+  閾値と各モデルは `/models` から変更できます。
+- inspection / healing / refactor は Luna 固定です。
+- Embedding は `@cf/qwen/qwen3-embedding-0.6b` で固定。インデックスは持たず、
+  関連ファイルを Luna で選んだ後にリクエストごとに埋め込み順位付けします。
 - `GET /api/v1/models` がアカウントの Workers AI から全モデルを動的に検出し、
   **GUI の設定画面で Workers AI が提供するすべてのモデルを選択**できます。
-- 各ユーザーは `GET/PUT /api/v1/settings/model` で個人のモデル設定を保存でき、
-  インスペクション時には個人設定が優先されます（未設定時はデフォルトの `@cf/zai-org/glm-5.3-flash`）。
-- AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。`CLOUDFLARE_ACCOUNT_ID` と併用
-  すると Workers AI REST API 経由で推論し、未設定なら AI バインディングを直接使用します。
+- 各ユーザーは `GET/PUT /api/v1/settings/model` で個人のモデル設定を保存できます。
+  明示すると codegen の Clef 判定を無視してそのモデルを使います。
+- AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。GPT-6 系はバインディングで動くため
+  通常は不要で、未設定なら AI バインディングを直接使用します。
 
 ---
 

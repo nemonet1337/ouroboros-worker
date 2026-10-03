@@ -113,14 +113,41 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
               </details>
             ) : null}
 
-            {/* Plan フェーズの実装計画 */}
-            {session.plan ? (
+            {/* Clef によるモデル階層判定 */}
+            {session.route_model ? (
               <div>
                 <h2 class="font-semibold text-sm opacity-75 mb-2 flex items-center gap-2">
-                  <i data-lucide="list-checks" class="w-4 h-4 text-primary" />
-                  実装計画（Plan モデルによる生成）
+                  <i data-lucide="git-branch" class="w-4 h-4 text-primary" />
+                  モデル階層（Clef 判定）
                 </h2>
-                <div class="bg-base-200 rounded-xl p-4 text-sm whitespace-pre-wrap">{session.plan}</div>
+                <div class="bg-base-200 rounded-xl p-4 text-xs space-y-1">
+                  <div>
+                    難易度:{" "}
+                    <span class="font-mono font-semibold">
+                      {session.difficulty ?? "—"}
+                    </span>
+                    　階層:{" "}
+                    <span class="font-mono">
+                      {session.tier === "performance"
+                        ? "Performance"
+                        : session.tier === "efficiency"
+                          ? "Efficiency"
+                          : "—"}
+                    </span>
+                  </div>
+                  <div class="opacity-70">
+                    使用モデル:{" "}
+                    <span class="font-mono">
+                      {(session.route_model ?? "").replace(/^@[^/]+\//, "")}
+                    </span>
+                    {session.route_effort ? (
+                      <>
+                        {" "}
+                        (effort: <span class="font-mono">{session.route_effort}</span>)
+                      </>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -156,41 +183,15 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
             <div class="bg-base-200 rounded-xl p-4 space-y-3">
               <h2 class="font-semibold text-sm opacity-75">アクション</h2>
               {(session.status === "ready" || session.status === "failed") && (
-                <>
-                  {/* 生成モード選択（Plan+Code / Code のみ） */}
-                  <div class="form-control" id="code-mode-inputs">
-                    <label class="label cursor-pointer justify-start gap-2 py-1">
-                      <input
-                        type="radio"
-                        name="codeMode"
-                        value="plan_code"
-                        class="radio radio-primary radio-sm"
-                        checked={session.mode !== "code_only"}
-                      />
-                      <span class="label-text text-xs">Plan + Code（計画を立ててから生成）</span>
-                    </label>
-                    <label class="label cursor-pointer justify-start gap-2 py-1">
-                      <input
-                        type="radio"
-                        name="codeMode"
-                        value="code_only"
-                        class="radio radio-primary radio-sm"
-                        checked={session.mode === "code_only"}
-                      />
-                      <span class="label-text text-xs">Code のみ（計画なしで直接生成）</span>
-                    </label>
-                  </div>
-                  <button
-                    hx-post={`/ui/fragments/code/sessions/${session.id}/generate`}
-                    hx-target="#session-action-result"
-                    hx-swap="innerHTML"
-                    hx-include="#code-mode-inputs"
-                    class="btn btn-gradient btn-sm w-full rounded-xl gap-2"
-                  >
-                    <i data-lucide="sparkles" class="w-4 h-4" />
-                    パッチを生成
-                  </button>
-                </>
+                <button
+                  hx-post={`/ui/fragments/code/sessions/${session.id}/generate`}
+                  hx-target="#session-action-result"
+                  hx-swap="innerHTML"
+                  class="btn btn-gradient btn-sm w-full rounded-xl gap-2"
+                >
+                  <i data-lucide="sparkles" class="w-4 h-4" />
+                  パッチを生成
+                </button>
               )}
               {session.status === "generated" && (
                 <button

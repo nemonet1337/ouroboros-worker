@@ -2,8 +2,8 @@ import type { DbAdapter } from "../ports/db";
 import type { CodeRunner } from "../ports/runner";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
 import type { VcsProvider } from "../ports/vcs";
-import type { AiProvider } from "../ports/ai";
-import type { CodeIndexer } from "../vectorize/code.indexer";
+import type { RoutingConfig } from "../config/routing";
+import type { RouteDecision } from "../routing/model.router";
 
 export interface CreateSessionOpts {
   userId: string;
@@ -14,16 +14,20 @@ export interface CreateSessionOpts {
   instruction: string;
 }
 
-const PLAN_SYSTEM = `You are a senior software engineer. Given a coding task instruction and retrieved code snippets,
-produce a short numbered implementation plan (max 8 steps, Japanese).
-Name the files you will touch. Output ONLY the plan steps, no preamble.`;
+export interface GenerateOpts {
+  /** Clef の判定を無視して固定モデルを使う場合の指定。 */
+  model?: string;
+  reasoningEffort?: RouteDecision["reasoningEffort"];
+  /** codegen に渡すルーティング設定。省略時は Runner の既定を使う。 */
+  routing?: RoutingConfig;
+  /** model が明示されていることを Runner に伝える。 */
+  modelOverride?: boolean;
+}
 
 export class CodeSessionManager {
   constructor(
     private readonly db: DbAdapter,
-    private readonly runner: CodeRunner,
-    private readonly ai?: AiProvider,
-    private readonly indexer?: CodeIndexer
+    private readonly runner: CodeRunner
   ) {}
 
   async create(opts: CreateSessionOpts): Promise<string> {
@@ -49,9 +53,8 @@ export class CodeSessionManager {
     await this.db.exec(
       `INSERT INTO code_sessions
          (id, user_id, repo_url, branch, base_branch, title, instruction, status,
-          generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at,
-          error_message, mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          generated_patches, applied_branch, pr_number, pr_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id,
         row.user_id,
@@ -67,8 +70,6 @@ export class CodeSessionManager {
         row.pr_url,
         row.created_at,
         row.updated_at,
-        null,
-        "plan_code",
       ]
     );
 
@@ -81,7 +82,7 @@ export class CodeSessionManager {
     } catch (err) {
       // initializing のままスタックさせず、失敗として記録した上でエラーを表示させる
       const reason = err instanceof Error ? err.message : String(err);
-      await this.setError(id, row.user_id, `セッション初期化に失敗しました: ${reason}`, "plan_code");
+      await this.setError(id, row.user_id, `セッション初期化に失敗しました: ${reason}`);
       throw err;
     }
 
@@ -129,11 +130,11 @@ export class CodeSessionManager {
     return Promise.all(rows.map((r) => this.recoverStale(r)));
   }
 
-  async generate(
-    id: string,
-    userId: string,
-    opts: { model?: string; planModel?: string; mode?: "plan_code" | "code_only" } = {}
-  ): Promise<void> {
+  /**
+   * Plan フェーズは廃止済み。検索コンテキストを組み立て、Clef でモデル階層を
+   * 決めてから直接 codegen へ渡す。
+   */
+  async generate(id: string, userId: string, opts: GenerateOpts = {}): Promise<void> {
     const row = await this.get(id, userId);
     if (!row) throw new Error("code session not found");
 
@@ -142,39 +143,35 @@ export class CodeSessionManager {
       throw new Error(`cannot generate from status: ${row.status}`);
     }
 
-    const mode: "plan_code" | "code_only" = opts.mode ?? "plan_code";
     if (row.status !== "generating") {
       await this.updateStatus(id, userId, "generating");
     }
 
-    // Plan フェーズ: plan_code モードのみ planModel で実装計画を先に生成する
-    const plan = mode === "plan_code"
-      ? await this.generatePlan(id, row.instruction, opts.planModel)
-      : "";
-
     try {
       const result = await this.runner.generate({
-        instruction: plan
-          ? `${row.instruction}\n\n## 実装計画\n${plan}`
-          : row.instruction,
+        instruction: row.instruction,
         sessionId: id,
         model: opts.model,
+        reasoningEffort: opts.reasoningEffort,
+        routing: opts.routing,
+        modelOverride: !!opts.model,
       });
       const patches = result.patches;
 
       if (!patches.length) {
         const reason = result.error ?? "生成されたパッチが空でした。";
-        await this.setError(id, userId, reason, mode);
+        await this.setError(id, userId, reason);
         return;
       }
 
       await this.db.exec(
-        `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, mode = ?, updated_at = ? WHERE id = ?`,
-        [JSON.stringify(patches), "generated", mode, Date.now(), id]
+        `UPDATE code_sessions SET generated_patches = ?, status = ?, error_message = NULL, updated_at = ? WHERE id = ?`,
+        [JSON.stringify(patches), "generated", Date.now(), id]
       );
+      await this.saveRoute(id, userId, result.route);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      await this.setError(id, userId, `パッチ生成に失敗しました: ${reason}`, mode);
+      await this.setError(id, userId, `パッチ生成に失敗しました: ${reason}`);
     }
   }
 
@@ -237,41 +234,13 @@ export class CodeSessionManager {
     await this.updateStatus(id, userId, "dismissed");
   }
 
-  private async generatePlan(id: string, instruction: string, planModel?: string): Promise<string> {
-    if (!this.ai) return "";
-    try {
-      let prompt = instruction;
-      if (this.indexer) {
-        try {
-          const snippets = await this.indexer.search(instruction, 8);
-          if (snippets.length > 0) {
-            prompt = `${instruction}\n\n## Retrieved code\n${snippets
-              .map((s) => `### ${s.file}:${s.startLine}-${s.endLine}\n${s.text}`)
-              .join("\n\n")}`;
-          }
-        } catch {
-          // plan without snippets
-        }
-      }
-      const plan = (
-        await this.ai.complete({
-          model: planModel,
-          system: PLAN_SYSTEM,
-          prompt,
-          maxTokens: 1024,
-        })
-      ).trim();
-      if (plan) {
-        await this.db.exec(`UPDATE code_sessions SET plan = ?, updated_at = ? WHERE id = ?`, [
-          plan,
-          Date.now(),
-          id,
-        ]);
-      }
-      return plan;
-    } catch {
-      return "";
-    }
+  private async saveRoute(id: string, userId: string, route: RouteDecision | undefined): Promise<void> {
+    if (!route) return;
+    await this.db.exec(
+      `UPDATE code_sessions SET difficulty = ?, tier = ?, route_model = ?, route_effort = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+      [route.difficulty, route.tier, route.model, route.reasoningEffort, Date.now(), id, userId]
+    );
   }
 
   private async updateStatus(id: string, userId: string, status: CodeSessionStatus): Promise<void> {
@@ -281,15 +250,10 @@ export class CodeSessionManager {
     );
   }
 
-  private async setError(
-    id: string,
-    userId: string,
-    errorMessage: string,
-    mode: "plan_code" | "code_only"
-  ): Promise<void> {
+  private async setError(id: string, userId: string, errorMessage: string): Promise<void> {
     await this.db.exec(
-      `UPDATE code_sessions SET status = ?, error_message = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-      ["failed", errorMessage, mode, Date.now(), id, userId]
+      `UPDATE code_sessions SET status = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+      ["failed", errorMessage, Date.now(), id, userId]
     );
   }
 }

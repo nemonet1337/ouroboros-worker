@@ -7,7 +7,6 @@ interface CodeSessionListProps {
 
 const STATUS_CONFIG: Record<string, { label: string; class: string }> = {
   ready: { label: "準備完了", class: "bg-sky-500/10 text-sky-400 border border-sky-500/20" },
-  planning: { label: "プラン生成中", class: "bg-amber-500/10 text-amber-400 border border-amber-500/20" },
   generating: { label: "生成中", class: "bg-amber-500/10 text-amber-400 border border-amber-500/20" },
   generated: { label: "パッチ生成済", class: "bg-violet-500/10 text-violet-400 border border-violet-500/20" },
   applied: { label: "適用済", class: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" },

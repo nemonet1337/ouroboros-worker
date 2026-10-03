@@ -231,7 +231,7 @@ export type InspectionRunOutcome =
  * fragment so both enforce identical limits and store identical rows.
  */
 export async function runUserInspection(opts: {
-  ports: Pick<Ports, "ai" | "rateLimiter" | "vectorize">;
+  ports: Pick<Ports, "ai" | "rateLimiter">;
   inspections: InspectionRepository;
   auth: AuthService;
   log: Logger;

@@ -1,17 +1,17 @@
 /**
- * `settings` KV テーブルに保存するシステム全体設定のキーとヘルパー。
+ * `settings` テーブルに保存するシステム全体設定のキーとヘルパー。
  *
  * - selected_repo   : システム全体で 1 つの選択リポジトリ（"owner/name"）
  * - feature_flags   : 機能トグルの JSON（{ "code-needs-fix": true, ... }）
- * - embedding_model : Vectorize 用 Embedding モデル ID（システム全体で 1 つ）
+ * - routing_config  : Clef によるモデル階層ルーティングの設定
  */
-import { DEFAULT_EMBEDDING_MODEL, isWorkersAiModelId } from "./deployment";
+import { DEFAULT_ROUTING_CONFIG, parseRoutingConfig, type RoutingConfig } from "./routing";
 import type { SettingsRepository } from "../db/repositories";
 
 export const SELECTED_REPO_KEY = "selected_repo";
 export const FEATURE_FLAGS_KEY = "feature_flags";
 export const APP_SETTINGS_KEY = "app_settings";
-export const EMBEDDING_MODEL_KEY = "embedding_model";
+export const ROUTING_CONFIG_KEY = "routing_config";
 
 /** 設定画面 / API の共通デフォルト（schedule は UTC HH:MM + 曜日） */
 export const DEFAULT_APP_SETTINGS = {
@@ -72,21 +72,22 @@ export async function setFeatureFlags(
   await settings.set(FEATURE_FLAGS_KEY, JSON.stringify(flags));
 }
 
-/** システム全体の Embedding モデル。未設定・不正値は DEFAULT_EMBEDDING_MODEL。 */
-export async function getEmbeddingModel(settings: SettingsRepository): Promise<string> {
-  const raw = await settings.get(EMBEDDING_MODEL_KEY);
-  if (raw && isWorkersAiModelId(raw)) return raw;
-  return DEFAULT_EMBEDDING_MODEL;
+/** Clef によるモデル階層ルーティング設定。未設定・不正値は既定値。 */
+export async function getRoutingConfig(settings: SettingsRepository): Promise<RoutingConfig> {
+  const raw = await settings.get(ROUTING_CONFIG_KEY);
+  if (!raw) return { ...DEFAULT_ROUTING_CONFIG };
+  try {
+    return parseRoutingConfig(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_ROUTING_CONFIG };
+  }
 }
 
-/** 空文字 / null はデフォルトに戻す。 */
-export async function setEmbeddingModel(settings: SettingsRepository, model: string | null): Promise<void> {
-  if (!model) {
-    await settings.set(EMBEDDING_MODEL_KEY, "");
-    return;
-  }
-  if (!isWorkersAiModelId(model)) {
-    throw new Error(`"${model}" is not a valid Workers AI model id`);
-  }
-  await settings.set(EMBEDDING_MODEL_KEY, model);
+export async function setRoutingConfig(
+  settings: SettingsRepository,
+  config: unknown
+): Promise<RoutingConfig> {
+  const parsed = parseRoutingConfig(config);
+  await settings.set(ROUTING_CONFIG_KEY, JSON.stringify(parsed));
+  return parsed;
 }

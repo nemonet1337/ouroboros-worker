@@ -38,7 +38,7 @@ const PYTHON: SymbolPattern[] = [
 ];
 
 const GO: SymbolPattern[] = [
-  { re: /^func\s+(?:\([^)]+\)\s+)?(\w+)/, kind: "fn", symbolGroup: 1 },
+  { re: /^func\s+(?:\([^)]*\)\s+)?(\w+)/, kind: "fn", symbolGroup: 1 },
   { re: /^type\s+(\w+)\s+struct/, kind: "class", symbolGroup: 1 },
 ];
 
@@ -72,39 +72,25 @@ export function langFromPath(path: string): string {
   return EXT_LANG[ext] ?? "other";
 }
 
-/** Vectorize namespace は 64 バイト上限。`owner/repo` を優先し、長い場合は 32 hex。 */
-export function vectorizeNamespace(owner: string, repo: string): string {
-  if (!owner && !repo) return "default";
-  const raw = `${owner}/${repo}`;
-  if (new TextEncoder().encode(raw).length <= 64) return raw;
-  return hash32(raw);
-}
-
-export function codeIndexStatusKey(namespace?: string): string {
-  if (!namespace || namespace === "default") return "code_index_status";
-  return `code_index_status:${namespace}`;
-}
-
-export function chunkFile(
-  file: { path: string; content: string },
-  namespace = ""
-): CodeChunk[] {
+export function chunkFile(file: { path: string; content: string }): CodeChunk[] {
   const lang = langFromPath(file.path);
   const isTest = TEST_NAME.test(file.path);
   const isConfig = CONFIG_NAME.test(file.path);
   const lines = file.content.split("\n");
   const forceKind: ChunkKind | undefined = isConfig ? "config" : isTest ? "test" : undefined;
 
-  const regions = isConfig ? [{ start: 0, end: lines.length, kind: "config" as ChunkKind, symbol: "" }] : symbolRegions(lines, lang);
+  const regions = isConfig
+    ? [{ start: 0, end: lines.length, kind: "config" as ChunkKind, symbol: "" }]
+    : symbolRegions(lines, lang);
 
   const chunks: CodeChunk[] = [];
   for (const region of regions) {
     const kind = forceKind ?? region.kind;
-    for (const window of windows(region.start, region.end, lines.length)) {
+    for (const window of windows(region.start, region.end)) {
       const text = lines.slice(window.start, window.end).join("\n").slice(0, CHUNK_MAX_CHARS);
       if (text.trim().length === 0) continue;
       chunks.push({
-        id: chunkId(namespace, file.path, window.start + 1, kind),
+        id: chunkId(file.path, window.start + 1, kind),
         startLine: window.start + 1,
         endLine: window.end,
         text,
@@ -117,8 +103,8 @@ export function chunkFile(
   return chunks;
 }
 
-export function chunkId(namespace: string, path: string, startLine: number, kind: string): string {
-  return hash32(`${namespace}:${path}#${startLine}:${kind}`);
+export function chunkId(path: string, startLine: number, kind: string): string {
+  return hash32(`${path}#${startLine}:${kind}`);
 }
 
 function symbolRegions(
@@ -153,7 +139,7 @@ function symbolRegions(
   return regions;
 }
 
-function windows(start: number, end: number, _lineCount: number): Array<{ start: number; end: number }> {
+function windows(start: number, end: number): Array<{ start: number; end: number }> {
   const out: Array<{ start: number; end: number }> = [];
   const step = CHUNK_LINES - CHUNK_OVERLAP;
   for (let s = start; s < end; s += step) {
@@ -164,7 +150,7 @@ function windows(start: number, end: number, _lineCount: number): Array<{ start:
   return out;
 }
 
-/** Vectorize id は 64 バイト上限。同期 digest は WebCrypto に無いため FNV-1a 相当で 32 hex。 */
+/** 同期 digest は WebCrypto に無いため FNV-1a 相当で 32 hex。 */
 export function hash32(input: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0x811c9dc5 ^ 0x9e3779b9;

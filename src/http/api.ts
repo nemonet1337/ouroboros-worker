@@ -3,7 +3,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Ports } from "../ports";
 import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
-import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL, isCompatibleEmbeddingModel } from "../config/deployment";
+import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
@@ -30,9 +30,12 @@ import {
   modelSchema,
   userModelsSchema,
 } from "./validation";
-import { CODE_INDEX_STATUS_KEY } from "../vectorize/code.indexer";
-import { codeIndexStatusKey, vectorizeNamespace } from "../vectorize/chunker";
-import { DEFAULT_APP_SETTINGS, getEmbeddingModel, getSelectedRepo, setEmbeddingModel } from "../config/settings.keys";
+import {
+  DEFAULT_APP_SETTINGS,
+  getRoutingConfig,
+  getSelectedRepo,
+  setRoutingConfig,
+} from "../config/settings.keys";
 import {
   buildMetricsData,
   loadPublicConfig,
@@ -104,7 +107,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
+  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
 
   // ── Unified error handling ─────────────────────────────────────────────────
   app.onError((err, c) => {
@@ -341,106 +344,41 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json({ ok: true });
   });
 
-  // ── AI モデル設定（テキスト生成はユーザー単位、Embedding はシステム全体） ──
+  // ── AI モデル設定（テキスト生成はユーザー単位、ルーティングはシステム全体） ──
   app.get("/settings/models", requireAuth(), async (c) => {
     const user = c.get("identity")!.user;
     const model = await auth.getModel(user.id);
-    const embeddingModel = await getEmbeddingModel(settingsRepo);
     return c.json({
       model,
-      embeddingModel,
       effectiveModel: model ?? DEFAULT_WORKERS_AI_MODEL,
-      effectiveEmbeddingModel: embeddingModel,
+      routing: await getRoutingConfig(settingsRepo),
       defaults: { model: DEFAULT_WORKERS_AI_MODEL, embeddingModel: DEFAULT_EMBEDDING_MODEL },
     });
   });
 
   app.put("/settings/models", requireAuth(), validateBody(userModelsSchema), async (c) => {
     const user = c.get("identity")!.user;
-    const body = c.get("body") as { model?: string; embeddingModel?: string };
+    const body = c.get("body") as { model?: string };
     if (body.model !== undefined) {
       await auth.setModel(user.id, body.model === "" ? null : body.model);
     }
-    if (body.embeddingModel !== undefined) {
-      if (user.role !== "admin") {
-        if (c.req.header("HX-Request")) {
-          return c.html(
-            `<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>Embedding モデルの変更は管理者のみです。</span></div><script>lucide.createIcons()</script>`,
-            403
-          );
-        }
-        return c.json({ error: { code: "forbidden", message: "embedding model is admin-only" } }, 403);
-      }
-      if (body.embeddingModel !== "") {
-        let dims: number | undefined;
-        try {
-          const listed = (await ports.ai.listModels?.()) ?? [];
-          dims = listed.find((m) => m.value === body.embeddingModel)?.outputDimensions;
-        } catch {
-          dims = undefined;
-        }
-        if (!isCompatibleEmbeddingModel(body.embeddingModel, dims)) {
-          const msg = `"${body.embeddingModel}" は Vectorize（768 次元）と互換がありません。`;
-          if (c.req.header("HX-Request")) {
-            return c.html(
-              `<div class="alert alert-error rounded-lg flex items-center gap-2"><i data-lucide="alert-circle" class="w-5 h-5"></i><span>${msg}</span></div><script>lucide.createIcons()</script>`,
-              400
-            );
-          }
-          return c.json({ error: { code: "incompatible_embedding", message: msg } }, 400);
-        }
-      }
-      await setEmbeddingModel(settingsRepo, body.embeddingModel === "" ? null : body.embeddingModel);
-    }
     if (c.req.header("HX-Request")) {
-      const savedEmbedding = body.embeddingModel !== undefined && user.role === "admin";
-      const extra = savedEmbedding
-        ? " Embedding を変えた場合はコードインデックスの再構築が必要です。"
-        : "";
       return c.html(
-        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。${extra}</span></div><script>lucide.createIcons()</script>`
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>モデル設定を保存しました。</span></div><script>lucide.createIcons()</script>`
       );
     }
     return c.json({ ok: true });
   });
 
-  // ── コードインデックス（Vectorize RAG）────────────────────────────────────
-  app.post("/code-index/reindex", requireAdmin, heavyLimit, async (c) => {
-    if (!ports.vectorize) {
-      return c.json(
-        { error: { code: "not_configured", message: "VECTORIZE binding is not configured" } },
-        503
-      );
-    }
-    // インデックス構築は数分かかるため Queue で非同期実行する
-    const selected = await getSelectedRepo(settingsRepo);
-    await ports.queue.send({
-      id: newId(),
-      type: "codeindex.requested",
-      userId: c.get("identity")!.user.id,
-      payload: selected ? { owner: selected.owner, repo: selected.repo } : {},
-      enqueuedAt: Date.now(),
-    });
+  // ── Clef によるモデル階層ルーティング（管理者のみ） ──
+  app.put("/settings/routing", requireAdmin, async (c) => {
+    const saved = await setRoutingConfig(settingsRepo, await c.req.json().catch(() => null));
     if (c.req.header("HX-Request")) {
       return c.html(
-        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>インデックス作成をキューに登録しました。数分後にページを再読み込みして状態を確認してください。</span></div><script>lucide.createIcons()</script>`
+        `<div class="alert alert-success rounded-lg flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i><span>ルーティング設定を保存しました。</span></div><script>lucide.createIcons()</script>`
       );
     }
-    return c.json({ ok: true }, 202);
-  });
-
-  app.get("/code-index/status", requireAuth(), async (c) => {
-    const selected = await getSelectedRepo(settingsRepo);
-    const ns = vectorizeNamespace(selected?.owner ?? "", selected?.repo ?? "");
-    const raw =
-      (await settingsRepo.get(codeIndexStatusKey(ns))) ??
-      (await settingsRepo.get(CODE_INDEX_STATUS_KEY));
-    if (!raw) return c.json({ status: "none" });
-    try {
-      return c.json(JSON.parse(raw));
-    } catch {
-      return c.json({ status: "none" });
-    }
+    return c.json({ ok: true, routing: saved });
   });
 
   // ── Inspection ─────────────────────────────────────────────────────────────
@@ -595,7 +533,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         id: newId(),
         type: "codegen.requested",
         userId,
-        payload: { sessionId, mode: "plan_code" },
+        payload: { sessionId },
         enqueuedAt: Date.now(),
       });
       return c.json({ ok: true, status: "generating" }, 202);

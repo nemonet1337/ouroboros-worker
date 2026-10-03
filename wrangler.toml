@@ -52,11 +52,8 @@ binding = "HEALING_WORKFLOW"
 name = "ouroboros-healing"
 class_name = "HealingWorkflow"
 
-# Vectorize — コードチャンク埋め込みインデックス
-# インデックス作成: wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "ouroboros-code-index"
+# Vectorize は廃止。コード検索は Luna による関連ファイルの事前選択 → 埋め込み →
+# Worker 内 cosine でリクエストごとに行う。インデックス・次元移行・再構築は不要。
 
 # Workers Rate Limiting API — 公開エンドポイントの濫用を抑制
 [[unsafe.bindings]]
@@ -83,9 +80,9 @@ crons = ["0 * * * *"]
 
 # シークレット（`wrangler secret put <NAME>` で設定）:
 #   WORKERS_AI_API_TOKEN     （任意）Workers AI 専用 Cloudflare API トークン。
+#                            GPT-6 系は binding で動くため通常は不要。
 #                            無効なトークンを設定すると 2021 エラーになるため、
-#                            不要なら `wrangler secret delete WORKERS_AI_API_TOKEN` で削除し
-#                            AI バインディング直接使用に戻すこと。
+#                            設定しない場合は `wrangler secret delete WORKERS_AI_API_TOKEN`
 #   CLOUDFLARE_ACCOUNT_ID    （任意）REST 経由の推論に必要なアカウント ID
 #   GITHUB_TOKEN             PR/Issue 作成。owner/repo はこのトークンから自動検出される
 #

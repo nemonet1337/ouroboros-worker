@@ -11,7 +11,6 @@ import { R2LogStore } from "./adapters/r2.logstore";
 import { CfQueueAdapter } from "./adapters/cf.queue";
 import { WorkersAiProvider } from "./adapters/workers-ai.provider";
 import { CfRateLimiter } from "./adapters/cf.ratelimiter";
-import { CfVectorizeAdapter } from "./adapters/cf.vectorize";
 import { AiUsageTracker } from "./analytics/ai.usage.tracker";
 import { UsageAccumulator } from "./analytics/usage.accumulator";
 import { SettingsRepository } from "./db/repositories";
@@ -82,10 +81,9 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
 
   const queue = new CfQueueAdapter(env.GUI_EVENTS);
   const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
-  const vectorize = env.VECTORIZE ? new CfVectorizeAdapter(env.VECTORIZE) : undefined;
 
   // 単一 Worker 内の RepoRunner（旧 runner Service Binding は廃止）
-  const runner = new RepoRunner(vcs, ai, db, vectorize);
+  const runner = new RepoRunner(vcs, ai, db);
 
   const config: HealingConfig = {
     ...defaultHealingConfig,
@@ -106,7 +104,6 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     runner,
     codeRunner: runner,
     rateLimiter,
-    vectorize,
   };
   const auth = new AuthService(db);
 

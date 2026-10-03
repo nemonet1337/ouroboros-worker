@@ -13,7 +13,7 @@ It is **built exclusively for Cloudflare Workers** (Workers + D1 + R2 + Queues +
 Workers AI + Vectorize).
 
 > **AI gateway:** Ouroboros only ever connects to LLMs hosted on **Cloudflare Workers AI**
-> (default model: `@cf/zai-org/glm-5.3-flash`). Every model Workers AI serves is selectable from the GUI
+> (default model: `openai/gpt-6-luna`). Every model Workers AI serves is selectable from the GUI
 > settings screen. The only AI credential is the dedicated Workers AI API token,
 > **`WORKERS_AI_API_TOKEN`** (a Worker secret) — external gateway tokens (Anthropic /
 > OpenAI / Gemini / OpenRouter) are rejected at the API layer.
@@ -82,10 +82,6 @@ wrangler r2 bucket create ouroboros-logs
 wrangler queues create ouroboros-gui-events
 wrangler d1 migrations apply ouroboros               # schema from src/db/migrations/
 
-# Vectorize index (code RAG)
-wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine
-wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string
-wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string
 wrangler queues create ouroboros-dlq                 # dead-letter queue for failed events
 
 wrangler secret put WORKERS_AI_API_TOKEN             # (optional) dedicated Workers AI API token
@@ -106,14 +102,20 @@ and the hourly cron trigger (no runner Service Binding required).
 
 ### AI models
 
-- The default model is **`@cf/zai-org/glm-5.3-flash`**.
+- The default model is **`openai/gpt-6-luna`** (efficiency tier). GLM is retired; stored
+  preferences are remapped to Luna on read.
+- **For code generation only**, Clef (`@cf/cloudflare/clef-flash`) scores implementation
+  difficulty and picks `openai/gpt-6-sol` (performance tier) above the threshold, Luna below.
+  Both the threshold and the model ids are configurable from `/models`.
+- inspection / healing / refactor are pinned to Luna.
+- Embedding is fixed to `@cf/qwen/qwen3-embedding-0.6b`. There is no index: Luna selects the
+  relevant files first, then they are chunked, embedded and cosine-ranked per request.
 - `GET /api/v1/models` discovers every model from your account's Workers AI catalog, and
   **all of them are selectable from the GUI settings screen**.
 - Each user can set their personal model preference via `GET/PUT /api/v1/settings/model`;
-  the personal setting takes precedence during inspection (falls back to `@cf/zai-org/glm-5.3-flash` if unset).
-- The only AI credential is **`WORKERS_AI_API_TOKEN`**. Combined with
-  `CLOUDFLARE_ACCOUNT_ID` it routes inference through the Workers AI REST API; without it
-  the in-Worker AI binding is used directly.
+  setting one makes codegen skip the Clef decision and use that model.
+- The only AI credential is **`WORKERS_AI_API_TOKEN`**, and GPT-6 runs on the in-Worker AI
+  binding so it is normally not needed; without it the binding is used directly.
 
 ---
 

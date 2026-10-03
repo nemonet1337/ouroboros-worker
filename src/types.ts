@@ -159,7 +159,7 @@ export interface Patch {
 
 export interface HarnessTrace {
   selectedPaths: string[];
-  source: "vectorize" | "path" | "tarball-fallback";
+  source: "luna" | "path" | "fallback";
   snippetCount: number;
   verifyErrors: string[];
   verifyWarnings: string[];
@@ -466,12 +466,16 @@ export interface CodeSessionRow {
   title: string;
   instruction: string;
   status: CodeSessionStatus;
-  /** Plan フェーズで生成された実装計画（0008_mode_models で追加） */
-  plan?: string | null;
   /** パッチ生成失敗時のエラー理由（0010 で追加） */
   error_message?: string | null;
-  /** 生成モード: plan_code / code_only（0010 で追加） */
-  mode?: string;
+  /** Clef が判定した実装難易度（0013 で追加） */
+  difficulty?: number | null;
+  /** Clef が判定した階層: efficiency / performance（0013 で追加） */
+  tier?: string | null;
+  /** 実際に使用したモデル ID（0013 で追加） */
+  route_model?: string | null;
+  /** 使用した reasoning effort（0013 で追加） */
+  route_effort?: string | null;
   generated_patches: string | null;
   applied_branch: string | null;
   pr_number: number | null;

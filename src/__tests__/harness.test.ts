@@ -10,6 +10,7 @@ const assembled: AssembledContext = {
   repoMap: ["src/a.ts"],
   selectedPaths: ["src/a.ts"],
   source: "path",
+  pickedPaths: [],
 };
 
 const good = JSON.stringify({

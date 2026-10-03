@@ -18,7 +18,7 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   adapters/            Cloudflare サービスの具体実装（D1, R2, Queues, Workers AI …）
   analyzers/           AI による findings のグルーピング・リスク評価
   auth/                認証・セッション・API トークン（WebCrypto PBKDF2）
-  code/                Code モード（セッション管理・Plan/Coding 2 フェーズ生成）
+  code/                Code モード（セッション管理・codegen）
   config/              設定値・言語別インスペクションルール・モデルモード定義
   db/                  D1/SQLite リポジトリ層
     migrations/        SQL マイグレーションファイル
@@ -30,11 +30,12 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   pr/                  PR 生成・重複排除
   queues/              Cloudflare Queues コンシューマー
   refactor/            Refactor モード（検査結果からのリファクタ提案・適用）
+  retrieval/           インデックス-less コード検索（ファイル選択・chunk 分割・埋め込み順位付け）
+  routing/             Clef によるモデル階層ルーティング（難易度判定 → Luna / Sol）
   schemas/             JSON スキーマ定義（AJV バリデーション用）
   ui/                  Hono JSX ベース SSR GUI（htmx + Tailwind v4）
   utils/               エスカレーター・修正キャッシュ
   vcs/                 GitHub REST API 連携（fetch ベース、git object 書き込み含む）
-  vectorize/           Vectorize コードインデックス（埋め込み RAG）
   workflows/           Cloudflare Workflows（永続・再開可能なライフサイクル）
   __tests__/           Vitest ユニットテスト
   types.ts             全型定義
@@ -54,17 +55,31 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
 ```
 Workflows (healing.ts)
   1. scan     → RepoRunner.scan() → GitHub tarball + scanner
-  2. analyze  → AIAnalyzer（Vectorize RAG）→ Workers AI
+  2. analyze  → AIAnalyzer（ファイル選択 + 埋め込み順位付け）→ Workers AI
   3. fix      → RepoRunner.applyFix() → blob/tree/commit/ref → VCS.createPR()
 失敗時は healing_runs.status = "failed" + summary にエラーを記録
 キャンセル: POST /healing/:runId/cancel → Workflow.terminate()
 ```
 
 ### AI モデル解決
-- テキスト生成: `users.model` → `DEFAULT_WORKERS_AI_MODEL`（`@cf/zai-org/glm-5.3-flash`）。`AuthService.resolveModel(userId)` を必ず経由する
-- Embedding: `settings.embedding_model` → `DEFAULT_EMBEDDING_MODEL`（`@cf/google/embeddinggemma-300m`）。Vectorize が 768 次元・共有のためシステム全体で 1 つ（admin のみ変更）
-- 専用画面 `/models`。モード別モデルは廃止
-- REST パス（`WORKERS_AI_API_TOKEN` 設定時）は `/ai/v1/chat/completions`。401/403 時は AI バインディングへフォールバック
+- テキスト生成: `users.model` → `DEFAULT_WORKERS_AI_MODEL`（`openai/gpt-6-luna`）。`AuthService.resolveModel(userId)` を必ず経由する
+- Embedding: `DEFAULT_EMBEDDING_MODEL`（`@cf/qwen/qwen3-embedding-0.6b`、1024 次元）で固定。インデックスを持たないため選択 UI はない
+- **codegen のみ** Clef（`@cf/cloudflare/clef-flash`）で実装難易度を判定し、`solThreshold` 以上なら `openai/gpt-6-sol`（effort=medium）、未満なら Luna（effort=low）を使う。判定できない場合は Luna にフォールバック
+- inspection / healing / refactor は Luna 固定。Sol を意図的に混ぜない
+- 専用画面 `/models`。判定結果は `code_sessions.difficulty` / `tier` / `route_model` に記録する
+- partner モデル（`vendor/model`）は AI バインディングを第一候補にし、失敗時のみ REST へフォールバック。`reasoning_effort` と `prompt_cache_key` は partner モデルにのみ付与する
+
+### コード検索（インデックスなし）
+```
+src/retrieval/
+  file.selector.ts   Luna に関連ファイルを列挙させる（repoMap に無いパスは除去）
+  chunk.rank.ts      選択分を chunk 化して埋め込み、Worker 内で cosine 順位付け
+  chunker.ts         シンボル境界による chunk 分割
+  tokenize.ts        Intl.Segmenter による日本語対応トークナイザ
+  retrieve.ts        3 つの呼び出し点が共有する入口
+```
+Vectorize は廃止。`getRepoFiles()` の tarball から選び、`EMBED_BATCH_LIMIT`（32）ずつ
+埋め込むためインデックス再構築も次元移行も不要。
 
 ### DB アクセス
 - `src/db/repositories.ts` にリポジトリクラス
@@ -88,17 +103,12 @@ npm run worker:deploy   # build:css + wrangler deploy
 ## デプロイ
 
 1. `wrangler.toml` を確認
-2. Vectorize インデックスを作成（初回のみ）:
-   `wrangler vectorize create ouroboros-code-index --dimensions=768 --metric=cosine`
-   フィルタ用メタデータインデックス（初回のみ）:
-   `wrangler vectorize create-metadata-index ouroboros-code-index --property-name=lang --type=string`
-   `wrangler vectorize create-metadata-index ouroboros-code-index --property-name=kind --type=string`
-3. DLQ を作成（初回のみ）: `wrangler queues create ouroboros-dlq`
-4. `wrangler deploy` でデプロイ
+2. DLQ を作成（初回のみ）: `wrangler queues create ouroboros-dlq`
+3. `wrangler deploy` でデプロイ
 
 必要なシークレット:
 ```
-WORKERS_AI_API_TOKEN     （任意）無効なトークンは 2021 エラーになるため、不要なら削除して AI バインディングを使う
+WORKERS_AI_API_TOKEN     （任意）GPT-6 系は binding で動くため通常不要
 CLOUDFLARE_ACCOUNT_ID    Workers AI REST API 使用時に必要（任意）
 GITHUB_TOKEN             PR/Issue 作成用（owner/repo はトークンから自動検出）
 ```

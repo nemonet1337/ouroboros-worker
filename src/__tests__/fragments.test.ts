@@ -33,7 +33,6 @@ function buildDeps(overrides: Partial<FragmentDeps> = {}): FragmentDeps {
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),
       rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
-      vectorize: undefined,
     } as any,
     config: {
       ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
@@ -309,11 +308,12 @@ describe("UI fragments", () => {
     const app = createFragments(deps);
     const res = await app.request("/code/sessions/sess-1/generate", {
       method: "POST",
-      headers: { ...authed.headers, "content-type": "application/x-www-form-urlencoded" },
-      body: "codeMode=plan_code",
+      headers: { ...authed.headers },
     });
     expect(res.headers.get("HX-Refresh")).toBe("true");
-    expect(deps.ports.queue.send).toHaveBeenCalled();
+    const sent = (deps.ports.queue.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(sent.type).toBe("codegen.requested");
+    expect(sent.payload.mode).toBeUndefined();
   });
 
   it("GET status refreshes the page when generation finished", async () => {
