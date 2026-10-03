@@ -246,7 +246,7 @@ src/ui/styles/tailwind.generated.css
 .kilocode/
 
 # Agent / local tooling
-# Share: .devcontainer/, .grok/config.toml, .claude/settings.json, .claude/rules/,
+# Share: .devcontainer/, .grok/config.toml, .claude/settings.json, .claude/rules/, .mcp.json, .vscode/mcp.json, .github/copilot/settings.json,
 #        .serena/project.yml, .serena/.gitignore
 .claude/*.local.json
 .grok/*
