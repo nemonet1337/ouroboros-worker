@@ -37,7 +37,7 @@ src/
 ├── inspection/    AI スコアリングエンジン（6 次元・32 観点）
 ├── logging/       構造化ロガー（R2 永続化）
 ├── ports/         アダプターインターフェース（Ports & Adapters パターン）
-├── pr/            PR タイトル・本文生成・重複排除・自動マージ
+├── pr/            PR タイトル・本文生成・重複排除
 ├── queues/        Cloudflare Queues ハンドラー
 ├── refactor/      リファクタリング提案管理
 ├── schemas/       JSON スキーマ定義
@@ -121,7 +121,7 @@ wrangler deploy                                      # または: wrangler dev
 ## 主な機能
 
 - **自己修復ループ** — スキャン → AI による解析・グルーピング → AI 修正＋検証 →
-  PR 作成 → 任意の自動マージ（CI ゲート＋AI 安全レビュー）→ エスカレーション Issue。
+  PR 作成 → エスカレーション Issue（自動修正不可のグループのみ）。
 - **認証とマルチテナント** — メール/パスワード（WebCrypto PBKDF2）、httpOnly セッション、
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
 - **登録制御** — 公開登録の管理者トグル。最初に登録したユーザーが管理者になります。

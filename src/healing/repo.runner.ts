@@ -7,7 +7,6 @@ import type { AiProvider } from "../ports/ai";
 import type { DbAdapter } from "../ports/db";
 import type {
   CodeCommitResult,
-  CodeDiffResult,
   CodeGenerateResult,
   CodeInitOptions,
   CodeInitResult,
@@ -31,7 +30,6 @@ import { SettingsRepository } from "../db/repositories";
 import { CodeIndexer } from "../vectorize/code.indexer";
 import { vectorizeNamespace } from "../vectorize/chunker";
 import { scanFiles } from "./scanner";
-import { createPatch } from "diff";
 
 export { parseGeneratedPatches } from "../code/parse.patches";
 
@@ -329,20 +327,6 @@ export class RepoRunner implements HealingRunner, CodeRunner {
     };
   }
 
-  async status(opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }> {
-    const session = await this.getSession(opts.sessionId);
-    if (!session) return { branch: "unknown", changedFiles: [] };
-
-    const rows = await this.db.query<{ key: string }>(
-      `SELECT key FROM code_session_cache WHERE session_id = ? AND key LIKE 'staged:%'`,
-      [opts.sessionId]
-    );
-    return {
-      branch: session.branch,
-      changedFiles: rows.map((r) => r.key.replace("staged:", "")),
-    };
-  }
-
   async read(opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult> {
     const session = await this.getSession(opts.sessionId);
     if (!session) return { files: [] };
@@ -430,37 +414,6 @@ export class RepoRunner implements HealingRunner, CodeRunner {
       await this.cacheSet(opts.sessionId, `staged:${f.path}`, f.content);
     }
     return { success: true, files: opts.files.map((f) => f.path) };
-  }
-
-  async deleteFiles(opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
-    for (const p of opts.paths) {
-      await this.db.exec(`DELETE FROM code_session_cache WHERE session_id = ? AND key = ?`, [
-        opts.sessionId,
-        `staged:${p}`,
-      ]);
-    }
-    return { success: true };
-  }
-
-  async diff(opts: { sessionId: string }): Promise<CodeDiffResult> {
-    const session = await this.getSession(opts.sessionId);
-    if (!session) return { diffs: [] };
-    const parsed = this.parseOwnerRepo(session.repoUrl);
-    if (!parsed) return { diffs: [] };
-
-    return this.withRepo(parsed.owner, parsed.repo, async () => {
-      const rows = await this.db.query<{ key: string; value: string }>(
-        `SELECT key, value FROM code_session_cache WHERE session_id = ? AND key LIKE 'staged:%'`,
-        [opts.sessionId]
-      );
-      const diffs: { path: string; diff: string }[] = [];
-      for (const row of rows) {
-        const path = row.key.replace("staged:", "");
-        const original = await this.vcs.readFileContent(path, session.branch);
-        diffs.push({ path, diff: generateDiff(path, original?.content || "", row.value) });
-      }
-      return { diffs };
-    });
   }
 
   async commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult> {
@@ -558,10 +511,6 @@ export class RepoRunner implements HealingRunner, CodeRunner {
 
 function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths)];
-}
-
-function generateDiff(path: string, original: string, modified: string): string {
-  return createPatch(path, original, modified);
 }
 
 function windowAround(content: string, line: number, contextLines: number): string {

@@ -105,7 +105,7 @@ export function scanFiles(files: { path: string; content: string }[]): {
     for (const [name, pattern] of SECRET_PATTERNS) {
       const match = file.content.match(pattern);
       if (match) {
-        for (const m of match) {
+        for (let i = 0; i < match.length; i++) {
           secrets.push({
             id: `secret/${name}/${file.path}`,
             title: `${name} トークン検出`,

@@ -1,5 +1,5 @@
 import type { DbAdapter } from "../ports/db";
-import type { CodeRunner, CodeInitOptions } from "../ports/runner";
+import type { CodeRunner } from "../ports/runner";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
 import type { VcsProvider } from "../ports/vcs";
 import type { AiProvider } from "../ports/ai";
@@ -200,7 +200,7 @@ export class CodeSessionManager {
       });
     }
 
-    const commitResult = await this.runner.commit({
+    await this.runner.commit({
       sessionId: id,
       message: `${row.title}\n\n${row.instruction}`,
     });

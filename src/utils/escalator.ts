@@ -1,5 +1,4 @@
 import { FindingGroup } from "../types";
-import { HealingConfig } from "../config/healing.config";
 import type { VcsProvider } from "../ports/vcs";
 
 /**
@@ -8,7 +7,6 @@ import type { VcsProvider } from "../ports/vcs";
  */
 export class Escalator {
   constructor(
-    private readonly config: HealingConfig,
     private readonly vcs?: VcsProvider,
     private readonly assignees: string[] = [],
     private readonly commitHash = "local"

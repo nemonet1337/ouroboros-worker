@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { CodeSessionRepository, RefactorRepository, type CodeSessionRow, type RefactorProposalRow } from "../db/repositories";
+import { CodeSessionRepository, RefactorRepository, type CodeSessionRow } from "../db/repositories";
 import type { DbAdapter } from "../ports/db";
 
 function createMockDb(): { db: DbAdapter; queries: { sql: string; params: any[] }[] } {

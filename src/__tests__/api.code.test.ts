@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { Hono } from "hono";
 import { createApi, type ApiDeps } from "../http/api";
 import { mockAi } from "./helpers";
 import { NoopRunner } from "../ports/runner";
@@ -24,15 +23,10 @@ function buildDeps(): ApiDeps {
         name: "github",
         createPR: vi.fn(),
         listOpenPRs: vi.fn().mockResolvedValue([]),
-        getPRChecks: vi.fn(),
-        listPRFiles: vi.fn().mockResolvedValue([]),
-        mergePR: vi.fn().mockResolvedValue(true),
-        deleteBranch: vi.fn(),
         createIssue: vi.fn(),
         listIssues: vi.fn().mockResolvedValue([]),
         updateIssue: vi.fn(),
         listRepos: vi.fn().mockResolvedValue([]),
-        listBranches: vi.fn().mockResolvedValue([]),
       },
       logs: { kind: "r2" as const, append: vi.fn(), read: vi.fn(), list: vi.fn().mockResolvedValue([]) },
       queue: { kind: "cf-queue" as const, send: vi.fn() },

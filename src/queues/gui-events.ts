@@ -2,7 +2,7 @@ import type { GuiEvent } from "../ports/queue";
 import type { Env } from "../env";
 import { buildContext } from "../context";
 import { CodeIndexer } from "../vectorize/code.indexer";
-import { CodeSessionRepository, SettingsRepository } from "../db/repositories";
+import { SettingsRepository } from "../db/repositories";
 import { GitHubProvider } from "../vcs/github.provider";
 import { runInspectionPipeline } from "../inspection/pipeline";
 import { CodeSessionManager } from "../code/session.manager";

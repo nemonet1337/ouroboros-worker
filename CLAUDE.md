@@ -27,7 +27,7 @@ src/                   Worker ソース（全ビジネスロジック + CF ア�
   inspection/          AI スコアリングエンジン（6 次元・32 観点）
   logging/             構造化ロガー（R2 永続化）
   ports/               アダプターインターフェース（Ports & Adapters）
-  pr/                  PR 生成・重複排除・AI 安全レビュー・自動マージ
+  pr/                  PR 生成・重複排除
   queues/              Cloudflare Queues コンシューマー
   refactor/            Refactor モード（検査結果からのリファクタ提案・適用）
   schemas/             JSON スキーマ定義（AJV バリデーション用）

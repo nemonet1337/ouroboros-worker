@@ -27,8 +27,8 @@ export async function fixHealingRun(
   const model = await ctx.auth.resolveModel(run.user_id);
 
   const dedup = new PRDeduplicator(ctx.config, ctx.ports.vcs);
-  const cache = new FixCache(ctx.config, ctx.ports.vcs);
-  const escalator = new Escalator(ctx.config, ctx.ports.vcs);
+  const cache = new FixCache(ctx.ports.vcs);
+  const escalator = new Escalator(ctx.ports.vcs);
   if (!dryRun) await Promise.allSettled([dedup.loadOpenPRs(), cache.load()]);
 
   const sorted = [...groups].sort(

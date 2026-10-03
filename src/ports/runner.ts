@@ -50,7 +50,7 @@ export interface CodeWriteResult {
   files: string[];
 }
 
-export interface CodeInitResult {
+export interface CodeCommitResult {
   success: boolean;
   commitHash: string;
 }
@@ -72,12 +72,9 @@ export interface CodeGenerateResult {
 export interface CodeRunner {
   readonly kind: RunnerKind;
   init(opts: CodeInitOptions): Promise<CodeInitResult>;
-  status(opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }>;
   read(opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult>;
   search(opts: { sessionId: string; query: string; type: "grep" | "glob" }): Promise<CodeSearchResult>;
   write(opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult>;
-  deleteFiles(opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }>;
-  diff(opts: { sessionId: string }): Promise<CodeDiffResult>;
   commit(opts: { sessionId: string; message: string }): Promise<CodeCommitResult>;
   push(opts: { sessionId: string; branch: string }): Promise<{ success: boolean }>;
   generate(opts: { sessionId: string; instruction: string; model?: string }): Promise<CodeGenerateResult>;
@@ -117,10 +114,6 @@ export class NoopRunner implements HealingRunner, CodeRunner {
     return { success: false, repoPath: "", fileList: [] };
   }
 
-  async status(_opts: { sessionId: string }): Promise<{ branch: string; changedFiles: string[] }> {
-    return { branch: "", changedFiles: [] };
-  }
-
   async read(_opts: { sessionId: string; paths: string[] }): Promise<CodeReadResult> {
     return { files: [] };
   }
@@ -131,14 +124,6 @@ export class NoopRunner implements HealingRunner, CodeRunner {
 
   async write(_opts: { sessionId: string; files: { path: string; content: string }[] }): Promise<CodeWriteResult> {
     return { success: false, files: [] };
-  }
-
-  async deleteFiles(_opts: { sessionId: string; paths: string[] }): Promise<{ success: boolean }> {
-    return { success: false };
-  }
-
-  async diff(_opts: { sessionId: string }): Promise<CodeDiffResult> {
-    return { diffs: [] };
   }
 
   async commit(_opts: { sessionId: string; message: string }): Promise<CodeCommitResult> {

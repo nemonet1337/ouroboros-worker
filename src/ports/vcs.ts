@@ -11,13 +11,6 @@ export interface VcsOpenPR {
   title: string;
 }
 
-export interface VcsPRFile {
-  filename: string;
-  patch?: string;
-  additions: number;
-  deletions: number;
-}
-
 export interface VcsIssue {
   number: number;
   title: string;
@@ -41,12 +34,6 @@ export interface CreateIssueOptions {
   assignees?: string[];
 }
 
-export interface CheckStatus {
-  state: "pending" | "success" | "failure";
-  total: number;
-  completed: number;
-}
-
 export interface VcsRepo {
   fullName: string;
   name: string;
@@ -54,15 +41,6 @@ export interface VcsRepo {
   private: boolean;
   description: string | null;
   defaultBranch: string;
-}
-
-export interface VcsBranch {
-  name: string;
-}
-
-export interface FileTreeEntry {
-  path: string;
-  type: "blob" | "tree";
 }
 
 /**
@@ -73,19 +51,9 @@ export interface VcsProvider {
   readonly name: string;
   createPR(opts: CreatePROptions): Promise<VcsPullRequest>;
   listOpenPRs(branchPrefix: string): Promise<VcsOpenPR[]>;
-  getPRChecks(prNumber: number): Promise<CheckStatus>;
-  listPRFiles(prNumber: number): Promise<VcsPRFile[]>;
-  mergePR(prNumber: number, method?: "merge" | "squash" | "rebase"): Promise<boolean>;
-  deleteBranch(branch: string): Promise<void>;
   createIssue(opts: CreateIssueOptions): Promise<number>;
   listIssues(labels: string[], state?: "open" | "closed" | "all"): Promise<VcsIssue[]>;
   updateIssue(number: number, patch: { state?: "open" | "closed"; body?: string }): Promise<void>;
   /** List repositories accessible with the configured token. */
   listRepos?(): Promise<VcsRepo[]>;
-  /** List branches for a given owner/repo pair. */
-  listBranches?(owner: string, repo: string): Promise<VcsBranch[]>;
-  /** Get file tree for repository indexing (Phase 5.6). */
-  getFileTree?(owner: string, repo: string, branch: string): Promise<FileTreeEntry[]>;
-  /** Get file content (Phase 5.6). */
-  getFileContent?(owner: string, repo: string, path: string, branch: string): Promise<string>;
 }

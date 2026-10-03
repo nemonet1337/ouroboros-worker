@@ -37,7 +37,7 @@ src/
 ├── inspection/    AI scoring engine (6 dimensions, 32 aspects)
 ├── logging/       Structured logger (R2-persisted)
 ├── ports/         Adapter interfaces (Ports & Adapters pattern)
-├── pr/            PR body/title generation, dedup, auto-merge
+├── pr/            PR body/title generation, dedup
 ├── queues/        Cloudflare Queues handler
 ├── refactor/      Refactoring proposal management
 ├── schemas/       JSON schema definitions
@@ -121,7 +121,7 @@ and the hourly cron trigger (no runner Service Binding required).
 ## Features
 
 - **Self-healing loop** — scan → AI analysis/grouping → AI fix + validation →
-  PR creation → optional auto-merge (CI gate + AI safety review) → escalation issues.
+  PR creation → escalation issues (only for groups that cannot be auto-fixed).
 - **Authentication & multi-tenancy** — email/password (WebCrypto PBKDF2), httpOnly sessions,
   and scoped, revocable **API tokens** (`read` / `inspect` / `heal` / `admin`).
 - **Registration control** — admin toggle for public registration; the first registered

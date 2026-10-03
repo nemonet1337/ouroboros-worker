@@ -33,7 +33,6 @@ function inspectionToStatic(f: InspectionFinding): StaticAnalysisFinding {
 }
 
 function secretGroup(f: SecretFinding | StaticAnalysisFinding, index: number): FindingGroup {
-  const file = "file" in f ? f.file : "";
   const title = "detector" in f ? `シークレット検出: ${f.detector}` : (f as StaticAnalysisFinding).title;
   return {
     id: `secret-${index}`,

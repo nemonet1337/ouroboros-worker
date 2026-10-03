@@ -2,13 +2,10 @@ import type {
   VcsProvider,
   VcsPullRequest,
   VcsOpenPR,
-  VcsPRFile,
   VcsIssue,
   VcsRepo,
-  VcsBranch,
   CreatePROptions,
   CreateIssueOptions,
-  CheckStatus,
 } from "../ports/vcs";
 
 export interface GitHubConfig {
@@ -198,51 +195,6 @@ export class GitHubProvider implements VcsProvider {
       .map((p) => ({ number: p.number, branch: p.head.ref, title: p.title }));
   }
 
-  async getPRChecks(prNumber: number): Promise<CheckStatus> {
-    const pr = await this.api<{ head: { sha: string } }>(`/pulls/${prNumber}`);
-    const checks = await this.api<{
-      total_count: number;
-      check_runs: Array<{ status: string; conclusion: string | null }>;
-    }>(`/commits/${pr.head.sha}/check-runs`);
-
-    const runs = checks.check_runs ?? [];
-    const completed = runs.filter((r) => r.status === "completed");
-    const failed = completed.some((r) => r.conclusion && !["success", "neutral", "skipped"].includes(r.conclusion));
-    const state: CheckStatus["state"] = failed
-      ? "failure"
-      : completed.length < runs.length
-        ? "pending"
-        : "success";
-    return { state, total: runs.length, completed: completed.length };
-  }
-
-  async listPRFiles(prNumber: number): Promise<VcsPRFile[]> {
-    const files = await this.api<Array<{ filename: string; patch?: string; additions: number; deletions: number }>>(
-      `/pulls/${prNumber}/files?per_page=100`
-    );
-    return files.map((f) => ({ filename: f.filename, patch: f.patch, additions: f.additions, deletions: f.deletions }));
-  }
-
-  async mergePR(prNumber: number, method: "merge" | "squash" | "rebase" = "squash"): Promise<boolean> {
-    try {
-      await this.api(`/pulls/${prNumber}/merge`, {
-        method: "PUT",
-        body: JSON.stringify({ merge_method: method }),
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async deleteBranch(branch: string): Promise<void> {
-    try {
-      await this.api(`/git/refs/heads/${encodeURIComponent(branch)}`, { method: "DELETE" });
-    } catch {
-      // branch may already be gone
-    }
-  }
-
   async createIssue(opts: CreateIssueOptions): Promise<number> {
     const issue = await this.api<{ number: number }>(`/issues`, {
       method: "POST",
@@ -297,19 +249,6 @@ export class GitHubProvider implements VcsProvider {
         });
       }
       if (batch.length < 50) break;
-    }
-    return results;
-  }
-
-  async listBranches(owner: string, repo: string): Promise<VcsBranch[]> {
-    type GhBranch = { name: string };
-    const results: VcsBranch[] = [];
-    for (let page = 1; ; page++) {
-      const batch = await this.apiRoot<GhBranch[]>(
-        `/repos/${owner}/${repo}/branches?per_page=100&page=${page}`
-      );
-      for (const b of batch) results.push({ name: b.name });
-      if (batch.length < 100) break;
     }
     return results;
   }

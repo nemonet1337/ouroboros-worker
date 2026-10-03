@@ -1,5 +1,4 @@
 import { FindingGroup, StaticAnalysisFinding, DependencyFinding } from "../types";
-import { HealingConfig } from "../config/healing.config";
 import type { VcsProvider } from "../ports/vcs";
 
 /** Deterministic, dependency-free 53-bit string hash (FNV-1a style). */
@@ -23,10 +22,7 @@ function stableHash(input: string): string {
 export class FixCache {
   private cachedHashes = new Set<string>();
 
-  constructor(
-    private readonly config: HealingConfig,
-    private readonly vcs?: VcsProvider
-  ) {}
+  constructor(private readonly vcs?: VcsProvider) {}
 
   async load(): Promise<void> {
     if (!this.vcs) return;

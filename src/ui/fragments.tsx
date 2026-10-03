@@ -18,7 +18,7 @@ import type { HealingConfig } from "../config/healing.config";
 import type { AuthService, AuthedUser } from "../auth/service";
 import type { Logger } from "../logging/logger";
 import type { TriggerHealingOpts, TriggerHealingResult } from "../http/api";
-import type { InspectionRequest, InspectionResult, Language } from "../types";
+import type { InspectionResult } from "../types";
 import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
 import {
   InspectionRepository,
@@ -30,7 +30,6 @@ import {
   buildMetricsData,
   loadPublicConfig,
   parseHistoryEntry,
-  runUserInspection,
 } from "../http/data";
 import { codeSessionCreateSchema } from "../http/validation";
 import { newId } from "../auth/tokens";
@@ -95,22 +94,6 @@ const Alert: FC<{ type: "success" | "error" | "info"; message: string; children?
   );
 };
 
-// 検査フォームの言語 → スニペットファイル拡張子
-const LANGUAGE_EXT: Record<string, string> = {
-  typescript: "ts",
-  javascript: "js",
-  python: "py",
-  rust: "rs",
-  go: "go",
-  java: "java",
-  csharp: "cs",
-  cpp: "cpp",
-  ruby: "rb",
-  flutter: "dart",
-  php: "php",
-  swift: "swift",
-};
-
 export function createFragments(deps: FragmentDeps): Hono<Env> {
   const { ports, auth } = deps;
   const app = new Hono<Env>();
@@ -120,8 +103,6 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
   const codeManager = new CodeSessionManager(ports.db, ports.codeRunner, ports.ai);
-  const log = deps.logger.child("fragments");
-
   const makeProposalManager = async () => {
     const selected = await getSelectedRepo(settingsRepo);
     const repoUrl = selected
