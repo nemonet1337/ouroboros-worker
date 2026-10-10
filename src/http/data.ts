@@ -209,7 +209,8 @@ export async function buildMetricsData(
 }
 
 /** Legacy external-gateway config keys — purged on every read/write. The only
- * AI credential is the WORKERS_AI_API_TOKEN secret, managed outside the GUI. */
+ * AI credential は .env の OPENAI_API_KEY / ANTHROPIC_API_KEY / XAI_API_KEY /
+ * OPENROUTER_API_KEY。値は GUI に返さない。 */
 export const LEGACY_GATEWAY_CONFIG_KEYS = ["anthropicToken", "openaiToken", "geminiToken", "openrouterToken"];
 
 export const CONFIG_KEY = "app_config";

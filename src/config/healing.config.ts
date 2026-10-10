@@ -1,4 +1,4 @@
-import { DEFAULT_WORKERS_AI_MODEL } from "./deployment";
+import { DEFAULT_TEXT_MODEL } from "./deployment";
 
 export interface HealingConfig {
   ai: { model: string; maxRetries: number; contextLines: number };
@@ -9,7 +9,7 @@ export interface HealingConfig {
 
 export const defaultHealingConfig: HealingConfig = {
   ai: {
-    model: DEFAULT_WORKERS_AI_MODEL,
+    model: DEFAULT_TEXT_MODEL,
     maxRetries: 3,
     contextLines: 20,
   },

@@ -1,10 +1,9 @@
 /**
- * Request body validation without eval/new Function so it runs in
- * Cloudflare Workers (which forbids code generation from strings).
- * Each validator is a plain TypeScript function — no AJV, no JSON Schema.
+ * リクエストボディ検証。eval / new Function を使わないので Node でもそのまま動く。
+ * 各バリデータはプレーンな TypeScript 関数。AJV・JSON Schema は使わない。
  */
 import type { Context, Next } from "hono";
-import { isWorkersAiModelId } from "../config/deployment";
+import { isProviderModelId } from "../config/deployment";
 
 type Validator<T> = (body: unknown) => { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -120,8 +119,8 @@ export const modelSchema: Validator<{ model: string | null }> = (body) => {
   if (!isObj(body)) return { ok: false, errors: ["body must be an object"] };
   if (body.model !== null && typeof body.model !== "string")
     return { ok: false, errors: ["model must be a string or null"] };
-  if (typeof body.model === "string" && !isWorkersAiModelId(body.model))
-    return { ok: false, errors: [`"${body.model}" is not a valid Workers AI model id`] };
+  if (typeof body.model === "string" && !isProviderModelId(body.model))
+    return { ok: false, errors: [`"${body.model}" is not a valid provider model id (provider/model)`] };
   return { ok: true, value: body as { model: string | null } };
 };
 
@@ -140,8 +139,8 @@ export const userModelsSchema: Validator<{ model?: string; embeddingModel?: stri
       errors.push(`${field} must be a string`);
       continue;
     }
-    if (raw !== "" && !isWorkersAiModelId(raw)) {
-      errors.push(`"${raw}" is not a valid Workers AI model id (${field})`);
+    if (raw !== "" && !isProviderModelId(raw)) {
+      errors.push(`"${raw}" is not a valid provider model id (${field})`);
       continue;
     }
     value[field] = raw;

@@ -2,7 +2,7 @@ import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
 import type { AiModelInfo } from "../../ports/ai";
 import {
-  DEFAULT_WORKERS_AI_MODEL,
+  DEFAULT_TEXT_MODEL,
   isDecisionModel,
   isEmbeddingTask,
   isTextGenerationTask,
@@ -14,13 +14,13 @@ import { ModelPricingPanel } from "../components/model-pricing";
 interface ModelsPageProps {
   user?: AuthedUser;
   models?: AiModelInfo[];
-  /** このユーザーの個人上書きモデル。Clef の判定を無視して使う。 */
+  /** このユーザーの個人上書きモデル。判定を無視して使う。 */
   selectedModel?: string | null;
   defaultModel?: string;
   routing?: RoutingConfig;
 }
 
-/** Clef は生成モデルではないため、候補から除外する。 */
+/** decision モデルは生成できないため、候補から除外する。 */
 function splitModels(models: AiModelInfo[]): { text: AiModelInfo[]; embedding: AiModelInfo[] } {
   const text: AiModelInfo[] = [];
   const embedding: AiModelInfo[] = [];
@@ -61,7 +61,7 @@ const ROLES: RoleCard[] = [
     modelName: "efficiencyModel",
     effortName: "efficiencyEffort",
     description:
-      "Clef が容易と判断したタスク、および inspection / healing / refactor の既定モデル。短い出力で足りるものを選びます。",
+      "判定モデルが容易と判断したタスク、および inspection / healing / refactor の既定モデル。短い出力で足りるものを選びます。",
     listId: "efficiency-models",
     effort: true,
   },
@@ -73,7 +73,7 @@ const ROLES: RoleCard[] = [
     modelName: "performanceModel",
     effortName: "performanceEffort",
     description:
-      "Clef が実装難易度を閾値以上と判定したときのコード生成に使います。長い推論と大量出力が必要なモデルを選びます。",
+      "判定モデルが実装難易度を閾値以上と判定したときのコード生成に使います。長い推論と大量出力が必要なモデルを選びます。",
     listId: "performance-models",
     effort: true,
   },
@@ -94,7 +94,7 @@ export const ModelsPage: FC<ModelsPageProps> = ({
   user,
   models = [],
   selectedModel = null,
-  defaultModel = DEFAULT_WORKERS_AI_MODEL,
+  defaultModel = DEFAULT_TEXT_MODEL,
   routing = DEFAULT_ROUTING_CONFIG,
 }) => {
   const isAdmin = user?.role === "admin";
@@ -222,14 +222,106 @@ export const ModelsPage: FC<ModelsPageProps> = ({
 
               <div class="border border-base-content/10 rounded-xl p-4 space-y-3">
                 <h3 class="font-semibold text-sm flex items-center gap-2">
-                  <i data-lucide="gauge" class="w-4 h-4 text-secondary" />
-                  <span>モデル階層ルーティング</span>
+                  <i data-lucide="scale" class="w-4 h-4 text-secondary" />
+                  <span>難易度判定</span>
                 </h3>
                 <p class="text-xs opacity-60">
-                  コード生成前に
-                  <code class="font-mono">{routing.clefModel}</code>{" "}
-                  が実装難易度を 1〜5 で判定し、閾値以上で Performance を使います。
+                  コード生成前に実装難易度を 1〜5 で判定し、閾値以上で Performance を使います。
+                  判定先はリモートの Decisions API か、ローカル Laya（laya-serve）を選べます。
                 </p>
+
+                <div class="form-control">
+                  <label class="label py-1" for="decisionBackend">
+                    <span class="label-text text-xs font-semibold opacity-75">判定バックエンド</span>
+                  </label>
+                  <select
+                    name="decisionBackend"
+                    id="decisionBackend"
+                    disabled={!isAdmin}
+                    class="select w-full rounded-xl text-sm font-mono"
+                  >
+                    <option value="remote" selected={routing.decisionBackend === "remote"}>
+                      リモート（Decisions API）
+                    </option>
+                    <option value="local" selected={routing.decisionBackend === "local"}>
+                      ローカル Laya
+                    </option>
+                  </select>
+                </div>
+
+                {routing.decisionBackend === "local" ? (
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="form-control">
+                      <label class="label py-1" for="localDecisionUrl">
+                        <span class="label-text text-xs font-semibold opacity-75">Laya URL</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="localDecisionUrl"
+                        id="localDecisionUrl"
+                        value={routing.localDecisionUrl}
+                        disabled={!isAdmin}
+                        class="input w-full rounded-xl text-sm font-mono"
+                      />
+                    </div>
+                    <div class="form-control">
+                      <label class="label py-1" for="localDecisionModel">
+                        <span class="label-text text-xs font-semibold opacity-75">Laya モデル</span>
+                      </label>
+                      <select
+                        name="localDecisionModel"
+                        id="localDecisionModel"
+                        disabled={!isAdmin}
+                        class="select w-full rounded-xl text-sm font-mono"
+                      >
+                        {["typed-decisions", "english", "multilingual"].map((v) => (
+                          <option value={v} selected={routing.localDecisionModel === v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <label class="label cursor-pointer justify-start gap-2 md:col-span-2">
+                      <input
+                        type="checkbox"
+                        name="localFileSelection"
+                        id="localFileSelection"
+                        checked={routing.localFileSelection}
+                        disabled={!isAdmin}
+                        class="checkbox checkbox-sm"
+                        value="true"
+                      />
+                      <span class="label-text text-xs">関連ファイル選択にも Laya を使う</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div class="form-control">
+                    <label class="label py-1" for="routerModel">
+                      <span class="label-text text-xs font-semibold opacity-75">判定モデル</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="routerModel"
+                      id="routerModel"
+                      list="router-models"
+                      value={routing.routerModel}
+                      disabled={!isAdmin}
+                      class="input w-full rounded-xl text-sm font-mono"
+                    />
+                    <p class="text-[11px] opacity-45 mt-1">
+                      指定可能: <code class="font-mono">openai/gpt-6-luna</code>（OpenAI Decisions
+                      API・限定プレビュー）または{" "}
+                      <code class="font-mono">openrouter/typesafe/jev-1.13</code>（OpenRouter
+                      Decisions）。<code class="font-mono">anthropic/*</code>・
+                      <code class="font-mono">xai/*</code> は decisions 非対応です。
+                    </p>
+                  </div>
+                )}
+                <datalist id="router-models">
+                  <option value="openai/gpt-6-luna" />
+                  <option value="openrouter/typesafe/jev-1.13" />
+                </datalist>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div class="form-control">
                     <label class="label py-1" for="solThreshold">
@@ -248,19 +340,23 @@ export const ModelsPage: FC<ModelsPageProps> = ({
                       class="input w-full rounded-xl text-sm font-mono"
                     />
                   </div>
-                  <div class="form-control">
-                    <label class="label py-1" for="clefModel">
-                      <span class="label-text text-xs font-semibold opacity-75">判定モデル</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="clefModel"
-                      id="clefModel"
-                      value={routing.clefModel}
-                      disabled={!isAdmin}
-                      class="input w-full rounded-xl text-sm font-mono"
-                    />
-                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    id="laya-connection-test"
+                    class="btn btn-outline btn-sm rounded-xl gap-2"
+                    disabled={!isAdmin || routing.decisionBackend !== "local"}
+                    hx-post="/api/v1/settings/decision-test"
+                    hx-target="#laya-test-result"
+                    hx-swap="innerHTML"
+                    hx-include="closest form"
+                  >
+                    <i data-lucide="plug-zap" class="w-4 h-4" />
+                    <span>接続テスト</span>
+                  </button>
+                  <span id="laya-test-result" class="text-xs opacity-70" />
                 </div>
               </div>
 
@@ -297,8 +393,8 @@ export const ModelsPage: FC<ModelsPageProps> = ({
                 <span>個人上書き（任意）</span>
               </h2>
               <p class="text-xs opacity-60 mb-4">
-                モデルを指定すると、コード生成で Clef の判定を無視してそのモデルを使います。
-                空欄なら Clef が選びます。inspection / healing / refactor には影響しません。
+                モデルを指定すると、コード生成で難易度判定を無視してそのモデルを使います。
+                空欄なら判定モデルが選びます。inspection / healing / refactor には影響しません。
               </p>
               <div class="form-control">
                 <input
@@ -307,7 +403,7 @@ export const ModelsPage: FC<ModelsPageProps> = ({
                   id="model"
                   list="text-gen-models"
                   value={selectedModel ?? ""}
-                  placeholder={`Clef で判定（既定: ${defaultModel}）`}
+                  placeholder={`判定に任せる（既定: ${defaultModel}）`}
                   class="input w-full rounded-xl text-sm font-mono"
                   hx-get="/ui/fragments/model-pricing"
                   hx-trigger="change, keyup delay:400ms changed"

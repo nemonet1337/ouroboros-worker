@@ -220,18 +220,10 @@ __marimo__/
 # Node.js
 node_modules/
 
-# Nuxt 3 (web/)
-web/.nuxt/
-web/.output/
-web/dist/
-web/dist
 
-# Cloudflare Worker
-.dev.vars
-.wrangler/
 
-# Tailwind CSS ビルド成果物（npm run build:css で生成。Cloudflare Workers Builds の
-# 「Build command」に npm run build:css を設定してデプロイ時に生成する）
+# Tailwind CSS ビルド�E果物�E�Epm run build:css で生�E、Eloudflare Workers Builds の
+# 「Build command」に npm run build:css を設定してチE�Eロイ時に生�Eする�E�E
 src/ui/styles/tailwind.generated.css
 
 # Local self-hosted state
@@ -260,3 +252,6 @@ src/ui/styles/tailwind.generated.css
 .env.*
 !.env.example
 
+.env
+data/
+dist/

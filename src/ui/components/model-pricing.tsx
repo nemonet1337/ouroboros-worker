@@ -29,7 +29,7 @@ export const ModelPricingPanel: FC<{ model?: AiModelInfo | null; query?: string 
           <p class="text-sm opacity-60">
             {query
               ? `「${query}」のカタログ情報を取得できませんでした。保存はできますが、単価は未公開です。`
-              : "左のモデルを選ぶと、Workers AI カタログから単価を取得して表示します。"}
+              : "左のモデルを選ぶと、プロバイダカタログから単価を取得して表示します。"}
           </p>
         ) : (
           <div class="space-y-4">

@@ -87,17 +87,21 @@ describe("CodeSessionManager", () => {
     expect(queries.some((q) => q.sql.includes("mode = ?"))).toBe(false);
   });
 
-  it("passes routing config through to the runner and skips Clef when overridden", async () => {
+  it("passes routing config through to the runner and skips decisions when overridden", async () => {
     const generateSpy = vi.fn().mockResolvedValue({ patches: [{ file: "a.ts" }], model: "m" });
     (runner as any).generate = generateSpy;
     const routing = {
-      clefModel: "@cf/cloudflare/clef-flash",
+      routerModel: "openai/gpt-6-luna",
+      decisionBackend: "remote" as const,
+      localDecisionUrl: "http://127.0.0.1:8000",
+      localDecisionModel: "typed-decisions",
+      localFileSelection: true,
       solThreshold: 4,
       efficiencyModel: "openai/gpt-6-luna",
       efficiencyEffort: "low" as const,
       performanceModel: "openai/gpt-6-sol",
       performanceEffort: "medium" as const,
-      embedModel: "@cf/qwen/qwen3-embedding-0.6b",
+      embedModel: "openai/text-embedding-3-small",
     };
 
     await manager.generate("session-123", "user-1", { routing });
@@ -116,7 +120,7 @@ describe("CodeSessionManager", () => {
         reasoningEffort: "medium",
         difficulty: 4,
         tier: "performance",
-        clefAvailable: true,
+        decisionAvailable: true,
       },
     });
     (runner as any).generate = generateSpy;

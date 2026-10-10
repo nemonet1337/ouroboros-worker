@@ -1,4 +1,4 @@
-import type { AiProvider } from "../ports";
+import type { AiProvider, LocalDecisionConfig } from "../ports";
 import { retrieveContext, scorePathsByTokens, type RetrievalSource } from "../retrieval/retrieve";
 import type { CodeSnippet } from "../retrieval/chunk.rank";
 
@@ -24,8 +24,7 @@ const DEFAULT_MAX_CHARS = 12_000;
 
 /**
  * インデックスを持たないため、外部のコードインデックスはここに無い。
- * 検索は retrieveContext（Luna によるファイル選択 + embedding 順位付け）が担う。
- * 検索は retrieveContext（Luna によるファイル選択 + embedding 順位付け）が担う。
+ * 検索は retrieveContext（ファイル選択 + embedding 順位付け）が担う。
  */
 export async function assembleContext(opts: {
   query: string;
@@ -37,6 +36,8 @@ export async function assembleContext(opts: {
   targetPaths?: string[];
   /** 埋め込みモデル ID。省略時はプロバイダの既定。 */
   embedModel?: string;
+  /** ローカル Laya のファイル選択を使う設定。 */
+  local?: LocalDecisionConfig & { fileSelection: boolean };
 }): Promise<AssembledContext> {
   const result = await retrieveContext({
     ai: opts.ai,
@@ -47,6 +48,7 @@ export async function assembleContext(opts: {
     topK: opts.topK ?? DEFAULT_TOP_K,
     targetPaths: opts.targetPaths,
     embedModel: opts.embedModel,
+    ...(opts.local ? { local: opts.local } : {}),
   });
   return {
     query: opts.query,

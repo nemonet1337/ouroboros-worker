@@ -15,7 +15,7 @@ export interface CreateSessionOpts {
 }
 
 export interface GenerateOpts {
-  /** Clef の判定を無視して固定モデルを使う場合の指定。 */
+  /** 難易度判定を無視して固定モデルを使う場合の指定。 */
   model?: string;
   reasoningEffort?: RouteDecision["reasoningEffort"];
   /** codegen に渡すルーティング設定。省略時は Runner の既定を使う。 */
@@ -131,7 +131,7 @@ export class CodeSessionManager {
   }
 
   /**
-   * Plan フェーズは廃止済み。検索コンテキストを組み立て、Clef でモデル階層を
+   * Plan フェーズは廃止済み。検索コンテキストを組み立て、難易度判定でモデル階層を
    * 決めてから直接 codegen へ渡す。
    */
   async generate(id: string, userId: string, opts: GenerateOpts = {}): Promise<void> {

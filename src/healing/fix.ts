@@ -8,6 +8,8 @@ import type { FindingGroup, Priority } from "../types";
 import { parseHealingSummary, type HealingSummaryPr } from "./summary";
 import { persistFixUsage } from "./persist";
 import { assertNotCanceled } from "./analyze";
+import { getRoutingConfig } from "../config/settings.keys";
+import { SettingsRepository } from "../db/repositories";
 
 const PRIORITY_ORDER: Priority[] = ["critical", "high", "medium", "low", "info"];
 
@@ -51,6 +53,7 @@ export async function fixHealingRun(
       dryRun,
       model,
       contextLines: ctx.config.ai.contextLines,
+      routing: await getRoutingConfig(new SettingsRepository(ctx.ports.db)),
     });
 
     if (dryRun) continue;

@@ -8,7 +8,7 @@ import { selectPathsForAnalysis } from "../code/context.assembler";
 import type { GitHubProvider } from "../vcs/github.provider";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
-import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
+import { DEFAULT_TEXT_MODEL } from "../config/deployment";
 import type { InspectionRequest, Language } from "../types";
 
 export const MAX_ANALYSIS_FILES = 6;
@@ -157,7 +157,7 @@ async function analyzeAndStore(opts: {
     requestedAt: new Date().toISOString(),
   };
 
-  const model = DEFAULT_WORKERS_AI_MODEL;
+  const model = DEFAULT_TEXT_MODEL;
   const engine = new InspectionEngine(ctx.ports.ai, {
     ai: { ...defaultInspectionConfig.ai, model, maxRetries: 1 },
   });

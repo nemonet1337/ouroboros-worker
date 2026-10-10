@@ -1,15 +1,13 @@
 /**
  * Programmatic mirror of db/migrations/*.sql, used by the runtime migration
- * runner (Worker cold start).
+ * runner (process start).
  *
- * IMPORTANT: .sql ファイルは新規 DB の `wrangler d1 migrations apply` 用ミラーです。
- * 既存 DB へのマイグレーション適用はランタイム `runMigrations`（`_migrations` 追跡テーブル）
- * が正です。0004/0006/0007 の ALTER ADD COLUMN は非冪等のため、既存 DB への .sql 二重適用は
- * 禁止（新規 DB のみ適用）。
+ * IMPORTANT: .sql ファイルは新規 SQLite DB のマイグレーション元である。
+ * 既存 DB へのマイグレーション適用はランタイム runMigrations（_migrations 記録
+ * テーブル）が行う。004/0006/0007 の ALTER ADD COLUMN は冪等のため、既存 DB への
+ * .sql 再適応は避けること（新規 DB にのみ適用）。
  *
- * The .sql files remain the canonical source consumed by `wrangler d1 migrations apply`;
- * keep both in sync.
- * Each migration is a list of individual statements (D1's prepare runs one at a time).
+ * Each migration is a list of individual statements (prepare runs one at a time).
  */
 export interface Migration {
   id: string;

@@ -67,7 +67,7 @@ export const OPENAPI_SPEC = {
     },
     "/models": {
       get: {
-        summary: "Workers AI のテキスト生成 / Embedding モデル一覧（料金含む）",
+        summary: "各 AI プロバイダのテキスト生成 / Embedding モデル一覧（料金含む）",
         responses: { "200": { description: "OK" }, "502": { description: "検出失敗" } },
       },
     },

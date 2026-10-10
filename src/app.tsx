@@ -5,17 +5,18 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { mountApi } from "./http/api";
-import { runMigrations } from "./db/migrate";
 import {
   HealingRunRepository,
   SettingsRepository,
   CodeSessionRepository,
   InspectionRepository,
 } from "./db/repositories";
-import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
+import { DEFAULT_TEXT_MODEL } from "./config/deployment";
 import { getFeatureFlags, getRoutingConfig, DEFAULT_APP_SETTINGS } from "./config/settings.keys";
 import type { GuiEvent } from "./ports/queue";
-import type { Env } from "./env";
+import type { AppConfig } from "./env";
+import { runHealingLifecycle } from "./healing/lifecycle";
+import { shouldRunScheduledHealing } from "./cron";
 import { buildContext, type WorkerContext } from "./context";
 import type { TriggerHealingOpts } from "./http/api";
 import { isHealingActive } from "./healing/status";
@@ -34,25 +35,27 @@ import { SettingsPage } from "./ui/pages/settings";
 import { ModelsPage } from "./ui/pages/models";
 import { AdminPage } from "./ui/pages/admin";
 import type { AuthedUser } from "./auth/service";
-import tailwindCss from "./ui/styles/tailwind.generated.css";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 type EnvWithIdentity = { Variables: { identity?: { user: AuthedUser; scopes?: string } } };
 
-export { HealingWorkflow } from "./workflows/healing";
 
-let migrated = false;
-let cachedApp: Awaited<ReturnType<typeof buildApp>> | undefined;
 
 const SESSION_COOKIE = "ouro_session";
 
-async function ensureMigrated(env: Env): Promise<void> {
-  if (migrated) return;
-  const { D1Adapter } = await import("./adapters/d1.adapter");
-  await runMigrations(new D1Adapter(env.DB));
-  migrated = true;
+/** ÉrÉãÉhê¨â ï®ÇÃ CSS Çì«ÇﬁÅBñ¢ÉrÉãÉhéûÇÕãÛï∂éöÅiÉXÉ^ÉCÉãñ≥ÇµÇ≈ìÆÇ≠ÅjÅB */
+function loadTailwindCss(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return readFileSync(join(here, "ui/styles/tailwind.generated.css"), "utf8");
+  } catch {
+    return "";
+  }
 }
 
-function makeTriggerHealing(env: Env, ctx: WorkerContext) {
+export function makeTriggerHealing(config: AppConfig, ctx: WorkerContext) {
   const runs = new HealingRunRepository(ctx.ports.db);
   return async (opts: TriggerHealingOpts) => {
     const now = Date.now();
@@ -86,7 +89,7 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
       trigger: opts.trigger,
       workflow_id: null,
       summary: null,
-      tag: env.CF_VERSION_METADATA?.tag ?? null,
+      tag: null,
       inspection_id: null,
       model: null,
       prompt_tokens: 0,
@@ -120,7 +123,7 @@ function makeTriggerHealing(env: Env, ctx: WorkerContext) {
   };
 }
 
-function makeCancelHealing(env: Env, ctx: WorkerContext) {
+export function makeCancelHealing(ctx: WorkerContext) {
   const runs = new HealingRunRepository(ctx.ports.db);
   return async (runId: string): Promise<{ ok: boolean; error?: string }> => {
     const run = await runs.find(runId);
@@ -128,15 +131,7 @@ function makeCancelHealing(env: Env, ctx: WorkerContext) {
     if (!isHealingActive(run.status)) {
       return { ok: false, error: `cannot cancel status: ${run.status}` };
     }
-    if (run.workflow_id) {
-      try {
-        const instance = await env.HEALING_WORKFLOW.get(run.workflow_id);
-        await instance.terminate();
-      } catch (err) {
-        // instance „ÅåÊó¢„Å´ÁµÇ‰∫Ü„Åó„Å¶„ÅÑ„ÇãÂ†¥Âêà„ÇÇ„ÅÇ„Çã
-        console.warn("[cancelHealing] terminate failed:", err instanceof Error ? err.message : err);
-      }
-    }
+    // íÄéüÉLÉÖÅ[ÇÃÇΩÇﬂ status Ç canceled Ç…ÇµÅAlifecycle ë§Ç…éüÇÃÉXÉeÉbÉvÇ≈é~ÇﬂÇ≥ÇπÇÈ
     await runs.update(runId, {
       status: "canceled",
       summary: mergeHealingSummary(run.summary, { canceled: true, at: Date.now() }),
@@ -145,16 +140,11 @@ function makeCancelHealing(env: Env, ctx: WorkerContext) {
   };
 }
 
-async function buildApp(env: Env): Promise<Hono> {
-  const ctx = await buildContext(env);
-  const triggerHealing = makeTriggerHealing(env, ctx);
-  const cancelHealing = makeCancelHealing(env, ctx);
+export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<Hono> {
+  const triggerHealing = makeTriggerHealing(config, ctx);
+  const cancelHealing = makeCancelHealing(ctx);
+  const tailwindCss = loadTailwindCss();
   const app = new Hono();
-
-  app.use("*", async (_c, next) => {
-    await ensureMigrated(env);
-    await next();
-  });
 
   const apiDeps = {
     ...ctx,
@@ -296,7 +286,7 @@ async function buildApp(env: Env): Promise<Hono> {
         user={user}
         models={models}
         selectedModel={selectedModel}
-        defaultModel={DEFAULT_WORKERS_AI_MODEL}
+        defaultModel={DEFAULT_TEXT_MODEL}
         routing={routing}
       />
     );
@@ -337,69 +327,4 @@ async function buildApp(env: Env): Promise<Hono> {
   app.get("/*", (c) => c.notFound());
 
   return app;
-}
-
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    try {
-      cachedApp ??= await buildApp(env);
-      return await cachedApp.fetch(request, env, ctx);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[worker] unhandled fetch error:", msg);
-      return Response.json({ error: { code: "worker_error", message: msg } }, { status: 500 });
-    }
-  },
-  async queue(batch: MessageBatch<GuiEvent>, env: Env): Promise<void> {
-    await ensureMigrated(env);
-    await handleGuiEvents(batch, env);
-  },
-  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    await ensureMigrated(env);
-    const wctx = await buildContext(env);
-    await wctx.auth.cleanupExpiredSessions();
-
-    // „Çπ„Çø„ÉÉ„ÇØÊ§úÂá∫: Èï∑ÊôÇÈñìÈÄ≤Ë°å‰∏≠„ÅÆ„Åæ„Åæ„ÅÆ„Ç∏„Éß„Éñ„Çí failed „Å´„Åô„Çã
-    const inspections = new InspectionRepository(wctx.ports.db);
-    const runs = new HealingRunRepository(wctx.ports.db);
-    const sessions = new CodeSessionRepository(wctx.ports.db);
-    const nInsp = await inspections.failStale(30 * 60 * 1000);
-    const nHeal = await runs.failStale(60 * 60 * 1000);
-    const nCode = await sessions.failStale(10 * 60 * 1000);
-    if (nInsp || nHeal || nCode) {
-      console.log(`[scheduled] stale sweep: inspections=${nInsp} healing=${nHeal} code=${nCode}`);
-    }
-
-    if (await shouldRunScheduledHealing(wctx, new Date())) {
-      const trigger = makeTriggerHealing(env, wctx);
-      await trigger({ trigger: "cron", dryRun: false, autoFix: true, phase: "analyze" });
-    }
-  },
-};
-
-/**
- * app_settings.schedule.timeÔºà"HH:MM" UTCÔºâ„ÅÆÊôÇÔºàHHÔºâ„ÅåÁèæÂú®„ÅÆ UTC ÊôÇ„Å®‰∏ÄËá¥„Åô„Çã„ÅãÂà§ÂÆö„Åô„Çã„ÄÇ
- */
-export async function shouldRunScheduledHealing(
-  wctx: WorkerContext,
-  now: Date
-): Promise<boolean> {
-  const raw = await new SettingsRepository(wctx.ports.db).get("app_settings").catch(() => undefined);
-  if (!raw) return false;
-  let time = "";
-  let daysOfWeek: number[] | undefined;
-  try {
-    const parsed = JSON.parse(raw) as { schedule?: { time?: string; daysOfWeek?: number[] } };
-    time = typeof parsed.schedule?.time === "string" ? parsed.schedule.time : "";
-    daysOfWeek = Array.isArray(parsed.schedule?.daysOfWeek) ? parsed.schedule!.daysOfWeek : undefined;
-  } catch {
-    return false;
-  }
-  const match = /^(\d{2}):(\d{2})$/.exec(time);
-  if (!match) return false;
-  const hour = Number(match[1]);
-  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return false;
-  if (now.getUTCHours() !== hour) return false;
-  if (daysOfWeek && daysOfWeek.length > 0 && !daysOfWeek.includes(now.getUTCDay())) return false;
-  return true;
 }

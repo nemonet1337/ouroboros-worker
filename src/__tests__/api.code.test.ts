@@ -28,10 +28,10 @@ function buildDeps(): ApiDeps {
         updateIssue: vi.fn(),
         listRepos: vi.fn().mockResolvedValue([]),
       },
-      queue: { kind: "cf-queue" as const, send: vi.fn() },
+      queue: { kind: "memory" as const, send: vi.fn() },
       runner: new NoopRunner(),
       codeRunner: new NoopRunner(),
-      rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
+      rateLimiter: { kind: "memory" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
     },
     config: {
       ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
@@ -57,7 +57,7 @@ function buildDeps(): ApiDeps {
     registrationEnabled: true,
     githubTokenSet: true,
     triggerHealing: vi.fn().mockResolvedValue({ runId: "run-1" }),
-    versionMetadata: undefined,
+    startedAt: new Date(0).toISOString(),
   };
 }
 

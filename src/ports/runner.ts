@@ -21,10 +21,12 @@ export interface RunFixOptions {
   baseBranch: string;
   branchPrefix: string;
   dryRun: boolean;
-  /** healing モードで解決した Workers AI モデル ID */
+  /** healing モードで解決したモデル ID（provider/model） */
   model?: string;
   /** 指摘行の前後に送る行数。未指定ならファイル先頭 8k 文字。 */
   contextLines?: number;
+  /** 難易度判定の設定（ローカル Laya のファイル選択に使う）。 */
+  routing?: RoutingConfig;
 }
 
 export interface HealingRunner {
@@ -69,18 +71,18 @@ export interface CodeGenerateResult {
   /** 生成失敗時の理由（JSON パース失敗等）。成功時は undefined */
   error?: string;
   trace?: HarnessTrace;
-  /** Clef で決めたモデル階層。判定できなかった場合は undefined。 */
+  /** 難易度判定で決めたモデル階層。判定できなかった場合は undefined。 */
   route?: RouteDecision;
 }
 export interface CodeGenerateOptions {
   sessionId: string;
   instruction: string;
-  /** 明示指定されたモデル。Clef の判定より優先される。 */
+  /** 明示指定されたモデル。難易度判定より優先される。 */
   model?: string;
   reasoningEffort?: ReasoningEffort;
-  /** Clef によるモデル階層判定に使う設定。 */
+  /** 難易度判定によるモデル階層選択に使う設定。 */
   routing?: RoutingConfig;
-  /** true なら Clef を呼ばず model / routing の既定をそのまま使う。 */
+  /** true なら判定を呼ばず model / routing の既定をそのまま使う。 */
   modelOverride?: boolean;
 }
 

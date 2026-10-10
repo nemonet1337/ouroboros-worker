@@ -93,6 +93,42 @@ describe("assembleContext", () => {
     expect(assembled.files).toEqual([]);
     expect(assembled.source).toBe("fallback");
   });
+
+  it("routes file selection through the local Laya batch when configured", async () => {
+    const calls: { url: string; body: { states: string[]; model: string } }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, body: JSON.parse(init?.body as string) });
+        return new Response(JSON.stringify({ answers: [1, 0, 0] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      })
+    );
+    try {
+      const ai = mockAi({ picked: ["src/other.ts"] });
+      const assembled = await assembleContext({
+        query: "login",
+        ai,
+        files: [
+          { path: "src/auth.ts", content: "export function login() {}" },
+          { path: "src/other.ts", content: "1" },
+          { path: "README.md", content: "# hi" },
+        ],
+        maxFiles: 2,
+        local: { url: "http://127.0.0.1:8000", model: "typed-decisions", fileSelection: true },
+      });
+      expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/systemone/batch");
+      expect(calls[0].body.model).toBe("typed-decisions");
+      expect(calls[0].body.states).toHaveLength(3);
+      expect(assembled.pickedPaths).toEqual(["src/auth.ts"]);
+      // ローカルで足りたので complete は呼ばれない
+      expect(ai.complete).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("scorePathsByTokens", () => {

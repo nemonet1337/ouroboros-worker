@@ -3,10 +3,10 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 /**
- * 構造化ロガー。出力先は Cloudflare Workers Logs（`console`）のみ。
+ * 構造化ロガー。出力先はプロセスの標準出力（`console`）のみ。
  *
  * R2 への永続化は廃止した。永続ログが必要な場合は
- * `wrangler tail` または Cloudflare Observability の Logs を使う。
+ * Node 上ではそのまま stdout / stderr に出る。
  *
  * 行フォーマットは `ISO-8601 LEVEL [scope] message {json}`。
  */

@@ -7,23 +7,22 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build:css": "tailwindcss -i src/ui/styles/tailwind.source.css -o src/ui/styles/tailwind.generated.css --minify",
-    "worker:dev": "npm run build:css && wrangler dev",
-    "worker:deploy": "npm run build:css && wrangler deploy"
+    "dev": "npm run build:css && tsx src/server.ts",
+    "start": "tsx src/server.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "dependencies": {
     "diff": "^9.0.0",
     "hono": "^4.13.12"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261003.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.4",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
-    "wrangler": "^4.149.0"
+    "tsx": "^4.20.6"
   }
 }

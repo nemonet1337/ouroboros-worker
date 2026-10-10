@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AuthService, AuthError } from "../auth/service";
-import { DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
+import { DEFAULT_TEXT_MODEL } from "../config/deployment";
 import type { DbAdapter, SqlParam } from "../ports/db";
 
 class MockDbAdapter implements DbAdapter {
@@ -190,8 +190,8 @@ describe("AuthService", () => {
 
     expect(await auth.getModel("user-1")).toBeNull();
 
-    await auth.setModel("user-1", "minimax/m3");
-    expect(await auth.getModel("user-1")).toBe("minimax/m3");
+    await auth.setModel("user-1", "openai/gpt-6-sol");
+    expect(await auth.getModel("user-1")).toBe("openai/gpt-6-sol");
   });
 
   it("resets model to default with null", async () => {
@@ -200,7 +200,7 @@ describe("AuthService", () => {
       email: "test@example.com",
       password_hash: "hash",
       role: "member",
-      model: "minimax/m3",
+      model: "openai/gpt-6-sol",
       created_at: Date.now(),
       updated_at: Date.now(),
     });
@@ -208,7 +208,6 @@ describe("AuthService", () => {
     await auth.setModel("user-1", null);
     expect(await auth.getModel("user-1")).toBeNull();
   });
-
   it("rejects invalid model id", async () => {
     db.users.push({
       id: "user-1",
@@ -223,7 +222,7 @@ describe("AuthService", () => {
     await expect(auth.setModel("user-1", "gpt-4o")).rejects.toThrow(AuthError);
   });
 
-  it("resolveModel falls back user model → default", async () => {
+  it("resolveModel falls back user model ↁEdefault", async () => {
     db.users.push({
       id: "user-1",
       email: "test@example.com",
@@ -234,11 +233,11 @@ describe("AuthService", () => {
       updated_at: Date.now(),
     });
 
-    expect(await auth.resolveModel("user-1")).toBe(DEFAULT_WORKERS_AI_MODEL);
-    expect(await auth.resolveModel(null)).toBe(DEFAULT_WORKERS_AI_MODEL);
+    expect(await auth.resolveModel("user-1")).toBe(DEFAULT_TEXT_MODEL);
+    expect(await auth.resolveModel(null)).toBe(DEFAULT_TEXT_MODEL);
 
-    await auth.setModel("user-1", "@cf/meta/llama-3.1-8b-instruct");
-    expect(await auth.resolveModel("user-1")).toBe("@cf/meta/llama-3.1-8b-instruct");
+    await auth.setModel("user-1", "anthropic/claude-sonnet-4-6");
+    expect(await auth.resolveModel("user-1")).toBe("anthropic/claude-sonnet-4-6");
   });
 
   it("resolveModel remaps retired GLM ids without rewriting the stored value", async () => {
@@ -252,7 +251,7 @@ describe("AuthService", () => {
       updated_at: Date.now(),
     });
 
-    expect(await auth.resolveModel("user-2")).toBe("openai/gpt-6-luna");
+    expect(await auth.resolveModel("user-2")).toBe(DEFAULT_TEXT_MODEL);
     expect(db.users.find((u) => u.id === "user-2")?.model).toBe("@cf/zai-org/glm-5.3-flash");
   });
 });

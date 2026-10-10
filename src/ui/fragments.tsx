@@ -370,7 +370,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
       ["generating", Date.now(), sessionId, userId]
     );
-    // model を渡さないと Queue 側で Clef の判定が走る
+    // model を渡さないと難易度判定が走る
     const model = await auth.resolveModel(userId);
     await ports.queue.send({
       id: newId(),
@@ -584,7 +584,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
 
         <div class="text-xs opacity-60">
           <i data-lucide="info" class="w-3.5 h-3.5" />
-          ログは Cloudflare Workers Logs に出力されます。`wrangler tail` で確認できます。
+          ログはプロセスの標準出力（stdout）に出力されます。
         </div>
       </div>
     );

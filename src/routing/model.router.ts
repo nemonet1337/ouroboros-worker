@@ -1,4 +1,5 @@
 import type { ReasoningEffort, RoutingConfig } from "../config/routing";
+import { isDecisionCapableModel } from "../config/routing";
 import type { AiClefQuestion, AiProvider } from "../ports";
 import type { CodeSnippet } from "../retrieval/chunk.rank";
 
@@ -7,11 +8,13 @@ export type RouteTier = "efficiency" | "performance" | "unknown";
 export interface RouteDecision {
   model: string;
   reasoningEffort: ReasoningEffort;
-  /** Clef の score 回答。取得できなければ null。 */
+  /** 判定モデルの score 回答（1〜5）。取得できなければ null。 */
   difficulty: number | null;
   tier: RouteTier;
-  /** Clef が使えたか。false なら difficulty ではなく既定モデルで進めている。 */
-  clefAvailable: boolean;
+  /** 判定モデルが使えたか。false なら difficulty ではなく既定モデルで進めている。 */
+  decisionAvailable: boolean;
+  /** 実際に裁定に使ったバックエンド。 */
+  backend?: "local" | "remote";
 }
 
 const DIFFICULTY_RUBRIC: Record<string, string> = {
@@ -91,13 +94,8 @@ export interface RetrievalSummary {
   snippets: CodeSnippet[];
 }
 
-/**
- * Clef の state を作る。
- *
- * `snippets.length` は入れない。topK で頭打ちになる定数情報なので、
- * 判定の分化に使えない。代わりに score の分布と kind 内訳を渡す。
- */
-export function buildClefState(instruction: string, summary: RetrievalSummary): string {
+/** 判定モデルに渡す state を作る（local / remote 判定の入力は共通）。 */
+export function buildDecisionState(instruction: string, summary: RetrievalSummary): string {
   const { snippets } = summary;
   const lines: string[] = [];
   lines.push("## タスク");
@@ -159,9 +157,69 @@ function questions(): Record<string, AiClefQuestion> {
   };
 }
 
+export interface ResolveDecisionOptions {
+  ai: AiProvider;
+  state: string;
+  config: RoutingConfig;
+}
+
+export interface ResolvedDecision {
+  answers: Record<string, unknown> | null;
+  backend: "local" | "remote";
+  available: boolean;
+}
+
 /**
- * codegen の前にモデル階層を決める。Clef が使えない・失敗した場合は
- * 安全側（Efficiency=Luna）に倒す。
+ * 判定バックエンドを local（Laya）→ remote（Decisions API）の順に試す。
+ * どちらも失敗したら answers=null・available=false。呼び出し側で
+ * Efficiency にフォールバックする。
+ */
+export async function resolveDecision(opts: ResolveDecisionOptions): Promise<ResolvedDecision> {
+  const { ai, state, config } = opts;
+  if (!ai.decide) return { answers: null, backend: "remote", available: false };
+  const qs = questions();
+
+  if (config.decisionBackend === "local") {
+    try {
+      const result = await ai.decide(
+        { state, questions: qs },
+        {
+          url: config.localDecisionUrl,
+          model: config.localDecisionModel,
+          fileSelection: config.localFileSelection,
+        }
+      );
+      return { answers: result.answers, backend: "local", available: true };
+    } catch (err) {
+      console.warn(
+        "[router] local decision backend unavailable, falling back to remote:",
+        err instanceof Error ? err.message : err
+      );
+    }
+  }
+
+  if (!isDecisionCapableModel(config.routerModel)) {
+    console.warn(
+      `[router] decision model ${config.routerModel} does not support the decisions API, using efficiency tier`
+    );
+    return { answers: null, backend: "remote", available: false };
+  }
+
+  try {
+    const result = await ai.decide({ state, questions: qs, model: config.routerModel });
+    return { answers: result.answers, backend: "remote", available: true };
+  } catch (err) {
+    console.warn(
+      "[router] decision failed, using efficiency tier:",
+      err instanceof Error ? err.message : err
+    );
+    return { answers: null, backend: "remote", available: false };
+  }
+}
+
+/**
+ * codegen の前にモデル階層を決める。判定が使えない・失敗した場合は
+ * 安全側（Efficiency）に倒す。
  */
 export async function decideRoute(opts: {
   ai: AiProvider;
@@ -174,25 +232,25 @@ export async function decideRoute(opts: {
     reasoningEffort: opts.config.efficiencyEffort,
     difficulty: null,
     tier: "unknown",
-    clefAvailable: false,
+    decisionAvailable: false,
   };
-  if (!opts.ai.decide) return fallback;
 
-  let answers: Record<string, unknown>;
-  try {
-    const result = await opts.ai.decide({
-      state: buildClefState(opts.instruction, opts.summary),
-      questions: questions(),
-    });
-    answers = result.answers;
-  } catch (err) {
-    console.warn("[router] Clef decision failed, using efficiency tier:", err instanceof Error ? err.message : err);
-    return fallback;
-  }
+  const resolved = await resolveDecision({
+    ai: opts.ai,
+    state: buildDecisionState(opts.instruction, opts.summary),
+    config: opts.config,
+  });
+  if (!resolved.answers) return { ...fallback, backend: resolved.backend };
 
+  const answers = resolved.answers;
   const difficulty = parseDifficulty(answers.difficulty);
   if (difficulty === null) {
-    return { ...fallback, clefAvailable: true, tier: parseTier(answers.tier) };
+    return {
+      ...fallback,
+      tier: parseTier(answers.tier),
+      decisionAvailable: true,
+      backend: resolved.backend,
+    };
   }
 
   const usePerformance = difficulty >= opts.config.solThreshold;
@@ -203,6 +261,7 @@ export async function decideRoute(opts: {
       : opts.config.efficiencyEffort,
     difficulty,
     tier: parseTier(answers.tier),
-    clefAvailable: true,
+    decisionAvailable: true,
+    backend: resolved.backend,
   };
 }

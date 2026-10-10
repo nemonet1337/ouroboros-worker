@@ -4,19 +4,16 @@
 
 🌐 **English: [README.en.md](./README.en.md)**
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nemonet1337/ouroboros)
-
 Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull Request を自動作成します。
-認証・マルチテナントな API トークン・テレメトリログを備えています。
+認証・マルチテナントな API トークン・構造化ログを備えています。
 
-**Cloudflare Workers 特化** — Workers + D1 + Queues + Workflows + Workers AI の
-エッジネイティブ構成だけをサポートします。
+**Node 24 特化** — `node:http` + `node:sqlite` + 外部 AI プロバイダ（OpenAI /
+Anthropic / xAI / OpenRouter）の REST API だけをサポートします。
+Docker / オンプレミス構成は廃止しました。
 
-> **AI ゲートウェイ:** Ouroboros が接続する LLM は **Cloudflare Workers AI 上の
-> モデルに限定**されます（デフォルト: `openai/gpt-6-luna`）。利用可能な全モデルは GUI の
-> 設定画面から選択できます。AI の認証情報は Workers AI 専用の API トークン
-> **`WORKERS_AI_API_TOKEN`**（Worker シークレット）のみで管理され、Anthropic /
-> OpenAI などの外部ゲートウェイのトークンは API レベルで拒否されます。
+> **AI ゲートウェイ:** モデル ID は **`provider/model`** 形式
+> （例: `openai/gpt-6-luna`）。キーは `.env` のみで管理し、GUI には設定済みかどうかだけを返します。
+> 起動には `GITHUB_TOKEN` と、AI キー 1 つ以上が必要です。
 
 ---
 
@@ -24,101 +21,131 @@ Ouroboros は問題を検出し、LLM が解析してパッチを生成、Pull R
 
 ```
 src/
-├── adapters/      Cloudflare サービスアダプター（D1, Queues, Workers AI …）
-├── analytics/     AI 使用量トラッカー・コスト見積もり
+├── adapters/      プラットフォームアダプター（sqlite, memory.queue, memory.ratelimiter, ai/）
+│   └── ai/        LlmGateway（4 プロバイダ）と decisions（Decisions API / Laya）
+├── analytics/     AI 使用量アキュムレータ・コスト見積もり
 ├── analyzers/     AI 解析エンジン（findings のグルーピング・リスク評価）
 ├── auth/          認証・セッション・API トークン管理
 ├── code/          コードセッション管理・バージョン追跡・キャッシュ
 ├── config/        設定・言語別ルール（10 言語対応）
-├── db/            D1/SQLite レイヤー（7 テーブル・マイグレーション）
+├── db/            node:sqlite レイヤー（マイグレーション）
 ├── flags/         機能フラグ管理
-├── healing/       自己修復オーケストレーター
+├── healing/       自己修復オーケストレーター（lifecycle = 直列実行）
 ├── http/          Hono ベース REST API
 ├── inspection/    AI スコアリングエンジン（6 次元・32 観点）
-├── logging/       構造化ロガー（Workers Logs 出力）
+├── logging/       構造化ロガー（stdout 出力）
 ├── ports/         アダプターインターフェース（Ports & Adapters パターン）
 ├── pr/            PR タイトル・本文生成・重複排除
-├── queues/        Cloudflare Queues ハンドラー
+├── queues/        GUI イベントの逐次処理
 ├── refactor/      リファクタリング提案管理
+├── retrieval/     インデックスなしコード検索（file selector + chunk rank）
+├── routing/       難易度判定によるモデル階層ルーティング
 ├── schemas/       JSON スキーマ定義
 ├── testing/       ブラウザテスト支援
 ├── ui/            サーバーサイドレンダリング UI（Hono JSX）
 ├── utils/         エスカレーター・修正キャッシュ
 ├── vcs/           GitHub 連携（fetch ベース）
-├── workflows/     Cloudflare Workflows（永続的な自己修復ライフサイクル）
 ├── types.ts       全型定義
 ├── context.ts     依存性注入
-├── env.ts         Cloudflare バインディング型
-└── index.tsx      Worker エントリーポイント
+├── cron.ts        毎時 cron（stale sweep + 定期 healing）
+├── env.ts         AppConfig と loadConfig()
+├── app.tsx        ルート群
+└── server.ts      node:http エントリーポイント
 ```
 
-| ポート          | 実装（Cloudflare Worker）         |
-| -------------- | -------------------------------- |
-| `DbAdapter`    | D1                               |
-| `QueueAdapter` | Cloudflare Queues                |
-| `AiProvider`   | Workers AI（唯一の AI ゲートウェイ）|
-| `VcsProvider`  | GitHub (fetch)                   |
-| `HealingRunner`| `RepoRunner`（同一 Worker 内、GitHub REST API） |
-| `RateLimiter`  | Workers Rate Limiting API        |
+| ポート          | 実装（Node 24）                            |
+| -------------- | ------------------------------------------ |
+| `DbAdapter`    | `node:sqlite`（`SqliteAdapter`）           |
+| `QueueAdapter` | インメモリ逐次キュー（`MemoryQueue`）      |
+| `AiProvider`   | `LlmGateway`（OpenAI / Anthropic / xAI / OpenRouter） |
+| `VcsProvider`  | GitHub (fetch)                             |
+| `HealingRunner`| `RepoRunner`（同一プロセス内、GitHub REST API） |
+| `RateLimiter`  | 固定窗口インメモリ（`MemoryRateLimiter`）   |
 
-注記: スキャン・修正・コミット・PR 作成は **同一 Worker の `RepoRunner`** が GitHub REST API で実行します
-（旧 `ouroborous-runner` への Service Binding 委譲は廃止済み）。
-ログは Workers Logs（`console`）へ出力します。R2 への永続ログと Vectorize はいずれも廃止しました。
-**Cloudflare Workflow** が「スキャン → 解析 → 修正 → PR」という永続的なライフサイクルを駆動します。
+注記: スキャン・修正・コミット・PR 作成は **同一プロセスの `RepoRunner`** が
+GitHub REST API で実行します。自己修復ライフサイクルは `HealingLifecycle`
+（プロセス内直列）が駆動します。キャンセルは `POST /healing/:runId/cancel` で
+`healing_runs.status` を `canceled` にし、各ステップの前にチェックします。
 
 ---
 
-## クイックスタート — Cloudflare
-
-最短経路は README 冒頭の **Deploy to Cloudflare** ボタンです（リポジトリを Fork して
-Workers にデプロイ）。手動でセットアップする場合:
+## クイックスタート — Node
 
 ```bash
 npm install
-npm run build:web                                   # GUI → web/.output/public（ASSETS で配信）
+cp .env.example .env        # キーを記入する
 
-wrangler d1 create ouroboros                         # 出力された id を wrangler.toml に貼り付け
-wrangler queues create ouroboros-gui-events
-wrangler d1 migrations apply ouroboros               # スキーマ: src/db/migrations/
-
-wrangler queues create ouroboros-dlq                 # 失敗イベントの DLQ
-
-wrangler secret put WORKERS_AI_API_TOKEN             # （任意）Workers AI 専用 API トークン
-wrangler secret put GITHUB_TOKEN
-
-wrangler deploy                                      # または: wrangler dev
+npm run build:css           # Tailwind をビルド（GUI のスタイル）
+npm run dev                 # build:css + tsx src/server.ts
+# または
+npm start                   # tsx src/server.ts
 ```
 
-`wrangler.toml` が D1・Queues・Workflows・Workers AI・レート制限バインディング・
-毎時 cron トリガーを配線します（runner Service Binding は不要）。
+`.env` の必須項目:
+
+| キー | 必須 | 用途 |
+| --- | --- | --- |
+| `GITHUB_TOKEN` | はい | PR / Issue 作成。`owner/repo` は未設定ならトークンから自動検出 |
+| `OPENAI_API_KEY` | いずれか 1 つ以上 | `openai/*` モデル |
+| `ANTHROPIC_API_KEY` | 〃 | `anthropic/*` モデル |
+| `XAI_API_KEY` | 〃 | `xai/*` モデル |
+| `OPENROUTER_API_KEY` | 〃 | `openrouter/*` モデル |
+| `LAYA_API_KEY` | いいえ | ローカル Laya に Bearer 認証が必要な場合だけ |
+
+任意項目: `PORT`（既定 3000）、`OURO_DATA_DIR`（既定 `./data`）、
+`OURO_DB_PATH`（既定 `<dataDir>/ouroboros.sqlite`）、
+`OURO_REGISTRATION_ENABLED`（既定 false）。
+
+必須キーが無い場合は起動せず、エラーメッセージを出して終了します。
 
 ### 管理者アカウント
 
-- 環境変数は不要です。デプロイ後にブラウザでアプリを開くと、**ユーザーが 0 人の
-  初回のみ自動的に登録画面（`/register`）へ誘導**されます。
+- 初回はユーザー 0 人のため `/register` へ誘導されます。
 - **最初に登録したアカウントが管理者**になり、以降の公開登録は自動的に
   ロックされます（Admin ページのトグルで再有効化可能）。
 
 ### AI モデル
+
+モデル ID は `provider/model`。`openai/*`・`anthropic/*`・`xai/*`・
+`openrouter/*` を用い、OpenRouter 経由は `openrouter/openai/gpt-6-luna` のように
+二重に付けます。
 
 `/models` で用途ごとに 3 つ選択します（システム全体で共有）。
 
 | 役割 | 既定 | 用途 |
 | --- | --- | --- |
 | Efficiency | `openai/gpt-6-luna` | 容易なタスク。inspection / healing / refactor もここ |
-| Performance | `openai/gpt-6-sol` | コード生成で Clef が「難しい」と判定したとき |
-| Embed | `@cf/qwen/qwen3-embedding-0.6b` | コード検索の埋め込み |
+| Performance | `openai/gpt-6-sol` | コード生成で判定が「難しい」だったとき |
+| Embed | `openai/text-embedding-3-small` | コード検索の埋め込み |
 
-- **コード生成時のみ**、Clef（`@cf/cloudflare/clef-flash`）が実装難易度を 1〜5 で判定し、
-  閾値以上で Performance、未満で Efficiency を使います。閾値も `/models` から変更できます。
-- Embed はインデックスを持たないため、リクエストごとに chunk 化して埋め込みます。
-  インデックス作成・再構築・次元移行は不要です。
-- 各ユーザーは `PUT /api/v1/settings/models` で個人上書きモデルを設定できます。
-  設定すると codegen の Clef 判定を無視してそのモデルを使います。
-- `GET /api/v1/models` がアカウントの Workers AI から全モデルを動的に検出し、
-  **GUI の設定画面で Workers AI が提供するすべてのモデルを選択**できます。
-- AI の認証情報は **`WORKERS_AI_API_TOKEN`** のみ。GPT-6 系はバインディングで動くため
-  通常は不要で、未設定なら AI バインディングを直接使用します。
+モデル一覧は各プロバイダの `GET /models` を live 取得（60 分 TTL キャッシュ）し、
+キー未設定のプロバイダは候補に出ません。Anthropic は embedding 非対応なので
+`embedModel` には設定できません。
+
+### 難易度判定（Decisions API / ローカル Laya）
+
+コード生成の前に判定モデルが実装難易度（1〜5）とティアを決め、`solThreshold`
+以上なら Performance、未満なら Efficiency を使います。判定先は `/models` の
+「難易度判定」カードで切り替えます。
+
+| backend | 接続先 | 制約 |
+| --- | --- | --- |
+| `remote`（既定） | OpenAI Decisions API（`POST /v1/decisions`、モデルは `gpt-6-luna` のみ・限定プレビュー）または OpenRouter Decisions（`POST /api/alpha/decisions`、`openrouter/typesafe/jev-1.13`） | `anthropic/*`・`xai/*` は decisions 非対応 |
+| `local` | ローカル laya-serve（`POST {url}/v1/systemone`、Jev 互換） | 既定 `http://127.0.0.1:8000`、モデルは `typed-decisions` |
+
+ローカル Laya のセットアップ:
+
+```bash
+pip install "laya[serve]"
+LAYA_DEVICE=cpu laya-serve          # 既定で http://127.0.0.1:8000
+```
+
+GUI で「難易度判定」カードのバックエンドを **ローカル Laya** に切り替え、
+「接続テスト」を押します（questions 無しで POST し、400 が返れば生存）。
+
+障害時は **remote → Efficiency フォールバック** の順に逃げます。関連ファイル選択
+にも Laya を使うかは `localFileSelection` で切り替えられます（`false` なら従来の
+テキストモデル経路）。
 
 ---
 
@@ -129,20 +156,22 @@ wrangler deploy                                      # または: wrangler dev
 - **認証とマルチテナント** — メール/パスワード（WebCrypto PBKDF2）、httpOnly セッション、
   スコープ付きで失効可能な **API トークン**（`read` / `inspect` / `heal` / `admin`）。
 - **登録制御** — 公開登録の管理者トグル。最初に登録したユーザーが管理者になります。
-- **テレメトリ** — 構造化ログは Workers Logs（`console`）へ。永続化は Cloudflare Observability 側で行う。プロンプトキャッシュのヒット量も heal履歴に表示。
-- **非同期オーケストレーション** — GUI イベントは Cloudflare Queues、自己修復ライフサイクルは Workflows。
-- **レート制限** — 公開エンドポイントに Workers Rate Limiting。
+- **テレメトリ** — 構造化ログは stdout。プロンプトキャッシュのヒット量も heal 履歴に表示。
+- **非同期オーケストレーション** — GUI イベントはインメモリ逐次キュー（同時実行 1）。
+  失敗時は指数バックオフで 3 回リトライし、その後はログ出力。未処理はプロセス停止で
+  失われますが、`healing_runs.status` / `code_sessions.status` で再実行できます。
+- **レート制限** — 固定窗口のインメモトリミッタ。
 - **コードインスペクション** — AI スコアリングエンジンを `POST /api/v1/inspect` で提供。
   6 次元（セキュリティ / パフォーマンス / 冗長性 / 可読性 / 設計 / 正確性）の重み付きスコアを、
   ファイル単位または関数・メソッド・クラス単位（`granularity: "function"`）で算出し、
   低スコアのユニットをヒューリスティックに選別した改修候補（`refactorCandidates`）を優先度付きで返します。
-- **モデル階層の自動選択** — コード生成前に Clef が実装難易度を判定し、
-  閾値以上で GPT-6 Sol、未満で GPT-6 Luna を使います。判定結果はセッションに記録されます。
+- **モデル階層の自動選択** — コード生成前に判定モデルが実装難易度を判定し、
+  閾値以上で Performance、未満で Efficiency を使います。判定結果はセッションに記録されます。
 - **コードセッション** — リポジトリ・ブランチ・指示を指定して AI にコード生成を依頼。
   生成されたパッチは自動的に PR として適用されます。
 - **リファクタリング提案** — インスペクション結果から AI が具体的な改善提案を生成し、
   優先度付きで管理します。
-- **AI 使用量分析** — Analytics Engine で AI 推論の使用量・コストを追跡。
+- **AI 使用量分析** — DB に保存した使用量を `/api/v1/metrics` で集計。
 - **機能フラグ** — 実験的機能の段階的ロールアウトを管理。
 
 ---
@@ -171,6 +200,7 @@ wrangler deploy                                      # または: wrangler dev
 | POST    | `/api/v1/code/sessions/:id/generate` | セッション/トークン |
 | POST    | `/api/v1/code/sessions/:id/apply`    | セッション/トークン |
 | GET/POST | `/api/v1/refactor/proposals` | セッション/トークン |
+| POST    | `/api/v1/settings/decision-test` | admin         |
 
 \* 登録トグルで制御されます（最初/管理者ユーザーは常に許可）。
 トークンは `Authorization: Bearer ouro_…` で送信します。エラーは統一形式
@@ -189,6 +219,7 @@ wrangler deploy                                      # または: wrangler dev
 - `/refactor` — リファクタリング提案
 - `/tokens` — API トークン管理
 - `/settings` — 個人設定（AI モデル選択）
+- `/models` — システム共有モデルと難易度判定バックエンド
 - `/admin` — 管理者設定（登録トグル、ユーザー管理）
 
 ---
@@ -198,9 +229,32 @@ wrangler deploy                                      # または: wrangler dev
 ```bash
 npm run typecheck                      # TypeScript 型チェック
 npm run test                           # vitest ユニットテスト（src/__tests__/）
-npm run dev --workspace web            # Nuxt 開発サーバー
-npm run worker:dev                     # wrangler dev
+npm run build:css                      # Tailwind をビルド
+npm run dev                            # build:css + tsx src/server.ts
+npm start                              # tsx src/server.ts
 ```
+
+---
+
+## リスクと注意点
+
+- `node:sqlite` は Stability 1.2（Release candidate）。`DbAdapter` 配下に閉じているので差し替えは容易です。
+- Anthropic / xAI は Decisions API 非対応です。判定モデルは `openai/*` か `openrouter/*` のみ。
+- Anthropic は embedding 非対応です。
+- 判定結果の `score` は level index 0 起点の確率重み平均なので、全バックエンドで +1 正規化しています。
+- Laya は >20 選択の `choice` が弱点です。ファイル選択は `noul` のバッチ判定で回避しています。
+- `/v1/systemone/batch` は laya-serve 0.3.22+ が必要です。古い version では 404 → フォールバック。
+- インメモリキューはプロセス再起動で未実行イベントを失います。
+- ローカル DLQ は存在しません（ログ出力のみ）。
+- `.env` のみ運用のため GUI からのキー追加は不可です。キー変更は再起動が必要です。
+
+---
+
+## スコープ外
+
+- D1 データの移行（新規 SQLite でやり直し）
+- マルチプロセス / 水平スケール
+- モデル料金の静的カタログ（live 取得に集約）
 
 ---
 

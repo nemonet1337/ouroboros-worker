@@ -3,7 +3,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Ports } from "../ports";
 import type { AiModelInfo } from "../ports/ai";
 import type { HealingConfig } from "../config/healing.config";
-import { DEFAULT_EMBEDDING_MODEL, DEFAULT_WORKERS_AI_MODEL } from "../config/deployment";
+import { DEFAULT_EMBEDDING_MODEL, DEFAULT_TEXT_MODEL } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { newId } from "../auth/tokens";
 import { Logger } from "../logging/logger";
@@ -18,7 +18,6 @@ import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
 import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
-import type { VersionMetadata } from "../env";
 import {
   validateBody,
   credentialsSchema,
@@ -36,6 +35,7 @@ import {
   getSelectedRepo,
   setRoutingConfig,
 } from "../config/settings.keys";
+import { DEFAULT_ROUTING_CONFIG } from "../config/routing";
 import {
   buildMetricsData,
   loadPublicConfig,
@@ -76,7 +76,7 @@ export interface ApiDeps {
   cookieSecure?: boolean;
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
-  versionMetadata?: VersionMetadata;
+  startedAt?: string;
 }
 
 interface Identity {
@@ -172,14 +172,15 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   };
 
   // ── Meta ─────────────────────────────────────────────────────────────────
-  app.get("/health", (c) => c.json({ ok: true, db: ports.db.dialect }));
+  // Node 24 + node:http のローカル実行。外部 AI プロバイダを REST で呼ぶ。
+  app.get("/health", (c) => c.json({ ok: true, db: ports.db.dialect, runtime: "node" }));
   app.get("/version", (c) =>
     c.json({
       name: "ouroboros",
       version: "2.0.0",
       apiVersion: API_VERSION,
-      deployTarget: "cloudflare",
-      versionMetadata: deps.versionMetadata || null,
+      deployTarget: "node",
+      startedAt: deps.startedAt ?? null,
     })
   );
   app.get("/openapi.json", (c) => c.json(OPENAPI_SPEC));
@@ -290,7 +291,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     return c.json(await loadPublicConfig(settingsRepo, deps.config.vcs, deps.githubTokenSet ?? false));
   });
 
-  // ── AI models — every model served by the Workers AI binding ──────────────
+  // ── AI models — 各プロバイダの live カタログ（キー未設定は候補に出ない）──────
   app.get("/models", requireAuth(), async (c) => {
     const provider = ports.ai.name;
     let models: AiModelInfo[] = [];
@@ -300,7 +301,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       await log.error("model discovery failed", { reason: (err as Error).message });
       return c.json({ error: { code: "model_discovery_failed", message: (err as Error).message } }, 502);
     }
-    return c.json({ deployTarget: "cloudflare", provider, models });
+    return c.json({ deployTarget: "node", provider, models });
   });
 
   // ── Settings (weights/thresholds/schedule/registration) ──────
@@ -332,7 +333,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const model = await auth.getModel(user.id);
     return c.json({
       model: model,
-      effectiveModel: model ?? DEFAULT_WORKERS_AI_MODEL,
+      effectiveModel: model ?? DEFAULT_TEXT_MODEL,
       isDefault: model === null,
     });
   });
@@ -350,9 +351,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const model = await auth.getModel(user.id);
     return c.json({
       model,
-      effectiveModel: model ?? DEFAULT_WORKERS_AI_MODEL,
+      effectiveModel: model ?? DEFAULT_TEXT_MODEL,
       routing: await getRoutingConfig(settingsRepo),
-      defaults: { model: DEFAULT_WORKERS_AI_MODEL, embeddingModel: DEFAULT_EMBEDDING_MODEL },
+      defaults: { model: DEFAULT_TEXT_MODEL, embeddingModel: DEFAULT_EMBEDDING_MODEL },
     });
   });
 
@@ -379,9 +380,17 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       payload = await c.req.json().catch(() => null);
     } else {
       const form = await c.req.parseBody();
-      const asRecord: Record<string, string> = {};
+      const asRecord: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(form)) {
-        if (typeof v === "string") asRecord[k] = v;
+        if (typeof v === "string") {
+          // チェックボックスは ON のときだけ文字列で飛んでくる
+          asRecord[k] =
+            k === "localFileSelection"
+              ? v === "true" || v === "on"
+              : k === "solThreshold"
+                ? Number(v)
+                : v;
+        }
       }
       payload = asRecord;
     }
@@ -392,6 +401,54 @@ export function createApi(deps: ApiDeps): Hono<Env> {
       );
     }
     return c.json({ ok: true, routing: saved });
+  });
+
+  // ── ローカル Laya の接続テスト（管理者のみ） ──
+  // questions 無しで POST /v1/systemone に投げ、400 が返れば生存。
+  // 接続エラー（refused / timeout）なら死亡として報告する。
+  app.post("/settings/decision-test", requireAdmin, async (c) => {
+    const contentType = c.req.header("content-type") ?? "";
+    let url = DEFAULT_ROUTING_CONFIG.localDecisionUrl;
+    let model = DEFAULT_ROUTING_CONFIG.localDecisionModel;
+    if (contentType.includes("application/json")) {
+      const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+      url = typeof body?.localDecisionUrl === "string" ? body.localDecisionUrl : url;
+      model = typeof body?.localDecisionModel === "string" ? body.localDecisionModel : model;
+    } else {
+      const form = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+      const rawUrl = form.localDecisionUrl;
+      const rawModel = form.localDecisionModel;
+      if (typeof rawUrl === "string" && rawUrl) url = rawUrl;
+      if (typeof rawModel === "string" && rawModel) model = rawModel;
+    }
+    const target = `${url.replace(/\/+$/, "")}/v1/systemone`;
+    try {
+      const res = await fetch(target, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, state: "ping" }),
+        signal: AbortSignal.timeout(5000),
+      });
+      // 400 は questions 未指定なので正常応答（生存）
+      const alive = res.status === 400 || res.ok;
+      const body = alive
+        ? `<span class="text-success">接続できました（HTTP ${res.status}）。</span>`
+        : `<span class="text-error">Laya が HTTP ${res.status} を返しました。</span>`;
+      if (c.req.header("HX-Request")) {
+        return c.html(
+          `${body}<script>window.setTimeout(()=>{const el=document.getElementById('laya-test-result');if(el)el.textContent=''},8000)</script>`
+        );
+      }
+      return c.json({ ok: alive, status: res.status, url: target });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      if (c.req.header("HX-Request")) {
+        return c.html(
+          `<span class="text-error">接続できません: ${reason}</span><script>window.setTimeout(()=>{const el=document.getElementById('laya-test-result');if(el)el.textContent=''},8000)</script>`
+        );
+      }
+      return c.json({ ok: false, error: reason, url: target }, 200);
+    }
   });
 
   // ── Inspection ─────────────────────────────────────────────────────────────

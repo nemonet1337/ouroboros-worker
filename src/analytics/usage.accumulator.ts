@@ -8,7 +8,7 @@ export interface UsageSnapshot {
   cacheWriteTokens: number;
 }
 
-/** Per-isolate / per-step AI usage totals. WorkersAiProvider.onUsage から足し込む。 */
+/** プロセス寿命の AI トークン合計。LlmGateway.onUsage から足し込む。 */
 export class UsageAccumulator {
   #promptTokens = 0;
   #completionTokens = 0;

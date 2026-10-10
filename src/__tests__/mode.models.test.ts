@@ -5,14 +5,14 @@ import { NoopRunner } from "../ports/runner";
 describe("userModelsSchema", () => {
   it("accepts text and embedding model ids and empty string (reset)", () => {
     const result = userModelsSchema({
-      model: "minimax/m3",
-      embeddingModel: "@cf/google/embeddinggemma-300m",
+      model: "anthropic/claude-sonnet-4-6",
+      embeddingModel: "openai/text-embedding-3-small",
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toEqual({
-        model: "minimax/m3",
-        embeddingModel: "@cf/google/embeddinggemma-300m",
+        model: "anthropic/claude-sonnet-4-6",
+        embeddingModel: "openai/text-embedding-3-small",
       });
     }
   });
@@ -25,7 +25,7 @@ describe("userModelsSchema", () => {
     }
   });
 
-  it("rejects non-Workers-AI model ids", () => {
+  it("rejects non-provider model ids", () => {
     const result = userModelsSchema({ model: "gpt-4o" });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -34,10 +34,10 @@ describe("userModelsSchema", () => {
   });
 
   it("ignores unknown fields", () => {
-    const result = userModelsSchema({ bogus: "x/y", model: "minimax/m3" });
+    const result = userModelsSchema({ bogus: "x/y", model: "anthropic/claude-sonnet-4-6" });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toEqual({ model: "minimax/m3" });
+      expect(result.value).toEqual({ model: "anthropic/claude-sonnet-4-6" });
     }
   });
 });

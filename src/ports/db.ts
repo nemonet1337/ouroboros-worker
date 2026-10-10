@@ -1,7 +1,7 @@
 export type SqlParam = string | number | null;
 
 /**
- * Minimal SQL adapter satisfied by Cloudflare D1. Repositories build only
+ * Minimal SQL adapter satisfied by node:sqlite. Repositories build only
  * `?`-placeholder SQL.
  */
 export interface DbAdapter {

@@ -1,4 +1,4 @@
-import type { AiProvider } from "../ports";
+import type { AiProvider, LocalDecisionConfig } from "../ports";
 import { rankChunks, type CodeSnippet } from "./chunk.rank";
 import { pickFilesByLuna } from "./file.selector";
 import { tokenize } from "./tokenize";
@@ -149,6 +149,8 @@ export async function retrieveContext(opts: {
   targetPaths?: string[];
   /** 埋め込みモデル ID。省略時はプロバイダの既定。 */
   embedModel?: string;
+  /** ローカル Laya のファイル選択を使う設定。省略時はテキストモデル経路。 */
+  local?: LocalDecisionConfig & { fileSelection: boolean };
 }): Promise<RetrievalResult> {
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
   const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
@@ -161,6 +163,7 @@ export async function retrieveContext(opts: {
     repoMap: fileList,
     query: opts.instruction,
     maxFiles,
+    ...(opts.local ? { local: opts.local } : {}),
   });
 
   // Luna の回答だけだと品質が読めないため、embedding 順位付けの入力に足す。

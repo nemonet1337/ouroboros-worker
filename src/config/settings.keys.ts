@@ -3,7 +3,7 @@
  *
  * - selected_repo   : システム全体で 1 つの選択リポジトリ（"owner/name"）
  * - feature_flags   : 機能トグルの JSON（{ "code-needs-fix": true, ... }）
- * - routing_config  : Clef によるモデル階層ルーティングの設定
+ * - routing_config  : 難易度判定によるモデル階層ルーティングの設定
  */
 import { DEFAULT_ROUTING_CONFIG, parseRoutingConfig, type RoutingConfig } from "./routing";
 import type { SettingsRepository } from "../db/repositories";
@@ -72,7 +72,7 @@ export async function setFeatureFlags(
   await settings.set(FEATURE_FLAGS_KEY, JSON.stringify(flags));
 }
 
-/** Clef によるモデル階層ルーティング設定。未設定・不正値は既定値。 */
+/** 難易度判定によるモデル階層ルーティング設定。未設定・不正値は既定値。 */
 export async function getRoutingConfig(settings: SettingsRepository): Promise<RoutingConfig> {
   const raw = await settings.get(ROUTING_CONFIG_KEY);
   if (!raw) return { ...DEFAULT_ROUTING_CONFIG };

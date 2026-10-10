@@ -1,5 +1,6 @@
 export type GuiEventType =
   | "inspection.requested"
+  | "inspection.received"
   | "healing.requested"
   | "codegen.requested";
 
@@ -13,9 +14,9 @@ export interface GuiEvent {
 
 /**
  * Async ingestion of GUI-originated events.
- * Implementation: CfQueueAdapter (Cloudflare Queues).
+ * Implementation: MemoryQueue (in-process sequential worker).
  */
 export interface QueueAdapter {
-  readonly kind: "cf-queue";
+  readonly kind: "memory";
   send(event: GuiEvent): Promise<void>;
 }

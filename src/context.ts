@@ -4,17 +4,17 @@ import { Logger } from "./logging/logger";
 import { defaultHealingConfig } from "./config/healing.config";
 import type { Ports } from "./ports";
 import type { HealingConfig } from "./config/healing.config";
-import { DEFAULT_WORKERS_AI_MODEL } from "./config/deployment";
-import type { Env, VersionMetadata } from "./env";
-import { D1Adapter } from "./adapters/d1.adapter";
-import { CfQueueAdapter } from "./adapters/cf.queue";
-import { WorkersAiProvider } from "./adapters/workers-ai.provider";
-import { CfRateLimiter } from "./adapters/cf.ratelimiter";
-import { AiUsageTracker } from "./analytics/ai.usage.tracker";
+import type { AppConfig } from "./env";
+import { SqliteAdapter } from "./adapters/sqlite.adapter";
+import { MemoryQueue } from "./adapters/memory.queue";
+import { MemoryRateLimiter } from "./adapters/memory.ratelimiter";
+import { LlmGateway } from "./adapters/ai/gateway";
+import { handleGuiEvents } from "./queues/gui-events";
 import { UsageAccumulator } from "./analytics/usage.accumulator";
 import { SettingsRepository } from "./db/repositories";
 import { getSelectedRepo } from "./config/settings.keys";
 import { RepoRunner } from "./healing/repo.runner";
+import { runMigrations } from "./db/migrate";
 
 export interface WorkerContext {
   ports: Ports;
@@ -22,63 +22,68 @@ export interface WorkerContext {
   auth: AuthService;
   logger: Logger;
   /**
-   * OURO_REGISTRATION_ENABLED ã«ã‚ˆã‚‹ä¸Šæ›¸ãã€‚æœªè¨­å®šï¼ˆundefinedï¼‰ãªã‚‰ DB è¨­å®šã«å¾“ã†
+   * OURO_REGISTRATION_ENABLED ‚É‚æ‚éã‘‚«B–¢İ’èifalsej‚È‚ç DB İ’è‚É]‚¤
    */
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
-  analytics?: AiUsageTracker;
-  /** ã“ã®ã‚³ãƒ³ãƒ†ã‚­ã‚¹ãƒˆå¯¿å‘½ã® AI ãƒˆãƒ¼ã‚¯ãƒ³åˆè¨ˆï¼ˆWorkflow ã‚¹ãƒ†ãƒƒãƒ—ã”ã¨ã«æ–°ã—ã„ contextï¼‰ã€‚ */
+  /** ‚±‚ÌƒRƒ“ƒeƒLƒXƒgõ–½‚Ì AI ƒg[ƒNƒ“‡ŒvB */
   usage: UsageAccumulator;
-  versionMetadata?: VersionMetadata;
-  /** ç¾åœ¨ã®å¯¾è±¡ãƒªãƒã‚¸ãƒˆãƒªï¼ˆsettings.selected_repo å„ªå…ˆã§è§£æ±ºæ¸ˆã¿ï¼‰ã€‚ */
+  /** ‹N“®“úiversion •\¦—pjB */
+  startedAt: string;
+  /** Œ»İ‚Ì‘ÎÛƒŠƒ|ƒWƒgƒŠisettings.selected_repo —Dæ‚Å‰ğŒˆÏ‚İjB */
   currentRepo: { owner: string; repo: string };
-  /** å¯¾è±¡ãƒªãƒã‚¸ãƒˆãƒªã‚’å®Ÿè¡Œæ™‚ã«å·®ã—æ›¿ãˆã‚‹ï¼ˆvcs provider ã¨ config.vcs ã‚’ãƒŸãƒ¥ãƒ¼ãƒ†ãƒ¼ãƒˆï¼‰ã€‚ */
+  /** ‘ÎÛƒŠƒ|ƒWƒgƒŠ‚ğÀs‚É·‚µ‘Ö‚¦‚éivcs provider ‚Æ config.vcs ‚ğƒ~ƒ…[ƒe[ƒgjB */
   refreshRepo: (owner: string, repo: string) => void;
+  /** ƒvƒƒZƒX’â~‚É•Â‚¶‚é */
+  close(): Promise<void>;
 }
 
-export async function buildContext(env: Env): Promise<WorkerContext> {
-  const db = new D1Adapter(env.DB);
-  // å‡ºåŠ›å…ˆã¯ Workers Logsï¼ˆconsoleï¼‰ã®ã¿ã€‚æ°¸ç¶šåŒ–ã¯ Cloudflare Observability ã«ä»»ã›ã‚‹ã€‚
+export async function buildContext(config: AppConfig): Promise<WorkerContext> {
+  const db = new SqliteAdapter(config.dbPath);
+  await runMigrations(db);
+
+  // o—Íæ‚Í stdout ‚Ì‚İB
   const logger = new Logger({ minLevel: "info" });
 
-  // ã‚«ã‚¿ãƒ­ã‚°ãƒ¢ãƒ‡ãƒ«ã¯ AI bindingã€‚ãƒ‘ãƒ¼ãƒˆãƒŠãƒ¼ãƒ¢ãƒ‡ãƒ«ã®ã¿ RESTï¼ˆ401/403 å¾Œã¯ isolate å†…ã§ binding å›ºå®šï¼‰ã€‚
-  // WORKERS_AI_API_TOKEN ã¯ä»»æ„ã€‚GPT-6 ç³»ã¯ binding ã§å‹•ããŸã‚é€šå¸¸ã¯æœªè¨­å®šã€‚
-  const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : undefined;
   const usage = new UsageAccumulator();
-  const ai = new WorkersAiProvider(env.AI, {
-    model: DEFAULT_WORKERS_AI_MODEL,
-    apiToken: env.WORKERS_AI_API_TOKEN,
-    accountId: env.CLOUDFLARE_ACCOUNT_ID,
-    onUsage: (event) => {
-      usage.record(event);
-      analytics?.record(event);
-    },
+  const ai = new LlmGateway({
+    openaiKey: config.openaiKey,
+    anthropicKey: config.anthropicKey,
+    xaiKey: config.xaiKey,
+    openrouterKey: config.openrouterKey,
+    layaKey: config.layaKey,
+    onUsage: (event) => usage.record(event),
   });
 
-  const githubToken = env.GITHUB_TOKEN;
+  // ƒLƒ…[‚Í“¯‚¶ context ‚ğg‚¢‰ñ‚·ibuildContext ‚ÌƒXƒR[ƒvŠO‚É‚¿o‚¹‚È‚¢‚Ì‚Å
+  // Œã‚©‚ç assign ‚·‚éƒzƒ‹ƒ_‚ğ‰î‚µ‚ÄQÆ‚·‚éj
+  const ctxHolder: { ctx?: WorkerContext } = {};
+  const queue = new MemoryQueue({
+    onEvent: (event) => handleGuiEvents([event], config, ctxHolder.ctx),
+  });
+  const rateLimiter = new MemoryRateLimiter();
 
-  // å¯¾è±¡ãƒªãƒã‚¸ãƒˆãƒªã®è§£æ±ºé †:
-  //   1. settings.selected_repoï¼ˆD1ã€ã‚·ã‚¹ãƒ†ãƒ å…¨ä½“ã§ 1 ã¤ãƒ»æœ€å„ªå…ˆï¼‰
-  //   2. GITHUB_TOKEN ã‹ã‚‰ã®è‡ªå‹•æ¤œå‡º
+  // ‘ÎÛƒŠƒ|ƒWƒgƒŠ‚Ì‰ğŒˆ‡:
+  //   1. settings.selected_repoiƒVƒXƒeƒ€‘S‘Ì‚Å 1 ‚ÂEÅ—Dæj
+  //   2. GITHUB_TOKEN ‚©‚ç‚Ì©“®ŒŸo
   const settingsRepo = new SettingsRepository(db);
   const selected = await getSelectedRepo(settingsRepo).catch(() => null);
 
-  const resolved = selected ?? (githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null);
+  const resolved =
+    selected ??
+    (config.githubToken ? await GitHubProvider.resolveRepoFromToken(config.githubToken) : null);
   const currentRepo = { owner: resolved?.owner ?? "", repo: resolved?.repo ?? "" };
 
   const vcs = new GitHubProvider({
-    token: githubToken ?? "",
+    token: config.githubToken,
     owner: currentRepo.owner,
     repo: currentRepo.repo,
   });
 
-  const queue = new CfQueueAdapter(env.GUI_EVENTS);
-  const rateLimiter = new CfRateLimiter(env.RATE_LIMITER);
-
-  // å˜ä¸€ Worker å†…ã® RepoRunnerï¼ˆæ—§ runner Service Binding ã¯å»ƒæ­¢ï¼‰
+  // ’PˆêƒvƒƒZƒX“à‚Ì RepoRunneri“¯ˆê Worker “à Runner ‚Ì Node ”Åj
   const runner = new RepoRunner(vcs, ai, db);
 
-  const config: HealingConfig = {
+  const healingConfig: HealingConfig = {
     ...defaultHealingConfig,
     vcs: {
       ...defaultHealingConfig.vcs,
@@ -103,24 +108,28 @@ export async function buildContext(env: Env): Promise<WorkerContext> {
     currentRepo.owner = nextOwner;
     currentRepo.repo = nextRepo;
     vcs.setRepo(nextOwner, nextRepo);
-    config.vcs.owner = nextOwner;
-    config.vcs.repo = nextRepo;
+    healingConfig.vcs.owner = nextOwner;
+    healingConfig.vcs.repo = nextRepo;
   };
 
-  return {
+  const wctx: WorkerContext = {
     ports,
-    config,
+    config: healingConfig,
     auth,
     logger,
-    registrationEnabled:
-      env.OURO_REGISTRATION_ENABLED === undefined
-        ? undefined
-        : env.OURO_REGISTRATION_ENABLED === "true",
-    githubTokenSet: !!githubToken,
-    analytics,
+    registrationEnabled: config.registrationEnabled,
+    githubTokenSet: !!config.githubToken,
     usage,
-    versionMetadata: env.CF_VERSION_METADATA,
+    startedAt: config.startedAt,
     currentRepo,
     refreshRepo,
+    close: async () => {
+      await queue.drain(5_000).catch(() => undefined);
+      queue.stop();
+      rateLimiter.close();
+      db.close();
+    },
   };
+  ctxHolder.ctx = wctx;
+  return wctx;
 }

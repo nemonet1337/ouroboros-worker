@@ -21,7 +21,7 @@ export interface ResolvedRepo {
 
 /**
  * Fetch-based GitHub REST client implementing the VcsProvider port.
- * No Octokit dependency, so it runs on both Node 22 and Cloudflare Workers.
+ * No Octokit dependency, so it runs on Node 24 only.
  */
 export class GitHubProvider implements VcsProvider {
   readonly name = "github";
@@ -112,7 +112,7 @@ export class GitHubProvider implements VcsProvider {
   /**
    * リポジトリのテキストファイルを一括取得する（コードインデックス用）。
    * tarball を 1 リクエストで取得して展開する。blob 毎の API 呼び出しは
-   * Workers の subrequest 上限（無料プラン 50/呼び出し）を食い潰すため使わない。
+   * レート制限と転送量を食い潰すため使わない。
    * バイナリ拡張子・100KB 超・NUL を含むファイルはスキップ。
    */
   async getRepoFiles(maxFiles = 300, ref?: string): Promise<Array<{ path: string; content: string }>> {
@@ -123,7 +123,7 @@ export class GitHubProvider implements VcsProvider {
     if (!res.ok || !res.body) {
       throw new Error(`GitHub API GET /tarball -> ${res.status}: ${(await res.text()).slice(0, 300)}`);
     }
-    // ponytail: tarball 全体をメモリ展開（Workers メモリ上限 128MB が天井）。巨大リポジトリで溢れる場合はストリーミング解析へ
+    // ponytail: tarball 全体をメモリ展開。巨大リポジトリで溢れる場合はストリーミング解析へ
     const tar = new Uint8Array(
       await new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()
     );

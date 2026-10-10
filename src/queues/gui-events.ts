@@ -1,27 +1,40 @@
 import type { GuiEvent } from "../ports/queue";
-import type { Env } from "../env";
+import type { AppConfig } from "../env";
 import { buildContext } from "../context";
 import { SettingsRepository } from "../db/repositories";
 import { getRoutingConfig } from "../config/settings.keys";
 import { runInspectionPipeline } from "../inspection/pipeline";
 import { CodeSessionManager } from "../code/session.manager";
+import { runHealingLifecycle } from "../healing/lifecycle";
 
 /**
- * Cloudflare Queues consumer for GUI-originated events.
- * max_batch_size=1 前提。恒久エラーは ack して毒メッセージの無限リトライを防ぐ。
+ * GUI 起点イベントの処理。インメモリキューの逐次ワーカーから呼ばれる。
+ * 恒久エラーは投げっぱなしにせずログに残して次のイベントへ進む。
  */
-export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): Promise<void> {
-  const ctx = await buildContext(env);
+export async function handleGuiEvents(
+  events: GuiEvent[],
+  config: AppConfig,
+  ctxOverride?: ReturnType<typeof buildContext> extends Promise<infer T> ? T : never
+): Promise<void> {
+  const ctx = ctxOverride ?? (await buildContext(config));
   const log = ctx.logger.child("queue");
 
-  for (const message of batch.messages) {
-    const event = message.body;
+  for (const event of events) {
     try {
       switch (event.type) {
         case "healing.requested": {
-          await env.HEALING_WORKFLOW.create({
-            params: {
-              runId: String(event.payload.runId ?? crypto.randomUUID()),
+          const runId = String(event.payload.runId ?? "");
+          if (!runId) {
+            await log.error("healing.requested missing runId", {});
+            continue;
+          }
+          await log.info("started healing job", {
+            runId,
+            phase: String(event.payload.phase ?? "analyze"),
+          });
+          await runHealingLifecycle(
+            {
+              runId,
               dryRun: Boolean(event.payload.dryRun),
               trigger: String(event.payload.trigger ?? "gui"),
               phase: event.payload.phase === "fix" ? "fix" : "analyze",
@@ -29,11 +42,8 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
               instruction:
                 typeof event.payload.instruction === "string" ? event.payload.instruction : undefined,
             },
-          });
-          await log.info("started healing workflow", {
-            runId: event.payload.runId,
-            phase: String(event.payload.phase ?? "analyze"),
-          });
+            ctx
+          );
           break;
         }
         case "inspection.requested": {
@@ -41,7 +51,7 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           const userId = event.userId ?? "";
           if (!inspectionId || !userId) {
             await log.error("inspection.requested missing inspectionId/userId", {});
-            break;
+            continue;
           }
           await runInspectionPipeline({
             ctx,
@@ -57,11 +67,11 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
           const userId = event.userId ?? "";
           if (!sessionId || !userId) {
             await log.error("codegen.requested missing sessionId/userId", {});
-            break;
+            continue;
           }
           const settings = new SettingsRepository(ctx.ports.db);
           const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner);
-          // モデルが明示されていれば Clef を飛ばす。未指定なら Runner 側で判定する。
+          // モデルが明示されていれば判定を飛ばす。未指定なら Runner 側で判定する。
           const model = typeof event.payload.model === "string" ? event.payload.model : undefined;
           await manager.generate(sessionId, userId, {
             model,
@@ -74,16 +84,9 @@ export async function handleGuiEvents(batch: MessageBatch<GuiEvent>, env: Env): 
         default:
           await log.info("processed gui event", { type: event.type, id: event.id });
       }
-      message.ack();
     } catch (err) {
-      const reason = (err as Error).message ?? String(err);
+      const reason = err instanceof Error ? err.message : String(err);
       await log.error("gui event failed", { type: event.type, reason });
-      // 恒久エラーは ack（リトライしても直らない）
-      if (/not configured|not found|authentication required|canceled/i.test(reason)) {
-        message.ack();
-      } else {
-        message.retry();
-      }
     }
   }
 }

@@ -1,9 +1,9 @@
 /**
  * プロセス内 HealingRunner + CodeRunner。
  * 旧 ouroborous-runner Worker のロジックを統合したもの。
- * GitHub API は GitHubProvider、AI は AiProvider、セッション状態は D1 経由。
+ * GitHub API は GitHubProvider、AI は AiProvider、セッション状態は SQLite 経由。
  */
-import type { AiProvider } from "../ports/ai";
+import type { AiProvider, LocalDecisionConfig } from "../ports/ai";
 import type { DbAdapter } from "../ports/db";
 import type {
   CodeCommitResult,
@@ -22,8 +22,8 @@ import type {
 } from "../ports/runner";
 import type { Patch } from "../types";
 import type { GitHubProvider } from "../vcs/github.provider";
-import { DEFAULT_WORKERS_AI_MODEL, isWorkersAiModelId } from "../config/deployment";
-import { DEFAULT_ROUTING_CONFIG } from "../config/routing";
+import { DEFAULT_TEXT_MODEL, isProviderModelId } from "../config/deployment";
+import { DEFAULT_ROUTING_CONFIG, type RoutingConfig } from "../config/routing";
 import { assembleContext } from "../code/context.assembler";
 import { runHarness } from "../code/harness";
 import { verifyFix } from "../code/verifier";
@@ -32,6 +32,18 @@ import { pickFilesByLuna } from "../retrieval/file.selector";
 import { scanFiles } from "./scanner";
 
 export { parseGeneratedPatches } from "../code/parse.patches";
+
+/** ローカル Laya でファイル選択するときの接続先。未設定・無効なら undefined。 */
+function localFileSelectionConfig(
+  routing: RoutingConfig | undefined
+): (LocalDecisionConfig & { fileSelection: boolean }) | undefined {
+  if (!routing || routing.decisionBackend !== "local" || !routing.localFileSelection) return undefined;
+  return {
+    url: routing.localDecisionUrl,
+    model: routing.localDecisionModel,
+    fileSelection: true,
+  };
+}
 
 export class RepoRunner implements HealingRunner, CodeRunner {
   readonly kind = "local" as const;
@@ -99,7 +111,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
       );
 
       const model =
-        opts.model && isWorkersAiModelId(opts.model) ? opts.model : DEFAULT_WORKERS_AI_MODEL;
+        opts.model && isProviderModelId(opts.model) ? opts.model : DEFAULT_TEXT_MODEL;
 
       const findingQuery = opts.group.findings
         .map((f) => {
@@ -108,8 +120,8 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         })
         .join("\n");
 
-      // 関連ファイルは Luna に列挙させ、tarball から取り出した内容を使う
-      // （追加の readFileContent で subrequest を消費しない）。
+      // 関連ファイルはテキストモデル / ローカル Laya に列挙させ、tarball から
+      // 取り出した内容を使う（追加の readFileContent でラウンドトリップを増やさない）。
       const relatedSnippets: Array<{ file: string; startLine: number; endLine: number; text: string }> = [];
       const extraFiles: Array<{ path: string; content: string }> = [];
       const query = findingQuery || targetPaths.join(" ");
@@ -122,6 +134,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
             repoMap: [...byPath.keys()],
             query,
             maxFiles: 3,
+            ...(opts.routing ? { local: localFileSelectionConfig(opts.routing) } : {}),
           });
           for (const p of uniquePaths(picked).filter((p) => !targetPaths.includes(p)).slice(0, 3)) {
             const content = byPath.get(p);
@@ -461,7 +474,7 @@ export class RepoRunner implements HealingRunner, CodeRunner {
 
   async generate(opts: CodeGenerateOptions): Promise<CodeGenerateResult> {
     const explicitModel =
-      opts.model && isWorkersAiModelId(opts.model) ? opts.model : DEFAULT_WORKERS_AI_MODEL;
+      opts.model && isProviderModelId(opts.model) ? opts.model : DEFAULT_TEXT_MODEL;
 
     const session = await this.getSession(opts.sessionId);
     if (!session) return { patches: [], model: explicitModel, error: "session not found" };
@@ -487,16 +500,17 @@ export class RepoRunner implements HealingRunner, CodeRunner {
         maxFiles: 8,
         maxChars: 12_000,
         embedModel: config.embedModel,
+        local: localFileSelectionConfig(config),
       });
 
-      // 明示指定があれば Clef を飛ばす。無指定なら難易度で Luna / Sol を選ぶ。
+      // 明示指定があれば判定を飛ばす。無指定なら難易度で Efficiency / Performance を選ぶ。
       const route: RouteDecision | undefined = opts.modelOverride
         ? {
             model: explicitModel,
             reasoningEffort: opts.reasoningEffort ?? config.efficiencyEffort,
             difficulty: null,
             tier: "unknown",
-            clefAvailable: false,
+            decisionAvailable: false,
           }
         : await decideRoute({
             ai: this.ai,

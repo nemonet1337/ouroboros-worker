@@ -1,4 +1,4 @@
-// PBKDF2-SHA256 via WebCrypto. Workers caps iterations at 100,000.
+// PBKDF2-SHA256 via WebCrypto.
 
 const ITERATIONS = 100_000;
 const KEY_LEN = 32;

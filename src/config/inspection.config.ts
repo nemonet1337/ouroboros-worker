@@ -1,6 +1,6 @@
 import { InspectionAspect, InspectionCategory } from "../types";
 import { ASPECTS_BY_CATEGORY } from "../inspection/aspects";
-import { DEFAULT_WORKERS_AI_MODEL } from "./deployment";
+import { DEFAULT_TEXT_MODEL } from "./deployment";
 
 export interface InspectionConfig {
   ai: {
@@ -46,39 +46,39 @@ export const DEFAULT_WEIGHTS: Record<InspectionCategory, number> = {
  * higher-impact aspects within each category.
  */
 export const DEFAULT_ASPECT_WEIGHTS: Record<InspectionAspect, number> = {
-  // security — 0.25
+  // security  E0.25
   injection: 0.06,
   authn_authz: 0.055,
   secrets: 0.045,
   input_validation: 0.045,
   deps_supply_chain: 0.025,
   crypto_transport: 0.02,
-  // performance — 0.20
+  // performance  E0.20
   algo_complexity: 0.06,
   memory_alloc: 0.04,
   async_concurrency: 0.045,
   io_network: 0.035,
   caching: 0.02,
-  // redundancy — 0.15
+  // redundancy  E0.15
   duplication: 0.045,
   dead_code: 0.03,
   over_engineering: 0.035,
   redundant_compute: 0.02,
   dep_bloat: 0.02,
-  // readability — 0.15
+  // readability  E0.15
   naming: 0.035,
   cognitive_complexity: 0.04,
   comments_docs: 0.025,
   formatting_consistency: 0.02,
   idiomatic_usage: 0.03,
-  // design — 0.15
+  // design  E0.15
   srp_cohesion: 0.03,
   coupling: 0.03,
   abstraction_interface: 0.025,
   error_handling: 0.03,
   modularity_extensibility: 0.02,
   pattern_fit: 0.015,
-  // correctness — 0.10
+  // correctness  E0.10
   logic_intent: 0.035,
   edge_cases: 0.025,
   null_boundary: 0.02,
@@ -110,7 +110,7 @@ export function deriveCategoryWeights(
 
 export const defaultInspectionConfig: InspectionConfig = {
   ai: {
-    model: DEFAULT_WORKERS_AI_MODEL,
+    model: DEFAULT_TEXT_MODEL,
     maxTokens: 8192,
     maxRetries: 1,
   },
