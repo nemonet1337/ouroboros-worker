@@ -185,6 +185,44 @@ describe("InspectionEngine.inspect", () => {
     await expect(engine.inspect(makeRequest())).rejects.toThrow("persistent error");
   });
 
+  it("does not fan out per file when the provider itself is failing", async () => {
+    mockComplete.mockRejectedValue(
+      new Error("AiGatewayError: 2021: Insufficient AI Gateway credits")
+    );
+    const engine = new InspectionEngine(mockProvider(), {
+      ai: { model: "claude-sonnet-4-6", maxTokens: 8192, maxRetries: 1 },
+    });
+    const req = makeRequest({
+      files: [
+        { path: "a.ts", content: "const a = 1;" },
+        { path: "b.ts", content: "const b = 2;" },
+      ],
+    });
+    await expect(engine.inspect(req)).rejects.toThrow("Insufficient AI Gateway credits");
+    // 批量の 2 試行で打ち切る（per-file 再降格なら +12 回になる）
+    expect(mockComplete).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back per file when the batch prompt is too large", async () => {
+    mockComplete
+      .mockRejectedValueOnce(
+        new Error("AiGatewayError: This model's maximum context length is 8192 tokens")
+      )
+      .mockResolvedValue(jsonResponse());
+    const engine = new InspectionEngine(mockProvider(), {
+      ai: { model: "claude-sonnet-4-6", maxTokens: 8192, maxRetries: 0 },
+    });
+    const req = makeRequest({
+      files: [
+        { path: "a.ts", content: "const a = 1;" },
+        { path: "b.ts", content: "const b = 2;" },
+      ],
+    });
+    const result = await engine.inspect(req);
+    expect(result.files.length).toBeGreaterThan(0);
+    expect(mockComplete).toHaveBeenCalledTimes(3); // 批量 1 回 + per-file 2 回
+  });
+
   it("builds per-function results when the AI returns a functions array", async () => {
     const base = defaultOutput();
     const file = (base.files as Record<string, unknown>[])[0];

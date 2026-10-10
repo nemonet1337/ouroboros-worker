@@ -18,8 +18,12 @@ export const EMBED_BATCH_LIMIT = 32;
 /** Luna がファイル候補として列挙する上限。 */
 export const FILE_PICK_MAX = 24;
 
-/** Worker 内 cosine の計算量ガード。超過分は先頭へ切り詰める。 */
-export const MAX_RANKED_CHUNKS = 200;
+/**
+ * Worker 内 cosine の計算量ガード。超過分は先頭へ切り詰める。
+ * embedding は 32 件ずつ 1 subrequest なので、上限値は subrequest 数の 3 倍。
+ * （200 にすると 1 回の検索で 7 回叩き、1 invocation の予算を圧迫する）
+ */
+export const MAX_RANKED_CHUNKS = 96;
 
 export function isEmbeddingTask(task: string | undefined): boolean {
   return !!task && /embed/i.test(task);

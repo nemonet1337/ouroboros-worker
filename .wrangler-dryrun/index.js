@@ -2724,7 +2724,9 @@ function usageTotals(summary) {
     analyze: {
       model: analysis?.model || index?.model || "",
       promptTokens: (index?.promptTokens ?? 0) + (analysis?.promptTokens ?? 0),
-      completionTokens: (index?.completionTokens ?? 0) + (analysis?.completionTokens ?? 0)
+      completionTokens: (index?.completionTokens ?? 0) + (analysis?.completionTokens ?? 0),
+      cachedTokens: (index?.cachedTokens ?? 0) + (analysis?.cachedTokens ?? 0),
+      cacheWriteTokens: (index?.cacheWriteTokens ?? 0) + (analysis?.cacheWriteTokens ?? 0)
     },
     fix: summary.fix?.usage ?? zero
   };
@@ -2971,9 +2973,11 @@ var HealingRunRepository = class {
       `INSERT INTO healing_runs (
          id, user_id, status, trigger, workflow_id, summary, tag,
          inspection_id, model, prompt_tokens, completion_tokens,
+         cached_prompt_tokens, cache_write_prompt_tokens,
          fix_model, fix_prompt_tokens, fix_completion_tokens,
+         fix_cached_prompt_tokens, fix_cache_write_prompt_tokens,
          created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.id,
         row.user_id,
@@ -2986,9 +2990,13 @@ var HealingRunRepository = class {
         row.model ?? null,
         row.prompt_tokens ?? 0,
         row.completion_tokens ?? 0,
+        row.cached_prompt_tokens ?? 0,
+        row.cache_write_prompt_tokens ?? 0,
         row.fix_model ?? null,
         row.fix_prompt_tokens ?? 0,
         row.fix_completion_tokens ?? 0,
+        row.fix_cached_prompt_tokens ?? 0,
+        row.fix_cache_write_prompt_tokens ?? 0,
         row.created_at,
         row.updated_at
       ]
@@ -3009,9 +3017,25 @@ var HealingRunRepository = class {
     assign("model", patch.model, patch.model !== void 0);
     assign("prompt_tokens", patch.prompt_tokens, patch.prompt_tokens !== void 0);
     assign("completion_tokens", patch.completion_tokens, patch.completion_tokens !== void 0);
+    assign("cached_prompt_tokens", patch.cached_prompt_tokens, patch.cached_prompt_tokens !== void 0);
+    assign(
+      "cache_write_prompt_tokens",
+      patch.cache_write_prompt_tokens,
+      patch.cache_write_prompt_tokens !== void 0
+    );
     assign("fix_model", patch.fix_model, patch.fix_model !== void 0);
     assign("fix_prompt_tokens", patch.fix_prompt_tokens, patch.fix_prompt_tokens !== void 0);
     assign("fix_completion_tokens", patch.fix_completion_tokens, patch.fix_completion_tokens !== void 0);
+    assign(
+      "fix_cached_prompt_tokens",
+      patch.fix_cached_prompt_tokens,
+      patch.fix_cached_prompt_tokens !== void 0
+    );
+    assign(
+      "fix_cache_write_prompt_tokens",
+      patch.fix_cache_write_prompt_tokens,
+      patch.fix_cache_write_prompt_tokens !== void 0
+    );
     sets.push("updated_at = ?");
     params.push(Date.now());
     params.push(id);
@@ -5894,6 +5918,11 @@ var MIGRATIONS = [
       `ALTER TABLE code_sessions DROP COLUMN plan`,
       `ALTER TABLE code_sessions DROP COLUMN mode`,
       `ALTER TABLE users DROP COLUMN mode_models`,
+      // プロンプトキャッシュのヒット分を保持して UI で可視化する
+      `ALTER TABLE healing_runs ADD COLUMN cached_prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN cache_write_prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN fix_cached_prompt_tokens INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE healing_runs ADD COLUMN fix_cache_write_prompt_tokens INTEGER NOT NULL DEFAULT 0`,
       // Vectorize 廃止の設定キー
       `DELETE FROM settings WHERE key = 'embedding_model'`,
       `DELETE FROM settings WHERE key = 'code_index_status'`
@@ -6658,22 +6687,30 @@ var UsageAccumulator = class {
   }
   #promptTokens = 0;
   #completionTokens = 0;
+  #cachedTokens = 0;
+  #cacheWriteTokens = 0;
   #model = "";
   record(event) {
     this.#promptTokens += event.promptTokens;
     this.#completionTokens += event.completionTokens;
+    this.#cachedTokens += event.cachedTokens ?? 0;
+    this.#cacheWriteTokens += event.cacheWriteTokens ?? 0;
     if (event.model) this.#model = event.model;
   }
   snapshot() {
     return {
       model: this.#model,
       promptTokens: this.#promptTokens,
-      completionTokens: this.#completionTokens
+      completionTokens: this.#completionTokens,
+      cachedTokens: this.#cachedTokens,
+      cacheWriteTokens: this.#cacheWriteTokens
     };
   }
   reset() {
     this.#promptTokens = 0;
     this.#completionTokens = 0;
+    this.#cachedTokens = 0;
+    this.#cacheWriteTokens = 0;
     this.#model = "";
   }
 };
@@ -8117,19 +8154,18 @@ __name(formatRelated, "formatRelated");
 async function buildContext(env) {
   const db = new D1Adapter(env.DB);
   const logger = new Logger({ minLevel: "info" });
-  const workersAiApiToken = env.WORKERS_AI_TOKEN_SECRET ? await env.WORKERS_AI_TOKEN_SECRET.get() : env.WORKERS_AI_API_TOKEN;
   const analytics = env.AI_ANALYTICS ? new AiUsageTracker(env.AI_ANALYTICS) : void 0;
   const usage = new UsageAccumulator();
   const ai = new WorkersAiProvider(env.AI, {
     model: DEFAULT_WORKERS_AI_MODEL,
-    apiToken: workersAiApiToken,
+    apiToken: env.WORKERS_AI_API_TOKEN,
     accountId: env.CLOUDFLARE_ACCOUNT_ID,
     onUsage: /* @__PURE__ */ __name((event) => {
       usage.record(event);
       analytics?.record(event);
     }, "onUsage")
   });
-  const githubToken = env.GITHUB_TOKEN_SECRET ? await env.GITHUB_TOKEN_SECRET.get() : env.GITHUB_TOKEN;
+  const githubToken = env.GITHUB_TOKEN;
   const settingsRepo = new SettingsRepository(db);
   const selected = await getSelectedRepo(settingsRepo).catch(() => null);
   const resolved = selected ?? (githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null);
@@ -11241,15 +11277,20 @@ __name(runsUrl, "runsUrl");
 function TokenLine(props) {
   const prompt = props.prompt ?? 0;
   const completion = props.completion ?? 0;
+  const cached = props.cached ?? 0;
+  const cacheWrite = props.cacheWrite ?? 0;
   if (!props.model && prompt === 0 && completion === 0) return null;
+  const cacheNote2 = cached > 0 ? ` \xB7 cache ${cached.toLocaleString()} (${prompt > 0 ? Math.round(cached / prompt * 100) : 0}%)` : cacheWrite > 0 ? ` \xB7 cache write ${cacheWrite.toLocaleString()}` : "";
   return /* @__PURE__ */ jsxDEV("div", { class: "text-xs opacity-60 font-mono truncate", title: props.model ?? "", children: [
     props.label,
     ": ",
     props.model ? props.model.replace(/^@[^/]+\//, "") : "\u2014",
     " \xB7 in ",
     prompt,
-    " / out ",
-    completion
+    " / out",
+    " ",
+    completion,
+    cacheNote2
   ] });
 }
 __name(TokenLine, "TokenLine");
@@ -11386,7 +11427,9 @@ var HealingRunList = /* @__PURE__ */ __name(({
                     label: "\u89E3\u6790",
                     model: run.model,
                     prompt: run.prompt_tokens,
-                    completion: run.completion_tokens
+                    completion: run.completion_tokens,
+                    cached: run.cached_prompt_tokens,
+                    cacheWrite: run.cache_write_prompt_tokens
                   }
                 ),
                 (run.fix_model || run.fix_prompt_tokens || run.fix_completion_tokens) && /* @__PURE__ */ jsxDEV(
@@ -11395,7 +11438,9 @@ var HealingRunList = /* @__PURE__ */ __name(({
                     label: "\u4FEE\u5FA9",
                     model: run.fix_model,
                     prompt: run.fix_prompt_tokens,
-                    completion: run.fix_completion_tokens
+                    completion: run.fix_completion_tokens,
+                    cached: run.fix_cached_prompt_tokens,
+                    cacheWrite: run.fix_cache_write_prompt_tokens
                   }
                 )
               ] })
@@ -11475,7 +11520,13 @@ var HealingFixModalBody = /* @__PURE__ */ __name(({ run }) => {
               "in ",
               run.prompt_tokens ?? 0,
               " / out ",
-              run.completion_tokens ?? 0
+              run.completion_tokens ?? 0,
+              (run.cached_prompt_tokens ?? 0) > 0 && /* @__PURE__ */ jsxDEV("span", { class: "opacity-70", children: [
+                " ",
+                "\xB7 cache ",
+                (run.cached_prompt_tokens ?? 0).toLocaleString(),
+                run.prompt_tokens ? ` (${Math.round((run.cached_prompt_tokens ?? 0) / run.prompt_tokens * 100)}%)` : ""
+              ] })
             ] })
           ] }),
           /* @__PURE__ */ jsxDEV("div", { children: [
@@ -12485,6 +12536,18 @@ var RadarChart = /* @__PURE__ */ __name(({ scores, size = 280 }) => {
 }, "RadarChart");
 
 // src/ui/pages/healing-analysis.tsx
+function cacheNote(prompt, cached, cacheWrite) {
+  const hit = cached ?? 0;
+  if (hit > 0) {
+    const total = prompt ?? 0;
+    const pct = total > 0 ? Math.round(hit / total * 100) : 0;
+    return ` \xB7 cache ${hit.toLocaleString()} (${pct}%)`;
+  }
+  const write = cacheWrite ?? 0;
+  if (write > 0) return ` \xB7 cache write ${write.toLocaleString()}`;
+  return null;
+}
+__name(cacheNote, "cacheNote");
 var HealingAnalysisPage = /* @__PURE__ */ __name(({ user, run, result }) => {
   const summary = parseHealingSummary(run.summary);
   const status = HEALING_STATUS_LABELS[run.status] ?? { label: run.status, class: "badge-ghost" };
@@ -12532,7 +12595,8 @@ var HealingAnalysisPage = /* @__PURE__ */ __name(({ user, run, result }) => {
             run.prompt_tokens ?? 0,
             " / out",
             " ",
-            run.completion_tokens ?? 0
+            run.completion_tokens ?? 0,
+            cacheNote(run.prompt_tokens, run.cached_prompt_tokens, run.cache_write_prompt_tokens)
           ] }),
           (run.fix_model || run.fix_prompt_tokens) && /* @__PURE__ */ jsxDEV("span", { children: [
             "\u4FEE\u5FA9\u30E2\u30C7\u30EB: ",
@@ -12541,7 +12605,12 @@ var HealingAnalysisPage = /* @__PURE__ */ __name(({ user, run, result }) => {
             run.fix_prompt_tokens ?? 0,
             " / out",
             " ",
-            run.fix_completion_tokens ?? 0
+            run.fix_completion_tokens ?? 0,
+            cacheNote(
+              run.fix_prompt_tokens,
+              run.fix_cached_prompt_tokens,
+              run.fix_cache_write_prompt_tokens
+            )
           ] }),
           summary.index && /* @__PURE__ */ jsxDEV("span", { children: [
             "\u30A4\u30F3\u30C7\u30C3\u30AF\u30B9: ",
@@ -13113,7 +13182,7 @@ var AdminPage = /* @__PURE__ */ __name(({ user }) => {
 }, "AdminPage");
 
 // src/index.tsx
-import tailwindCss from "./3674cd3849668ec8089c6f6a8eae4eeb8c8eae7a-tailwind.generated.css";
+import tailwindCss from "./c954c9f5c5254979ad5cb08aad5e5d84d0fe8961-tailwind.generated.css";
 
 // src/workflows/healing.ts
 import { WorkflowEntrypoint } from "cloudflare:workers";
@@ -13218,9 +13287,19 @@ function groupsFromAnalysis(inspection, scan, maxGroups = MAX_GROUPS) {
 __name(groupsFromAnalysis, "groupsFromAnalysis");
 
 // src/healing/persist.ts
+function toUsage(snap, model) {
+  return {
+    model: snap.model || model,
+    promptTokens: snap.promptTokens,
+    completionTokens: snap.completionTokens,
+    cachedTokens: snap.cachedTokens,
+    cacheWriteTokens: snap.cacheWriteTokens
+  };
+}
+__name(toUsage, "toUsage");
 async function persistAnalyzeUsage(runs, run, step, snap, model) {
   const summary = parseHealingSummary(run.summary);
-  const usage = { model: snap.model || model, promptTokens: snap.promptTokens, completionTokens: snap.completionTokens };
+  const usage = toUsage(snap, model);
   if (step === "index") {
     summary.index = { ...summary.index ?? { files: 0, chunks: 0 }, usage };
   } else {
@@ -13240,18 +13319,22 @@ async function persistAnalyzeUsage(runs, run, step, snap, model) {
     summary: JSON.stringify(summary),
     model: totals.analyze.model || model,
     prompt_tokens: totals.analyze.promptTokens,
-    completion_tokens: totals.analyze.completionTokens
+    completion_tokens: totals.analyze.completionTokens,
+    cached_prompt_tokens: totals.analyze.cachedTokens ?? 0,
+    cache_write_prompt_tokens: totals.analyze.cacheWriteTokens ?? 0
   });
 }
 __name(persistAnalyzeUsage, "persistAnalyzeUsage");
 async function persistFixUsage(runs, run, snap, model) {
-  const usage = { model: snap.model || model, promptTokens: snap.promptTokens, completionTokens: snap.completionTokens };
+  const usage = toUsage(snap, model);
   const summary = mergeHealingSummary(run.summary, { fix: { usage } });
   await runs.update(run.id, {
     summary,
     fix_model: usage.model,
     fix_prompt_tokens: usage.promptTokens,
-    fix_completion_tokens: usage.completionTokens
+    fix_completion_tokens: usage.completionTokens,
+    fix_cached_prompt_tokens: usage.cachedTokens,
+    fix_cache_write_prompt_tokens: usage.cacheWriteTokens
   });
 }
 __name(persistFixUsage, "persistFixUsage");
@@ -13763,9 +13846,13 @@ function makeTriggerHealing(env, ctx) {
       model: null,
       prompt_tokens: 0,
       completion_tokens: 0,
+      cached_prompt_tokens: 0,
+      cache_write_prompt_tokens: 0,
       fix_model: null,
       fix_prompt_tokens: 0,
       fix_completion_tokens: 0,
+      fix_cached_prompt_tokens: 0,
+      fix_cache_write_prompt_tokens: 0,
       created_at: now,
       updated_at: now
     });

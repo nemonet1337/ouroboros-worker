@@ -18,12 +18,12 @@
     "hono": "^4.13.12"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261001.1",
+    "@cloudflare/workers-types": "^5.20261003.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.4",
-    "tailwindcss": "^4.3.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
-    "wrangler": "^4.146.0"
+    "wrangler": "^4.147.0"
   }
 }
