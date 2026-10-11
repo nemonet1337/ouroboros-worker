@@ -15,6 +15,11 @@ if [ -n "${D1_DATABASE_ID:-}" ]; then
 fi
 
 if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ] || [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+  # 未解決のままデプロイすると D1 バインディングの検証（10021）で失敗するため、ここで落とす
+  if grep -q '^database_id = "PLACEHOLDER"' wrangler.toml; then
+    echo "ERROR: database_id を解決できませんでした。D1_DATABASE_ID を設定してください" >&2
+    exit 1
+  fi
   echo "WARNING: CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN is not set. Skipping D1 database_id resolution." >&2
   exit 0
 fi

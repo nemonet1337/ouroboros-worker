@@ -10,7 +10,7 @@
     "build:css": "tailwindcss -i src/ui/styles/tailwind.source.css -o src/ui/styles/tailwind.generated.css --minify && node scripts/copy-assets.mjs",
     "dev": "npm run build:css && tsx src/server.ts",
     "start": "tsx src/server.ts",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && bash scripts/resolve-d1.sh && wrangler deploy",
     "d1:migrate": "wrangler d1 migrations apply ouroboros --remote"
   },
   "engines": {

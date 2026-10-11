@@ -12,6 +12,8 @@ enabled = true
 # database_id は secret 相当なのでコミットしない。デプロイ前に
 #   scripts/resolve-d1.sh
 # で解決する（D1_DATABASE_ID を直接置くこともできる）。
+# Workers Builds では Deploy command の `npm run deploy` がこのスクリプトを
+# 実行し、D1_DATABASE_ID はビルド変数（Settings → Environment variables）で与える。
 [[d1_databases]]
 binding = "DB"
 database_name = "ouroboros"
