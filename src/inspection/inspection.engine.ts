@@ -1,5 +1,5 @@
 import { createPatch } from "diff";
-import type { AiProvider } from "../ports/ai";
+import type { AiProvider } from "../ai/types";
 import {
   FileResult,
   FunctionResult,

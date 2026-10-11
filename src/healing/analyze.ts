@@ -1,6 +1,6 @@
 import type { WorkerContext } from "../context";
 import { HealingRunRepository, InspectionRepository } from "../db/repositories";
-import type { GitHubProvider } from "../vcs/github.provider";
+import type { GitHubProvider } from "../core/vcs";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import { detectLanguage, MAX_ANALYSIS_FILES } from "../inspection/pipeline";

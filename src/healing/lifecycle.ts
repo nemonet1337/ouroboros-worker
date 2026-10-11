@@ -4,7 +4,6 @@ import { buildContext, type WorkerContext } from "../context";
 import { inspectHealingRun, scanHealingRun } from "../healing/analyze";
 import { fixHealingRun } from "../healing/fix";
 import { mergeHealingSummary } from "../healing/summary";
-import { randomUUID } from "node:crypto";
 
 export interface HealingParams {
   runId: string;
@@ -50,7 +49,7 @@ export class HealingLifecycle {
     const { runId } = this.opts.params;
     const ctx = this.opts.ctx;
     try {
-      await this.#runs.update(runId, { workflow_id: `job_${randomUUID()}` });
+      await this.#runs.update(runId, { workflow_id: `job_${crypto.randomUUID()}` });
       await this.#execute(ctx);
     } catch (err) {
       if (isCanceled(err) || isPermanentError(err)) {

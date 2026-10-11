@@ -6,9 +6,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:css": "tailwindcss -i src/ui/styles/tailwind.source.css -o src/ui/styles/tailwind.generated.css --minify",
+    "build": "npm run build:css",
+    "build:css": "tailwindcss -i src/ui/styles/tailwind.source.css -o src/ui/styles/tailwind.generated.css --minify && node scripts/copy-assets.mjs",
     "dev": "npm run build:css && tsx src/server.ts",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "deploy": "npm run build && wrangler deploy",
+    "d1:migrate": "wrangler d1 migrations apply ouroboros --remote"
   },
   "engines": {
     "node": ">=24"
@@ -18,11 +21,13 @@
     "hono": "^4.13.12"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261010.1",
     "@tailwindcss/cli": "^4.3.3",
     "@types/node": "^26.6.4",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
-    "tsx": "^4.20.6"
+    "wrangler": "^4.149.0"
   }
 }

@@ -1,9 +1,9 @@
-import type { DbAdapter } from "../ports/db";
-import type { CodeRunner } from "../ports/runner";
+import type { DbAdapter } from "../db/adapter";
+import type { CodeRunner } from "../core/runner";
 import type { CodeSessionStatus, CodeSessionRow, Patch } from "../types";
-import type { VcsProvider } from "../ports/vcs";
+import type { VcsProvider } from "../core/vcs";
 import type { RoutingConfig } from "../config/routing";
-import type { RouteDecision } from "../routing/model.router";
+import type { RouteDecision } from "../ai/router";
 
 export interface CreateSessionOpts {
   userId: string;

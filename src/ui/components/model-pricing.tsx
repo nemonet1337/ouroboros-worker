@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import type { AiModelInfo } from "../../ports/ai";
+import type { AiModelInfo } from "../../ai/types";
 
 function formatPrice(price: number, currency: string): string {
   try {

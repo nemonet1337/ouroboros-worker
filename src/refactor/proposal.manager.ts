@@ -1,7 +1,7 @@
-import type { AiProvider } from "../ports/ai";
-import type { DbAdapter } from "../ports/db";
-import type { VcsProvider } from "../ports/vcs";
-import type { CodeRunner } from "../ports/runner";
+import type { AiProvider } from "../ai/types";
+import type { DbAdapter } from "../db/adapter";
+import type { VcsProvider } from "../core/vcs";
+import type { CodeRunner } from "../core/runner";
 
 export class ProposalManager {
   constructor(

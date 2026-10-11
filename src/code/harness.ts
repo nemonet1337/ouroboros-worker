@@ -1,4 +1,4 @@
-import type { AiProvider } from "../ports/ai";
+import type { AiProvider } from "../ai/types";
 import type { HarnessTrace, Patch } from "../types";
 import type { AssembledContext } from "./context.assembler";
 import { buildCodeGenPrompt } from "./prompt.templates";

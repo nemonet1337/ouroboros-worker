@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import type { GuiEvent } from "./core/events";
 
 export interface AppConfig {
   githubToken: string;
@@ -11,8 +12,55 @@ export interface AppConfig {
   port: number;
   dbPath: string;
   dataDir: string;
+  /**
+   * DB ドライバー。`sqlite`（既定）は node:sqlite でプロセス内臓、
+   * `rqlite` は別コンテナの rqlite（SQLite の HTTP サービス）に接続する。
+   */
+  dbDriver: "sqlite" | "rqlite";
+  /** rqlite ドライバーの HTTP エンドポイント。既定 `http://127.0.0.1:4001`。 */
+  rqliteUrl: string;
   registrationEnabled: boolean;
   startedAt: string;
+}
+
+/**
+ * Cloudflare バインディング（wrangler.toml の d1/queues と `wrangler secret put` のシークレット）。
+ * Node 側の `.env` に対応するもので、ビジネスロジックは AppConfig に正規化されてから使う。
+ */
+export interface CloudflareBindings {
+  DB: D1Database;
+  GUI_EVENTS: Queue<GuiEvent>;
+  GITHUB_TOKEN?: string;
+  OPENAI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  XAI_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  LAYA_API_KEY?: string;
+  /** "true" で公開登録を許可。未設定なら DB 設定に従う。 */
+  OURO_REGISTRATION_ENABLED?: string;
+}
+
+/**
+ * Cloudflare バインディングを AppConfig に正規化する。
+ * port / dbPath / dataDir は Workers では使わないので空値。
+ * dbDriver は Cloudflare では無意味（buildContextFromBindings が D1 を使う）。
+ */
+export function configFromBindings(env: CloudflareBindings): AppConfig {
+  return {
+    githubToken: env.GITHUB_TOKEN ?? "",
+    openaiKey: env.OPENAI_API_KEY,
+    anthropicKey: env.ANTHROPIC_API_KEY,
+    xaiKey: env.XAI_API_KEY,
+    openrouterKey: env.OPENROUTER_API_KEY,
+    layaKey: env.LAYA_API_KEY,
+    port: 0,
+    dbPath: "",
+    dataDir: "",
+    dbDriver: "sqlite",
+    rqliteUrl: "",
+    registrationEnabled: (env.OURO_REGISTRATION_ENABLED ?? "").toLowerCase() === "true",
+    startedAt: new Date().toISOString(),
+  };
 }
 
 export function loadConfig(): AppConfig {
@@ -49,6 +97,8 @@ export function loadConfig(): AppConfig {
   mkdirSync(resolve(dataDir), { recursive: true });
 
   const dbPath = process.env.OURO_DB_PATH ?? resolve(dataDir, "ouroboros.sqlite");
+  const dbDriver = (process.env.OURO_DB ?? "sqlite").trim().toLowerCase() === "rqlite" ? "rqlite" : "sqlite";
+  const rqliteUrl = process.env.OURO_RQLITE_URL ?? "http://127.0.0.1:4001";
   const registrationEnabled = (process.env.OURO_REGISTRATION_ENABLED ?? "").toLowerCase() === "true";
   const startedAt = new Date().toISOString();
 
@@ -62,6 +112,8 @@ export function loadConfig(): AppConfig {
     port,
     dbPath,
     dataDir: resolve(dataDir),
+    dbDriver,
+    rqliteUrl,
     registrationEnabled,
     startedAt,
   };

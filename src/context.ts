@@ -1,20 +1,43 @@
-import { GitHubProvider } from "./vcs/github.provider";
+import { GitHubProvider } from "./core/vcs";
 import { AuthService } from "./auth/service";
-import { Logger } from "./logging/logger";
+import { Logger } from "./core/logger";
 import { defaultHealingConfig } from "./config/healing.config";
-import type { Ports } from "./ports";
+import type { DbAdapter } from "./db/adapter";
+import type { AiProvider } from "./ai/types";
+import type { VcsProvider } from "./core/vcs";
+import type { HealingRunner, CodeRunner } from "./core/runner";
 import type { HealingConfig } from "./config/healing.config";
-import type { AppConfig } from "./env";
-import { SqliteAdapter } from "./adapters/sqlite.adapter";
-import { MemoryQueue } from "./adapters/memory.queue";
-import { MemoryRateLimiter } from "./adapters/memory.ratelimiter";
-import { LlmGateway } from "./adapters/ai/gateway";
-import { handleGuiEvents } from "./queues/gui-events";
-import { UsageAccumulator } from "./analytics/usage.accumulator";
+import type { AppConfig, CloudflareBindings } from "./env";
+import { configFromBindings } from "./env";
+import { MemoryRateLimiter } from "./core/ratelimit";
+import { RqliteAdapter } from "./db/rqlite";
+import { LlmGateway } from "./ai/gateway";
+import { handleGuiEvents } from "./core/gui-events";
+import type { GuiEvent } from "./core/events";
+import { EventDispatcher } from "./core/dispatch";
+import { UsageAccumulator } from "./core/usage";
 import { SettingsRepository } from "./db/repositories";
 import { getSelectedRepo } from "./config/settings.keys";
 import { RepoRunner } from "./healing/repo.runner";
-import { runMigrations } from "./db/migrate";
+
+/** ï¿½Nï¿½ï¿½ï¿½^ï¿½[ï¿½Qï¿½bï¿½gï¿½B/version ï¿½ï¿½ /models ï¿½ï¿½ï¿½ñ‚ï¿½ï¿½ï¿½B */
+export type DeployTarget = "node" | "cloudflare";
+
+/**
+ * The full set of platform adapters an Ouroboros deployment wires up.
+ * Node ï¿½ï¿½ EventDispatcher ï¿½oï¿½Rï¿½ï¿½ in-process ï¿½ï¿½ï¿½ï¿½ï¿½zï¿½ï¿½ï¿½ACloudflare ï¿½ï¿½
+ * Queue ï¿½oï¿½Cï¿½ï¿½ï¿½fï¿½Bï¿½ï¿½ï¿½Oï¿½Ö‚ï¿½ send ï¿½ï¿½ `emit` ï¿½É•ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß‚ï¿½B
+ */
+export interface Ports {
+  ai: AiProvider;
+  vcs: VcsProvider;
+  db: DbAdapter;
+  /** GUI ï¿½Nï¿½_ï¿½Cï¿½xï¿½ï¿½ï¿½gï¿½Ì“ï¿½ï¿½ï¿½ï¿½iNode: ï¿½ï¿½ï¿½ï¿½ dispatch / Cloudflare: CF Queuesï¿½jï¿½B */
+  emit(event: GuiEvent): Promise<void>;
+  /** RepoRunner ï¿½ï¿½ HealingRunner ï¿½ï¿½ CodeRunner ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½iï¿½ï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½Xï¿½^ï¿½ï¿½ï¿½Xï¿½jï¿½B */
+  runner: HealingRunner & CodeRunner;
+  rateLimiter: MemoryRateLimiter;
+}
 
 export interface WorkerContext {
   ports: Ports;
@@ -22,31 +45,30 @@ export interface WorkerContext {
   auth: AuthService;
   logger: Logger;
   /**
-   * OURO_REGISTRATION_ENABLED ‚É‚æ‚éã‘‚«B–¢İ’èifalsej‚È‚ç DB İ’è‚É]‚¤
+   * OURO_REGISTRATION_ENABLED ï¿½É‚ï¿½ï¿½ã‘ï¿½ï¿½ï¿½Bï¿½ï¿½ï¿½İ’ï¿½ifalseï¿½jï¿½È‚ï¿½ DB ï¿½İ’ï¿½É]ï¿½ï¿½
    */
   registrationEnabled?: boolean;
   githubTokenSet: boolean;
-  /** ‚±‚ÌƒRƒ“ƒeƒLƒXƒgõ–½‚Ì AI ƒg[ƒNƒ“‡ŒvB */
+  /** Node / Cloudflare ï¿½Ì‚Ç‚ï¿½ï¿½ï¿½Å‘gï¿½İ—ï¿½ï¿½Ä‚ï¿½ê‚½ï¿½ï¿½ï¿½B */
+  deployTarget: DeployTarget;
+  /** ï¿½ï¿½ï¿½ÌƒRï¿½ï¿½ï¿½eï¿½Lï¿½Xï¿½gï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ AI ï¿½gï¿½[ï¿½Nï¿½ï¿½ï¿½ï¿½ï¿½vï¿½B */
   usage: UsageAccumulator;
-  /** ‹N“®“úiversion •\¦—pjB */
+  /** ï¿½Nï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½iversion ï¿½\ï¿½ï¿½ï¿½pï¿½jï¿½B */
   startedAt: string;
-  /** Œ»İ‚Ì‘ÎÛƒŠƒ|ƒWƒgƒŠisettings.selected_repo —Dæ‚Å‰ğŒˆÏ‚İjB */
+  /** ï¿½ï¿½ï¿½İ‚Ì‘ÎÛƒï¿½ï¿½|ï¿½Wï¿½gï¿½ï¿½ï¿½isettings.selected_repo ï¿½Dï¿½ï¿½Å‰ï¿½ï¿½ï¿½ï¿½Ï‚İjï¿½B */
   currentRepo: { owner: string; repo: string };
-  /** ‘ÎÛƒŠƒ|ƒWƒgƒŠ‚ğÀs‚É·‚µ‘Ö‚¦‚éivcs provider ‚Æ config.vcs ‚ğƒ~ƒ…[ƒe[ƒgjB */
+  /** ï¿½ÎÛƒï¿½ï¿½|ï¿½Wï¿½gï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½sï¿½ï¿½ï¿½Éï¿½ï¿½ï¿½ï¿½Ö‚ï¿½ï¿½ï¿½ivcs provider ï¿½ï¿½ config.vcs ï¿½ï¿½ï¿½~ï¿½ï¿½ï¿½[ï¿½eï¿½[ï¿½gï¿½jï¿½B */
   refreshRepo: (owner: string, repo: string) => void;
-  /** ƒvƒƒZƒX’â~‚É•Â‚¶‚é */
+  /** ï¿½vï¿½ï¿½ï¿½Zï¿½Xï¿½ï¿½~ï¿½ï¿½ï¿½É•Â‚ï¿½ï¿½ï¿½ */
   close(): Promise<void>;
 }
 
-export async function buildContext(config: AppConfig): Promise<WorkerContext> {
-  const db = new SqliteAdapter(config.dbPath);
-  await runMigrations(db);
-
-  // o—Íæ‚Í stdout ‚Ì‚İB
-  const logger = new Logger({ minLevel: "info" });
-
-  const usage = new UsageAccumulator();
-  const ai = new LlmGateway({
+/**
+ * Node / Cloudflare ï¿½ï¿½ï¿½Ê‚ï¿½ AI ï¿½Qï¿½[ï¿½gï¿½Eï¿½Fï¿½Cï¿½Bï¿½Lï¿½[ï¿½ï¿½ configï¿½iNode ï¿½ï¿½ `.env`ï¿½A
+ * Cloudflare ï¿½ï¿½ env ï¿½oï¿½Cï¿½ï¿½ï¿½fï¿½Bï¿½ï¿½ï¿½Oï¿½ï¿½ secretï¿½jï¿½ï¿½ï¿½ï¿½Ç‚ŞB
+ */
+export function createLlmGateway(config: AppConfig, usage: UsageAccumulator): LlmGateway {
+  return new LlmGateway({
     openaiKey: config.openaiKey,
     anthropicKey: config.anthropicKey,
     xaiKey: config.xaiKey,
@@ -54,33 +76,44 @@ export async function buildContext(config: AppConfig): Promise<WorkerContext> {
     layaKey: config.layaKey,
     onUsage: (event) => usage.record(event),
   });
+}
 
-  // ƒLƒ…[‚Í“¯‚¶ context ‚ğg‚¢‰ñ‚·ibuildContext ‚ÌƒXƒR[ƒvŠO‚É‚¿o‚¹‚È‚¢‚Ì‚Å
-  // Œã‚©‚ç assign ‚·‚éƒzƒ‹ƒ_‚ğ‰î‚µ‚ÄQÆ‚·‚éj
-  const ctxHolder: { ctx?: WorkerContext } = {};
-  const queue = new MemoryQueue({
-    onEvent: (event) => handleGuiEvents([event], config, ctxHolder.ctx),
-  });
-  const rateLimiter = new MemoryRateLimiter();
-
-  // ‘ÎÛƒŠƒ|ƒWƒgƒŠ‚Ì‰ğŒˆ‡:
-  //   1. settings.selected_repoiƒVƒXƒeƒ€‘S‘Ì‚Å 1 ‚ÂEÅ—Dæj
-  //   2. GITHUB_TOKEN ‚©‚ç‚Ì©“®ŒŸo
-  const settingsRepo = new SettingsRepository(db);
-  const selected = await getSelectedRepo(settingsRepo).catch(() => null);
-
+/** ï¿½ÎÛƒï¿½ï¿½|ï¿½Wï¿½gï¿½ï¿½ï¿½Ì‰ï¿½ï¿½ï¿½ï¿½ï¿½: settings.selected_repo ï¿½ï¿½ GITHUB_TOKEN ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½oï¿½B */
+async function resolveCurrentRepo(
+  db: DbAdapter,
+  githubToken: string
+): Promise<{ owner: string; repo: string }> {
+  const selected = await getSelectedRepo(new SettingsRepository(db)).catch(() => null);
   const resolved =
-    selected ??
-    (config.githubToken ? await GitHubProvider.resolveRepoFromToken(config.githubToken) : null);
-  const currentRepo = { owner: resolved?.owner ?? "", repo: resolved?.repo ?? "" };
+    selected ?? (githubToken ? await GitHubProvider.resolveRepoFromToken(githubToken) : null);
+  return { owner: resolved?.owner ?? "", repo: resolved?.repo ?? "" };
+}
 
-  const vcs = new GitHubProvider({
-    token: config.githubToken,
-    owner: currentRepo.owner,
-    repo: currentRepo.repo,
-  });
+/**
+ * Node / Cloudflare ï¿½ï¿½ï¿½Ê‚ï¿½ WorkerContext ï¿½gï¿½İ—ï¿½ï¿½ÄB
+ * Adapterï¿½idb / emit / rateLimiter / ai / vcsï¿½jï¿½Íƒ^ï¿½[ï¿½Qï¿½bï¿½gï¿½Ê‚ï¿½ build* ï¿½Öï¿½ï¿½ï¿½
+ * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä’ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Bvcs ï¿½ï¿½ RepoRunner ï¿½ï¿½ï¿½ï¿½Ì‚ï¿½ GitHubProvider ï¿½ï¿½vï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì‚ï¿½
+ * ï¿½ï¿½ï¿½ÌŒ^ï¿½Åó‚¯‚ï¿½iï¿½ï¿½ï¿½^ï¿½[ï¿½Qï¿½bï¿½gï¿½Å“ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Lï¿½ï¿½ï¿½ï¿½jï¿½B
+ */
+export function assemble(opts: {
+  db: DbAdapter;
+  emit: (event: GuiEvent) => Promise<void>;
+  rateLimiter: MemoryRateLimiter;
+  ai: AiProvider;
+  vcs: GitHubProvider;
+  usage: UsageAccumulator;
+  config: AppConfig;
+  deployTarget: DeployTarget;
+  currentRepo: { owner: string; repo: string };
+  /** ï¿½Vï¿½ï¿½ï¿½bï¿½gï¿½_ï¿½Eï¿½ï¿½ï¿½Oï¿½ÉƒCï¿½xï¿½ï¿½ï¿½gï¿½zï¿½ï¿½ï¿½ï¿½ drain ï¿½ï¿½ï¿½ï¿½iNode ï¿½ï¿½ EventDispatcher ï¿½pï¿½jï¿½B */
+  closeEvents?: () => Promise<void>;
+}): WorkerContext {
+  const { db, emit, rateLimiter, ai, vcs, usage, config, deployTarget, currentRepo, closeEvents } = opts;
 
-  // ’PˆêƒvƒƒZƒX“à‚Ì RepoRunneri“¯ˆê Worker “à Runner ‚Ì Node ”Åj
+  // ï¿½oï¿½Íï¿½ï¿½ stdout ï¿½Ì‚İiCloudflare ï¿½Å‚ï¿½ Workers Logsï¿½jï¿½B
+  const logger = new Logger({ minLevel: "info" });
+
+  // ï¿½Pï¿½ï¿½vï¿½ï¿½ï¿½Zï¿½X/isolate ï¿½ï¿½ï¿½ï¿½ RepoRunnerï¿½iHealingRunner ï¿½ï¿½ CodeRunner ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½j
   const runner = new RepoRunner(vcs, ai, db);
 
   const healingConfig: HealingConfig = {
@@ -97,9 +130,8 @@ export async function buildContext(config: AppConfig): Promise<WorkerContext> {
     ai,
     vcs,
     db,
-    queue,
+    emit,
     runner,
-    codeRunner: runner,
     rateLimiter,
   };
   const auth = new AuthService(db);
@@ -112,24 +144,114 @@ export async function buildContext(config: AppConfig): Promise<WorkerContext> {
     healingConfig.vcs.repo = nextRepo;
   };
 
-  const wctx: WorkerContext = {
+  return {
     ports,
     config: healingConfig,
     auth,
     logger,
     registrationEnabled: config.registrationEnabled,
     githubTokenSet: !!config.githubToken,
+    deployTarget,
     usage,
     startedAt: config.startedAt,
     currentRepo,
     refreshRepo,
     close: async () => {
-      await queue.drain(5_000).catch(() => undefined);
-      queue.stop();
+      // Node ï¿½ï¿½ EventDispatcher ï¿½ï¿½ drain ï¿½ï¿½ï¿½Ä’ï¿½~ï¿½BCloudflare ï¿½ï¿½ Queue ï¿½ï¿½ï¿½zï¿½ï¿½ï¿½ï¿½ï¿½ï¿½B
+      await closeEvents?.();
       rateLimiter.close();
-      db.close();
+      // SqliteAdapter ï¿½ï¿½ DatabaseSync ï¿½ï¿½Â‚ï¿½ï¿½ï¿½BD1 / rqlite ï¿½ÍÚ‘ï¿½ï¿½Ç—ï¿½ï¿½sï¿½vï¿½B
+      db.close?.();
     },
   };
+}
+
+/** Node ï¿½ï¿½pï¿½Gï¿½ï¿½ï¿½gï¿½ï¿½ï¿½BDB ï¿½hï¿½ï¿½ï¿½Cï¿½oï¿½[ï¿½É‰ï¿½ï¿½ï¿½ï¿½ï¿½ Adapter ï¿½ï¿½gï¿½İ—ï¿½ï¿½Ä‚ï¿½B */
+export async function buildContext(config: AppConfig): Promise<WorkerContext> {
+  let db: DbAdapter;
+  if (config.dbDriver === "rqlite") {
+    // SQLite ï¿½ï¿½ÊƒRï¿½ï¿½ï¿½eï¿½iï¿½ï¿½ rqlite ï¿½Å“ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½\ï¿½ï¿½ï¿½iDocker ï¿½ï¿½ DB ï¿½Tï¿½[ï¿½rï¿½Xï¿½j
+    db = new RqliteAdapter({ url: config.rqliteUrl });
+  } else {
+    // node:sqlite ï¿½ï¿½ Workers ï¿½É–ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Cloudflare ï¿½oï¿½ï¿½ï¿½hï¿½ï¿½ï¿½Ö“ï¿½ï¿½ï¿½È‚ï¿½ï¿½æ‚¤ï¿½ï¿½ï¿½I import ï¿½ï¿½ï¿½ï¿½B
+    const { SqliteAdapter } = await import("./db/sqlite");
+    db = new SqliteAdapter(config.dbPath);
+  }
+  // ï¿½}ï¿½Cï¿½Oï¿½ï¿½ï¿½[ï¿½Vï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ node:fs ï¿½ï¿½ï¿½gï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Cloudflare ï¿½oï¿½ï¿½ï¿½hï¿½ï¿½ï¿½Ö“ï¿½ï¿½ï¿½È‚ï¿½ï¿½æ‚¤
+  // ï¿½ï¿½ï¿½I import ï¿½ï¿½ï¿½ï¿½iwrangler ï¿½ï¿½ï¿½ï¿½ `wrangler d1 migrations apply` ï¿½ï¿½ï¿½Sï¿½ï¿½ï¿½jï¿½B
+  const { runMigrations } = await import("./db/migrate");
+  await runMigrations(db);
+
+  const usage = new UsageAccumulator();
+  const ai = createLlmGateway(config, usage);
+
+  // ï¿½Lï¿½ï¿½ï¿½[ï¿½Í“ï¿½ï¿½ï¿½ context ï¿½ï¿½ï¿½gï¿½ï¿½ï¿½ñ‚·iassemble ï¿½ÌƒXï¿½Rï¿½[ï¿½vï¿½Oï¿½Éï¿½ï¿½ï¿½ï¿½oï¿½ï¿½ï¿½È‚ï¿½ï¿½Ì‚ï¿½
+  // ï¿½ã‚©ï¿½ï¿½ assign ï¿½ï¿½ï¿½ï¿½zï¿½ï¿½ï¿½_ï¿½ï¿½ï¿½î‚µï¿½ÄQï¿½Æ‚ï¿½ï¿½ï¿½j
+  const ctxHolder: { ctx?: WorkerContext } = {};
+  const dispatcher = new EventDispatcher({
+    onEvent: (event: GuiEvent) => handleGuiEvents([event], ctxHolder.ctx!),
+  });
+  const emit = (event: GuiEvent): Promise<void> => dispatcher.send(event);
+  const rateLimiter = new MemoryRateLimiter();
+
+  const currentRepo = await resolveCurrentRepo(db, config.githubToken);
+  const vcs = new GitHubProvider({
+    token: config.githubToken,
+    owner: currentRepo.owner,
+    repo: currentRepo.repo,
+  });
+
+  const wctx = assemble({
+    db,
+    emit,
+    rateLimiter,
+    ai,
+    vcs,
+    usage,
+    config,
+    deployTarget: "node",
+    currentRepo,
+    closeEvents: async () => {
+      await dispatcher.drain(5_000).catch(() => undefined);
+      dispatcher.stop();
+    },
+  });
   ctxHolder.ctx = wctx;
   return wctx;
+}
+
+/**
+ * Cloudflare ï¿½ï¿½pï¿½Gï¿½ï¿½ï¿½gï¿½ï¿½ï¿½BD1Adapter + MemoryRateLimiter ï¿½ï¿½gï¿½İ—ï¿½ï¿½Ä‚ï¿½B
+ * ï¿½}ï¿½Cï¿½Oï¿½ï¿½ï¿½[ï¿½Vï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ `wrangler d1 migrations apply` ï¿½ï¿½ï¿½Kï¿½pï¿½Ï‚İ‚Ì‘Oï¿½ï¿½È‚Ì‚ï¿½
+ * runMigrations() ï¿½ÍŒÄ‚Î‚È‚ï¿½ï¿½i0013 ï¿½ï¿½ ALTER TABLE ï¿½Í”ï¿½pï¿½ï¿½ï¿½Å“ï¿½dï¿½Kï¿½pï¿½Åï¿½ï¿½sï¿½ï¿½ï¿½ï¿½jï¿½B
+ */
+export async function buildContextFromBindings(env: CloudflareBindings): Promise<WorkerContext> {
+  const { D1Adapter } = await import("./db/d1");
+  const db = new D1Adapter(env.DB);
+  const rateLimiter = new MemoryRateLimiter();
+
+  const config = configFromBindings(env);
+  const usage = new UsageAccumulator();
+  const ai = createLlmGateway(config, usage);
+
+  const currentRepo = await resolveCurrentRepo(db, config.githubToken);
+  const vcs = new GitHubProvider({
+    token: config.githubToken,
+    owner: currentRepo.owner,
+    repo: currentRepo.repo,
+  });
+
+  return assemble({
+    db,
+    emit: async (event: GuiEvent) => {
+      await env.GUI_EVENTS.send(event);
+    },
+    rateLimiter,
+    ai,
+    vcs,
+    usage,
+    config,
+    deployTarget: "cloudflare",
+    currentRepo,
+  });
 }

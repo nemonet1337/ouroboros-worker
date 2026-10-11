@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runHarness } from "../code/harness";
 import type { AssembledContext } from "../code/context.assembler";
-import type { AiProvider } from "../ports/ai";
+import type { AiProvider } from "../ai/types";
 
 const assembled: AssembledContext = {
   query: "increment",

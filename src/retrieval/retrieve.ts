@@ -1,4 +1,4 @@
-import type { AiProvider, LocalDecisionConfig } from "../ports";
+import type { AiProvider, LocalDecisionConfig } from "../ai/types";
 import { rankChunks, type CodeSnippet } from "./chunk.rank";
 import { pickFilesByLuna } from "./file.selector";
 import { tokenize } from "./tokenize";

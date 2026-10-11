@@ -2,6 +2,7 @@ import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
 import type { CodeSessionRow, HarnessTrace, Patch } from "../../types";
 import { Layout } from "../layout";
+import { parseJson } from "../../core/json";
 
 interface CodeSessionPageProps {
   sessionId: string;
@@ -34,10 +35,7 @@ export const CodeSessionPage: FC<CodeSessionPageProps> = ({ sessionId, user, ses
     );
   }
 
-  let patches: Patch[] = [];
-  try {
-    patches = session.generated_patches ? JSON.parse(session.generated_patches) : [];
-  } catch {}
+  const patches: Patch[] = parseJson<Patch[]>(session.generated_patches, []);
 
   return (
     <Layout user={user}>

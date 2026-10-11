@@ -1,44 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { createApi, type ApiDeps } from "../http/api";
-import { mockAi } from "./helpers";
-import { NoopRunner } from "../ports/runner";
-import type { DbAdapter } from "../ports/db";
-
-function mockDb(): DbAdapter {
-  return {
-    dialect: "sqlite",
-    exec: vi.fn(),
-    query: vi.fn().mockResolvedValue([]),
-    batch: vi.fn(),
-  };
-}
+import { mockConfig, mockPorts } from "./helpers";
 
 function buildDeps(): ApiDeps {
-  const db = mockDb();
   return {
-    ports: {
-      db,
-      ai: mockAi(""),
-      vcs: {
-        name: "github",
-        createPR: vi.fn(),
-        listOpenPRs: vi.fn().mockResolvedValue([]),
-        createIssue: vi.fn(),
-        listIssues: vi.fn().mockResolvedValue([]),
-        updateIssue: vi.fn(),
-        listRepos: vi.fn().mockResolvedValue([]),
-      },
-      queue: { kind: "memory" as const, send: vi.fn() },
-      runner: new NoopRunner(),
-      codeRunner: new NoopRunner(),
-      rateLimiter: { kind: "memory" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
-    },
-    config: {
-      ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
-      vcs: { owner: "test", repo: "test", baseBranch: "main", branchPrefix: "ouro-fix" },
-      dryRun: false,
-      scan: { maxPRsPerRun: 5 },
-    },
+    ports: mockPorts(),
+    config: mockConfig(),
     auth: {
       resolveSession: vi.fn().mockResolvedValue({ id: "user-1", email: "test@test.com", role: "admin" }),
       userCount: vi.fn().mockResolvedValue(1),

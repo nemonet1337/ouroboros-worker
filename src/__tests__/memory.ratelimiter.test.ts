@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { MemoryRateLimiter } from "../adapters/memory.ratelimiter";
+import { MemoryRateLimiter } from "../core/ratelimit";
 
 afterEach(() => {
   vi.useRealTimers();

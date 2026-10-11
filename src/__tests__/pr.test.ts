@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PRDeduplicator } from "../pr/pr.deduplicator";
+import { PRDeduplicator } from "../core/pr";
 import { defaultHealingConfig } from "../config/healing.config";
 import { FindingGroup } from "../types";
 

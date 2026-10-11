@@ -4,8 +4,8 @@ import {
   decideLaya,
   normalizeScoreAnswer,
   toWireQuestions,
-} from "../adapters/ai/decisions";
-import type { AiDecisionRequest } from "../ports/ai";
+} from "../ai/decisions";
+import type { AiDecisionRequest } from "../ai/types";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

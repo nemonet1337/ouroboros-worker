@@ -1,8 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createFragments, type FragmentDeps } from "../ui/fragments";
-import { mockAi } from "./helpers";
-import { NoopRunner } from "../ports/runner";
-import type { DbAdapter } from "../ports/db";
+import { mockConfig, mockPorts } from "./helpers";
+import type { DbAdapter } from "../db/adapter";
 
 function mockDb(): DbAdapter {
   return {
@@ -17,29 +16,10 @@ function buildDeps(overrides: Partial<FragmentDeps> = {}): FragmentDeps {
   const db = mockDb();
   return {
     ports: {
-      db,
-      ai: mockAi(""),
-      vcs: {
-        name: "github",
-        createPR: vi.fn(),
-        listOpenPRs: vi.fn().mockResolvedValue([]),
-        createIssue: vi.fn(),
-        listIssues: vi.fn().mockResolvedValue([]),
-        updateIssue: vi.fn(),
-        listRepos: vi.fn().mockResolvedValue([]),
-      },
+      ...mockPorts(db),
       logs: { kind: "r2" as const, append: vi.fn(), read: vi.fn().mockResolvedValue("log line"), list: vi.fn().mockResolvedValue(["ouroboros.log"]) },
-      queue: { kind: "cf-queue" as const, send: vi.fn() },
-      runner: new NoopRunner(),
-      codeRunner: new NoopRunner(),
-      rateLimiter: { kind: "cf" as const, limit: vi.fn().mockResolvedValue({ success: true }) },
     } as any,
-    config: {
-      ai: { model: "minimax/m3", maxRetries: 3, contextLines: 20 },
-      vcs: { owner: "test", repo: "test", baseBranch: "main", branchPrefix: "ouro-fix" },
-      dryRun: false,
-      scan: { maxPRsPerRun: 5 },
-    },
+    config: mockConfig(),
     auth: {
       resolveSession: vi.fn().mockResolvedValue({ id: "user-1", email: "test@test.com", role: "admin", model: null }),
       userCount: vi.fn().mockResolvedValue(1),
@@ -307,7 +287,7 @@ describe("UI fragments", () => {
       headers: { ...authed.headers },
     });
     expect(res.headers.get("HX-Refresh")).toBe("true");
-    const sent = (deps.ports.queue.send as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const sent = (deps.ports.emit as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(sent.type).toBe("codegen.requested");
     expect(sent.payload.mode).toBeUndefined();
   });

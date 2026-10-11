@@ -1,4 +1,4 @@
-import type { DbAdapter } from "../ports/db";
+import type { DbAdapter } from "../db/adapter";
 import {
   SessionRepository,
   SettingsRepository,

@@ -1,12 +1,12 @@
 import { Hono, type Context, type Next } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import type { Ports } from "../ports";
-import type { AiModelInfo } from "../ports/ai";
+import type { Ports } from "../context";
+import type { AiModelInfo } from "../ai/types";
 import type { HealingConfig } from "../config/healing.config";
 import { DEFAULT_EMBEDDING_MODEL, DEFAULT_TEXT_MODEL } from "../config/deployment";
 import { AuthService, AuthError, type AuthedUser } from "../auth/service";
 import { newId } from "../auth/tokens";
-import { Logger } from "../logging/logger";
+import { Logger } from "../core/logger";
 import {
   InspectionRepository,
   HealingRunRepository,
@@ -17,7 +17,7 @@ import type { InspectionRequest } from "../types";
 import { OPENAPI_SPEC } from "./openapi";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
-import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
+import { FLAGS, resolveFeatureFlag } from "../core/flags";
 import {
   validateBody,
   credentialsSchema,
@@ -107,7 +107,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
+  const codeManager = new CodeSessionManager(ports.db, ports.runner);
 
   // ── Unified error handling ─────────────────────────────────────────────────
   app.onError((err, c) => {
@@ -592,7 +592,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
         `UPDATE code_sessions SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
         ["generating", Date.now(), sessionId, userId]
       );
-      await ports.queue.send({
+      await ports.emit({
         id: newId(),
         type: "codegen.requested",
         userId,
@@ -637,7 +637,7 @@ export function createApi(deps: ApiDeps): Hono<Env> {
     const userId = c.get("identity")!.user.id;
     const manager = makeProposalManager();
     const model = await auth.resolveModel(userId);
-    const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.codeRunner, model);
+    const result = await manager.applyProposal(c.req.param("inspectionId")!, userId, ports.runner, model);
     return c.json(result);
   });
 

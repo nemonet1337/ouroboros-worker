@@ -1,6 +1,6 @@
 import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
-import type { AiModelInfo } from "../../ports/ai";
+import type { AiModelInfo } from "../../ai/types";
 import {
   DEFAULT_TEXT_MODEL,
   isDecisionModel,

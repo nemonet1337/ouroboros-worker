@@ -12,14 +12,14 @@
 import { Hono, type Context, type Next } from "hono";
 import { getCookie } from "hono/cookie";
 import type { FC } from "hono/jsx";
-import type { Ports } from "../ports";
-import type { AiModelInfo } from "../ports/ai";
+import type { Ports } from "../context";
+import type { AiModelInfo } from "../ai/types";
 import type { HealingConfig } from "../config/healing.config";
 import type { AuthService, AuthedUser } from "../auth/service";
-import type { Logger } from "../logging/logger";
+import type { Logger } from "../core/logger";
 import type { TriggerHealingOpts, TriggerHealingResult } from "../http/api";
 import type { InspectionResult } from "../types";
-import { FLAGS, resolveFeatureFlag } from "../flags/flag.service";
+import { FLAGS, resolveFeatureFlag } from "../core/flags";
 import {
   InspectionRepository,
   HealingRunRepository,
@@ -32,6 +32,7 @@ import {
   parseHistoryEntry,
 } from "../http/data";
 import { codeSessionCreateSchema } from "../http/validation";
+import { parseJson } from "../core/json";
 import { newId } from "../auth/tokens";
 import { CodeSessionManager } from "../code/session.manager";
 import { ProposalManager } from "../refactor/proposal.manager";
@@ -102,7 +103,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   const runs = new HealingRunRepository(ports.db);
   const settingsRepo = new SettingsRepository(ports.db);
   const codeSessions = new CodeSessionRepository(ports.db);
-  const codeManager = new CodeSessionManager(ports.db, ports.codeRunner);
+  const codeManager = new CodeSessionManager(ports.db, ports.runner);
   const makeProposalManager = async () => {
     const selected = await getSelectedRepo(settingsRepo);
     const repoUrl = selected
@@ -262,12 +263,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
 
     // 進行中（queued/indexing/searching/analyzing）は進捗を表示してポーリング継続
     if (row.status !== "completed" && row.status !== "proposed" && row.status !== "applied" && row.status !== "dismissed") {
-      let steps: { step: string; message: string; at: number }[] = [];
-      try {
-        steps = row.progress ? JSON.parse(row.progress) : [];
-      } catch {
-        steps = [];
-      }
+      const steps: { step: string; message: string; at: number }[] = parseJson(row.progress, []);
       return c.html(<InspectionProgress id={row.id} status={row.status} steps={steps} />);
     }
 
@@ -309,7 +305,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       created_at: Date.now(),
     });
 
-    await ports.queue.send({
+    await ports.emit({
       id: newId(),
       type: "inspection.requested",
       userId,
@@ -372,7 +368,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     );
     // model を渡さないと難易度判定が走る
     const model = await auth.resolveModel(userId);
-    await ports.queue.send({
+    await ports.emit({
       id: newId(),
       type: "codegen.requested",
       userId,
@@ -452,7 +448,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
     const inspectionId = c.req.param("id")!;
     const manager = await makeProposalManager();
     const model = await auth.resolveModel(userId);
-    await manager.applyProposal(inspectionId, userId, ports.codeRunner, model);
+    await manager.applyProposal(inspectionId, userId, ports.runner, model);
     return renderInspectionDetail(c, inspectionId);
   });
 
@@ -725,10 +721,7 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
       ),
     );
     const raw = await settingsRepo.get(APP_SETTINGS_KEY);
-    let appSettings: Record<string, unknown> = {};
-    try {
-      appSettings = raw ? JSON.parse(raw) : {};
-    } catch {}
+    const appSettings = parseJson<Record<string, unknown>>(raw, {});
     const schedule = (appSettings.schedule ?? {}) as Record<string, unknown>;
     schedule.time = /^\d{2}:\d{2}$/.test(time) ? time : "";
     // 空配列（全未選択）は毎日実行を意味するため、保存しない（undefined 扱い）。

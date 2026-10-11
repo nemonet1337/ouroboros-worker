@@ -1,1 +1,0 @@
-This folder contains the built output assets for the worker "ouroboros-worker" generated at 2026-10-03T10:54:47.214Z.

@@ -1,5 +1,5 @@
 import type { FC } from "hono/jsx";
-import type { VcsRepo } from "../../ports/vcs";
+import type { VcsRepo } from "../../core/vcs";
 
 interface RepoSelectorProps {
   repos: VcsRepo[];

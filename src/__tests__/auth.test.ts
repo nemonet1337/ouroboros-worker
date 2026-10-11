@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AuthService, AuthError } from "../auth/service";
 import { DEFAULT_TEXT_MODEL } from "../config/deployment";
-import type { DbAdapter, SqlParam } from "../ports/db";
+import type { DbAdapter, SqlParam } from "../db/adapter";
 
 class MockDbAdapter implements DbAdapter {
   dialect = "sqlite" as const;

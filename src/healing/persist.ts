@@ -1,5 +1,5 @@
 import type { HealingRunRepository, HealingRunRow } from "../db/repositories";
-import type { UsageSnapshot } from "../analytics/usage.accumulator";
+import type { UsageSnapshot } from "../core/usage";
 import { mergeHealingSummary, parseHealingSummary, usageTotals, type HealingSummary } from "./summary";
 
 function toUsage(snap: UsageSnapshot, model: string) {

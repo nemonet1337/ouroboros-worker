@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { parsePathList, pickFilesByLuna } from "../retrieval/file.selector";
 import { rankChunks } from "../retrieval/chunk.rank";
 import { tokenize } from "../retrieval/tokenize";
-import type { AiProvider } from "../ports";
+import type { AiProvider } from "../ai/types";
 
 function aiComplete(reply: string): AiProvider;
 function aiComplete(reply: Error): AiProvider;

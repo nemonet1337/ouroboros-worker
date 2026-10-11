@@ -1,6 +1,6 @@
 import { FILE_PICK_MAX, LAYA_FILE_BATCH_LIMIT } from "../config/deployment";
 import { DEFAULT_ROUTING_CONFIG } from "../config/routing";
-import type { AiClefQuestion, AiProvider, LocalDecisionConfig } from "../ports";
+import type { AiClefQuestion, AiProvider, LocalDecisionConfig } from "../ai/types";
 
 const PICK_SYSTEM = [
   "You select which repository files must be read to implement a task.",

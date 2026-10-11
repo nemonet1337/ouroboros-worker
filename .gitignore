@@ -222,9 +222,16 @@ node_modules/
 
 
 
-# Tailwind CSS ビルド�E果物�E�Epm run build:css で生�E、Eloudflare Workers Builds の
-# 「Build command」に npm run build:css を設定してチE�Eロイ時に生�Eする�E�E
+# Tailwind CSS ビルド成果物。npm run build:css で生成する（未ビルド時はスタイル無しで動作）
 src/ui/styles/tailwind.generated.css
+
+# static assets — build:css が Tailwind CSS を public/assets/ にコピーする
+public/
+
+# Cloudflare
+.wrangler/
+.wrangler-dryrun/
+.dev.vars
 
 # Local self-hosted state
 *.db

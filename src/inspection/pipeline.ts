@@ -2,10 +2,10 @@
  * 選択リポジトリの非同期コード解析パイプライン。
  */
 import type { WorkerContext } from "../context";
-import type { Logger } from "../logging/logger";
+import type { Logger } from "../core/logger";
 import { InspectionRepository } from "../db/repositories";
 import { selectPathsForAnalysis } from "../code/context.assembler";
-import type { GitHubProvider } from "../vcs/github.provider";
+import type { GitHubProvider } from "../core/vcs";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import { DEFAULT_TEXT_MODEL } from "../config/deployment";

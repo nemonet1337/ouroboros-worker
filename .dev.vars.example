@@ -1,0 +1,14 @@
+# Ouroboros Cloudflare (wrangler dev) local secrets
+# Copy to .dev.vars and fill in. wrangler dev reads .dev.vars automatically.
+
+# Required: PR/Issue creation (owner/repo is auto-detected from the token)
+GITHUB_TOKEN=
+
+# AI provider keys (at least one required)
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+XAI_API_KEY=
+OPENROUTER_API_KEY=
+
+# Laya (optional, only when the local decision backend needs bearer auth)
+LAYA_API_KEY=

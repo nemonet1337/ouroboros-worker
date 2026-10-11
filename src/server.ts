@@ -1,8 +1,21 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { loadConfig } from "./env";
 import { buildContext } from "./context";
 import { buildApp } from "./app";
 import { runScheduledTick } from "./cron";
+
+/** ビルド成果物の CSS を読む。未ビルド時は空文字（スタイル無しで動く）。 */
+function loadTailwindCss(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return readFileSync(join(here, "ui/styles/tailwind.generated.css"), "utf8");
+  } catch {
+    return "";
+  }
+}
 
 /** node:http のリクエストを Hono の fetch に渡せる Request へ変換する。 */
 function toRequest(req: IncomingMessage): Request {
@@ -32,7 +45,7 @@ function toRequest(req: IncomingMessage): Request {
 async function main(): Promise<void> {
   const config = loadConfig();
   const ctx = await buildContext(config);
-  const app = await buildApp(config, ctx);
+  const app = await buildApp(config, ctx, loadTailwindCss());
 
   const server = createServer((req, res) => {
     void (async () => {

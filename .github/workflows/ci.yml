@@ -24,3 +24,23 @@ jobs:
       - run: npm run typecheck
 
       - run: npm run test
+
+  # Cloudflare Worker ビルドの回帰検証。--dry-run は認証不要なので
+  # Cloudflare シークレットは不要。型エラー・未解決 import をここで検出する。
+  deploy-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build:css
+
+      - run: npx wrangler deploy --dry-run --outdir dist

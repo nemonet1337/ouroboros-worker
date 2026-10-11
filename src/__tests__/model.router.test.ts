@@ -5,9 +5,9 @@ import {
   parseDifficulty,
   parseTier,
   resolveDecision,
-} from "../routing/model.router";
+} from "../ai/router";
 import { DEFAULT_ROUTING_CONFIG, type RoutingConfig } from "../config/routing";
-import type { AiProvider, LocalDecisionConfig } from "../ports";
+import type { AiProvider, LocalDecisionConfig } from "../ai/types";
 import type { CodeSnippet } from "../retrieval/chunk.rank";
 
 const snippet = (file: string, score: number, kind: CodeSnippet["kind"] = "fn"): CodeSnippet => ({

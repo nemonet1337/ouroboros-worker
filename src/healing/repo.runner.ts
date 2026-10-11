@@ -3,8 +3,8 @@
  * 旧 ouroborous-runner Worker のロジックを統合したもの。
  * GitHub API は GitHubProvider、AI は AiProvider、セッション状態は SQLite 経由。
  */
-import type { AiProvider, LocalDecisionConfig } from "../ports/ai";
-import type { DbAdapter } from "../ports/db";
+import type { AiProvider, LocalDecisionConfig } from "../ai/types";
+import type { DbAdapter } from "../db/adapter";
 import type {
   CodeCommitResult,
   CodeGenerateOptions,
@@ -19,15 +19,15 @@ import type {
   RunFixOptions,
   RunnerFixResult,
   RunnerScanResult,
-} from "../ports/runner";
+} from "../core/runner";
 import type { Patch } from "../types";
-import type { GitHubProvider } from "../vcs/github.provider";
+import type { GitHubProvider } from "../core/vcs";
 import { DEFAULT_TEXT_MODEL, isProviderModelId } from "../config/deployment";
 import { DEFAULT_ROUTING_CONFIG, type RoutingConfig } from "../config/routing";
 import { assembleContext } from "../code/context.assembler";
 import { runHarness } from "../code/harness";
 import { verifyFix } from "../code/verifier";
-import { decideRoute, type RouteDecision } from "../routing/model.router";
+import { decideRoute, type RouteDecision } from "../ai/router";
 import { pickFilesByLuna } from "../retrieval/file.selector";
 import { scanFiles } from "./scanner";
 

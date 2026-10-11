@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AIAnalyzer } from "../analyzers/ai.analyzer";
+import { AIAnalyzer } from "../ai/analyzer";
 import { defaultHealingConfig } from "../config/healing.config";
 import { AllFindings } from "../types";
 import { mockAi } from "./helpers";

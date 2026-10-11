@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { assembleContext } from "../code/context.assembler";
-import type { AiProvider } from "../ports";
+import type { AiProvider } from "../ai/types";
 import type { CodeSnippet } from "../retrieval/chunk.rank";
 
 /** Luna がファイルを列挙し、embedding は identiy を返すだけのモック。 */

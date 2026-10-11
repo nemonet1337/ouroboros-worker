@@ -2,34 +2,40 @@
 
 ## プロジェクト概要
 
-Ouroboros は **Node.js 24+ 専用**の AI 自己修復システム。
-コードベースを継続的にスキャン・解析し、パッチを生成して Pull Request を自動作成する。
+Ouroboros は AI 自己修復システム。コードベースを継続的にスキャン・解析し、
+パッチを生成して Pull Request を自動作成する。
+
+**二重ターゲット** — Node.js 24（Docker / オンプレミス）を主、Cloudflare Worker を副とする。
+ビジネスロジックは共有で、`src/adapters/` のプラットフォーム実装だけが入れ替わる。
 
 **制約:**
 - AI ゲートウェイは **`LlmGateway` 経由の外部プロバイダ REST**（OpenAI / Anthropic / xAI / OpenRouter）。モデル ID は `provider/model` 形式
-- Cloudflare Workers 対応は廃止（Workers AI・D1・Queues・Workflows・wrangler すべて削除済み）。Docker / オンプレミスも廃止
-- 重い処理（scan / heal / code generate）は **同一プロセス内の `RepoRunner`** が GitHub REST API と外部 AI provider を使って実行する
-- キーは `.env` のみ。GUI は設定済み/未設定の表示だけで値は返さない
+- Workers AI は使わない。Workflows も使わない（Cloudflare の healing は Queue consumer 内で直列実行）
+- 重い処理（scan / heal / code generate）は **同一プロセス/isolate 内の `RepoRunner`** が GitHub REST API と外部 AI provider を使って実行する
+- キーは `.env`（Node）または Worker secret（Cloudflare）のみ。GUI は設定済み/未設定の表示だけで値は返さない
 
 ## ディレクトリ構造
 
 ```
-src/                   Node ソース（全ビジネスロジック + アダプター）
+src/                   Node / Cloudflare 共通ソース（全ビジネスロジック + アダプター）
   adapters/            プラットフォームの具体実装
-    sqlite.adapter.ts      node:sqlite の DbAdapter
-    memory.queue.ts        インメモリ逐次キュー
-    memory.ratelimiter.ts  固定窗口リミッタ
+    sqlite.adapter.ts      node:sqlite の DbAdapter（Node 単体実行）
+    rqlite.adapter.ts      rqlite HTTP API の DbAdapter（Docker の DB サービス）
+    d1.adapter.ts          Cloudflare D1 の DbAdapter（Cloudflare 専用）
+    memory.queue.ts        インメモリ逐次キュー（Node 専用）
+    cf.queue.ts            Cloudflare Queues のプロデューサ（Cloudflare 専用）
+    memory.ratelimiter.ts  固定窗口リミッタ（共通）
     ai/                    LlmGateway + decisions（Decisions API / Laya）
   analyzers/           AI による findings のグルーピング・リスク評価
   auth/                認証・セッション・API トークン（WebCrypto PBKDF2）
   code/                Code モード（セッション管理・codegen）
   config/              設定値・言語別インスペクションルール・モデルモード定義
   db/                  SQLite リポジトリ層
-    migrations/        SQL マイグレーションファイル
+    migrations/        SQL マイグレーションファイル（wrangler d1 migrations apply 用）
   healing/             RepoRunner（scan/applyFix/code）+ scanner + lifecycle
   http/                Hono ベース REST API（ルート・バリデーション・OpenAPI）
   inspection/          AI スコアリングエンジン（6 次元・32 観点）
-  logging/             構造化ロガー（stdout のみ）
+  logging/             構造化ロガー（stdout / Workers Logs）
   ports/               アダプターインターフェース（Ports & Adapters）
   pr/                  PR 生成・重複排除
   queues/              GUI イベントの逐次処理
@@ -42,19 +48,21 @@ src/                   Node ソース（全ビジネスロジック + アダプ�
   vcs/                 GitHub REST API 連携（fetch ベース、git object 書き込み含む）
   __tests__/           Vitest ユニットテスト
   types.ts             全型定義
-  context.ts           全 Ports + Auth の依存性注入（buildContext）
-  env.ts               AppConfig と loadConfig()
+  context.ts           全 Ports + Auth の依存性注入（assemble / buildContext / buildContextFromBindings）
+  env.ts               AppConfig・loadConfig()・CloudflareBindings・configFromBindings()
   cron.ts              毎時 cron（stale sweep + 定期 healing）
-  app.tsx              ルート群
-  server.ts            node:http エントリーポイント
+  app.tsx              共有ルート群（fetch/crypto のみ。CSS は引数で受け取る）
+  server.ts            Node エントリポイント（node:http）
+  worker.tsx           Cloudflare エントリポイント（fetch / queue / scheduled）
 ```
 
 ## 主要パターン
 
 ### Ports & Adapters
 - `src/ports/` にインターフェース定義（`AiProvider`, `DbAdapter`, `QueueAdapter`, `RateLimiter` 等）
-- `src/adapters/` に Node 向け具体実装
-- `src/context.ts` の `buildContext(config: AppConfig)` で `RepoRunner` を組み立てて `Ports` に載せる
+- `src/adapters/` にターゲット別の具体実装（Node: sqlite / memory.queue、Cloudflare: d1 / cf.queue）
+- `src/context.ts` の `assemble()` が共通の組み立て。`buildContext(config)` は Node、
+  `buildContextFromBindings(env)` は Cloudflare 用で、`RepoRunner` を組み立てて `Ports` に載せる
 
 ### 設定と起動
 - `src/env.ts` の `loadConfig()`: `process.loadEnvFile()`（`.env` が無い場合は無視）→ 検証
@@ -64,8 +72,8 @@ src/                   Node ソース（全ビジネスロジック + アダプ�
 
 ### 自己修復フロー
 ```
-server.ts
-  └─ HealingLifecycle（src/healing/lifecycle.ts、プロセス内直列）
+server.ts / worker.tsx
+  └─ HealingLifecycle（src/healing/lifecycle.ts、プロセス/isolate 内直列）
       1. scan     → RepoRunner.scan() → GitHub tarball + scanner
       2. analyze  → AIAnalyzer（ファイル選択 + 埋め込み順位付け）→ LlmGateway
       3. fix      → RepoRunner.applyFix() → blob/tree/commit/ref → VCS.createPR()
@@ -111,27 +119,53 @@ Vectorize は廃止。`getRepoFiles()` の tarball から選び、`EMBED_BATCH_L
 
 ### DB アクセス
 - `src/db/repositories.ts` にリポジトリクラス
-- `SqliteAdapter`（`node:sqlite`）が `DbAdapter` を実装。`batch` は 1 トランザクション
-- マイグレーションは `buildContext()` 内で `runMigrations()` が自動実行
+- `DbAdapter` の実装は 3 つ。`OURO_DB` 環境変数で Node 側のドライバーを切り替える:
+  - `sqlite`（既定）— `node:sqlite` でプロセス内臓
+  - `rqlite` — 別コンテナの rqlite（SQLite の HTTP サービス）へ接続。`OURO_RQLITE_URL`（既定 `http://127.0.0.1:4001`）
+  - Cloudflare は `buildContextFromBindings()` が常に `D1Adapter` を使う
+- `SqliteAdapter` の `batch` は 1 トランザクション、`RqliteAdapter` は `?transaction=true`、`D1Adapter` は `D1Database.batch()` で atomic
+- マイグレーションは Node 起動時（`buildContext()` 内）に `runMigrations()` が自動実行。
+  Cloudflare パスでは呼んではいけない（`0013` の `ALTER TABLE` は非冪等で、
+  wrangler 適用後の二重実行で失敗する）。Cloudflare は `wrangler d1 migrations apply` を使う
+- `src/db/migrations/*.sql`（0001〜0013）は `src/db/migrations.ts` の TS ミラーと id で 1:1 対応。
 
 ## 開発コマンド
 
 ```bash
 npm run typecheck       # TypeScript 型チェック（tsc --noEmit）
 npm run test            # Vitest ユニットテスト（src/__tests__/）
-npm run build:css       # Tailwind v4 の CSS を生成
+npm run build:css       # Tailwind v4 の CSS を生成 + public/assets にコピー
 npm run dev             # build:css + tsx src/server.ts
 npm start               # tsx src/server.ts
+docker compose up --build   # Docker で起動（db は別コンテナの rqlite、ボリューム ouroboros-db に永続化）
+npm run deploy          # Cloudflare へデプロイ（build → wrangler deploy）
+npm run d1:migrate      # D1 マイグレーション適用（--remote）
 ```
 
 > UI のスタイルは CDN ではなくビルド済み CSS（`src/ui/styles/tailwind.generated.css`）。
-> 未ビルド時は `src/app.tsx` が空文字を返すのでスタイル無しで動く。
+> Node は `server.ts` の `loadTailwindCss()` が読み、`buildApp()` に渡す。
+> Cloudflare は `null` を渡し、`/assets/tailwind.css` は static assets（`public/`）が配信する。
 
 ## デプロイ
 
 1. `.env.example` を `.env` にコピーしてキーを記入
 2. `npm ci && npm run build:css`
-3. `npm start`（`PORT` で listen）
+3. `npm start`（`PORT` で listen）または `docker compose up --build`
+
+Docker では SQLite を別コンテナの rqlite（HTTP API）で動かす。アプリは
+`OURO_DB=rqlite` と `OURO_RQLITE_URL=http://db:4001`（compose が設定）で接続し、
+db の healthcheck 通過後に起動してマイグレーションを適用する。rqlite は
+`NODE_ID` と adv-addr を固定しないと再起動後に Raft 選挙が止まり 503 が続くため、
+compose 側で `NODE_ID=1`・`HTTP_ADV_ADDR=db:4001`・`RAFT_ADV_ADDR=db:4002` を指定する。
+
+Cloudflare Worker へデプロイする場合:
+
+1. `npx wrangler d1 create ouroboros`
+2. `scripts/resolve-d1.sh` で `database_id` を解決（コミットしない。`D1_DATABASE_ID` で直接指定もできる）
+3. `npm run d1:migrate` でマイグレーション適用
+4. `npx wrangler secret put GITHUB_TOKEN` と AI キーを設定
+5. `npm run deploy`（Workers Builds の Deploy command にも `npm run deploy` を設定する。
+   wrangler 設定内の `[build] command` は Workers Builds が無視するため書かない）
 
 必要なキー:
 ```
@@ -151,7 +185,9 @@ LAYA_DEVICE=cpu laya-serve
 ## コード規約
 
 - 新しい型は `src/types.ts` に追加する
-- Node 固有の実装は `src/adapters/` に置き、`src/ports/` のインターフェースを実装する
-- ビジネスロジックは Node バインディングに依存しない形を保つ
+- ターゲット固有の実装は `src/adapters/` に置き、`src/ports/` のインターフェースを実装する
+- ビジネスロジックは Node / Cloudflare バインディングに依存しない形を保つ
+  （`node:fs`・`node:http`・`node:sqlite` は entry と adapter に閉じる。`crypto.randomUUID()` は共通で使える）
 - テストは `src/__tests__/` に置き、`src/__tests__/helpers.ts` のモックを活用する
-- 重い AI/GitHub 処理は HTTP ハンドラ内で直接回さず、インメモリキューか直列 lifecycle で実行する
+- 重い AI/GitHub 処理は HTTP ハンドラ内で直接回さず、キューか直列 lifecycle で実行する
+  （Cloudflare は CF Queues の consumer 内で直列実行。Workflows は使わない）

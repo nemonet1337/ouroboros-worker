@@ -35,8 +35,13 @@ export async function shouldRunScheduledHealing(wctx: WorkerContext, now: Date):
 /**
  * Node 版 cron。1 時間ごとに stale sweep と定期 healing を行う。
  * 旧 `scheduled` ハンドラの等価。Node では setInterval で回す。
+ * `now` は Cloudflare の scheduled 発火時刻を渡せる（省略時は現在時刻）。
  */
-export async function runScheduledTick(config: AppConfig, ctx: WorkerContext): Promise<void> {
+export async function runScheduledTick(
+  config: AppConfig,
+  ctx: WorkerContext,
+  now: Date = new Date()
+): Promise<void> {
   await ctx.auth.cleanupExpiredSessions();
 
   // スタック検出: 長時間進行中のままのジョブを failed にする

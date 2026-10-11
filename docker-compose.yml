@@ -1,0 +1,49 @@
+services:
+  ouroboros:
+    build: .
+    env_file: .env
+    environment:
+      # SQLite を別コンテナの rqlite（HTTP サービス）で動かす。
+      # Cloudflare の Worker → D1 と同じく、DB はアプリの外のサービスとして接続する。
+      # 未設定（sqlite）なら node:sqlite でプロセス内臓に動く。
+      - OURO_DB=rqlite
+      - OURO_RQLITE_URL=http://db:4001
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "node -e \"fetch('http://127.0.0.1:3000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  db:
+    # rqlite = SQLite を Raft + HTTP API で提供するコンテナ。
+    # 単一ノード構成。データ（Raft ログ + SQLite ファイル）は名前付きボリュームに永続化する。
+    # バージョンは 10.1.0+ に固定する（CVE-2026-33814 の修正を含む）。
+    image: rqlite/rqlite:10.5.3
+    environment:
+      # コンテナは起動ごとにホスト名（=コンテナ ID）が変わる。node-id と adv-addr を
+      # 固定しないと、再起動後に Raft 構成と一致しなくなり選挙が止まり
+      # /db/execute が 503（leader 無し）を返し続ける。
+      NODE_ID: "1"
+      HTTP_ADV_ADDR: db:4001
+      RAFT_ADV_ADDR: db:4002
+    volumes:
+      - ouroboros-db:/rqlite/file
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4001/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  ouroboros-db:

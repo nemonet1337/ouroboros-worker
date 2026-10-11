@@ -1,4 +1,4 @@
-/** @jsx jsx */
+ï»¿/** @jsx jsx */
 /** @jsxFrag Fragment */
 import { jsx } from "hono/jsx";
 import type { Context, Next } from "hono";
@@ -13,7 +13,8 @@ import {
 } from "./db/repositories";
 import { DEFAULT_TEXT_MODEL } from "./config/deployment";
 import { getFeatureFlags, getRoutingConfig, DEFAULT_APP_SETTINGS } from "./config/settings.keys";
-import type { GuiEvent } from "./ports/queue";
+import type { GuiEvent } from "./core/events";
+import { parseJson } from "./core/json";
 import type { AppConfig } from "./env";
 import { runHealingLifecycle } from "./healing/lifecycle";
 import { shouldRunScheduledHealing } from "./cron";
@@ -21,7 +22,6 @@ import { buildContext, type WorkerContext } from "./context";
 import type { TriggerHealingOpts } from "./http/api";
 import { isHealingActive } from "./healing/status";
 import { mergeHealingSummary } from "./healing/summary";
-import { handleGuiEvents } from "./queues/gui-events";
 import { HomePage } from "./ui/pages/home";
 import { LoginPage } from "./ui/pages/login";
 import { RegisterPage } from "./ui/pages/register";
@@ -35,25 +35,12 @@ import { SettingsPage } from "./ui/pages/settings";
 import { ModelsPage } from "./ui/pages/models";
 import { AdminPage } from "./ui/pages/admin";
 import type { AuthedUser } from "./auth/service";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 
 type EnvWithIdentity = { Variables: { identity?: { user: AuthedUser; scopes?: string } } };
 
 
 
 const SESSION_COOKIE = "ouro_session";
-
-/** ƒrƒ‹ƒh¬‰Ê•¨‚Ì CSS ‚ğ“Ç‚ŞB–¢ƒrƒ‹ƒh‚Í‹ó•¶šiƒXƒ^ƒCƒ‹–³‚µ‚Å“®‚­jB */
-function loadTailwindCss(): string {
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    return readFileSync(join(here, "ui/styles/tailwind.generated.css"), "utf8");
-  } catch {
-    return "";
-  }
-}
 
 export function makeTriggerHealing(config: AppConfig, ctx: WorkerContext) {
   const runs = new HealingRunRepository(ctx.ports.db);
@@ -77,7 +64,7 @@ export function makeTriggerHealing(config: AppConfig, ctx: WorkerContext) {
         payload: { runId, dryRun, trigger: opts.trigger, phase: "fix", autoFix: false },
         enqueuedAt: now,
       };
-      await ctx.ports.queue.send(event);
+      await ctx.ports.emit(event);
       return { runId };
     }
 
@@ -118,7 +105,7 @@ export function makeTriggerHealing(config: AppConfig, ctx: WorkerContext) {
       },
       enqueuedAt: now,
     };
-    await ctx.ports.queue.send(event);
+    await ctx.ports.emit(event);
     return { runId };
   };
 }
@@ -131,7 +118,7 @@ export function makeCancelHealing(ctx: WorkerContext) {
     if (!isHealingActive(run.status)) {
       return { ok: false, error: `cannot cancel status: ${run.status}` };
     }
-    // ’€ŸƒLƒ…[‚Ì‚½‚ß status ‚ğ canceled ‚É‚µAlifecycle ‘¤‚ÉŸ‚ÌƒXƒeƒbƒv‚Å~‚ß‚³‚¹‚é
+    // é€æ¬¡ã‚­ãƒ¥ãƒ¼ã®ãŸã‚ status ã‚’ canceled ã«ã—ã€lifecycle å´ã«æ¬¡ã®ã‚¹ãƒ†ãƒƒãƒ—ã§æ­¢ã‚ã•ã›ã‚‹
     await runs.update(runId, {
       status: "canceled",
       summary: mergeHealingSummary(run.summary, { canceled: true, at: Date.now() }),
@@ -140,10 +127,17 @@ export function makeCancelHealing(ctx: WorkerContext) {
   };
 }
 
-export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<Hono> {
+export async function buildApp(
+  config: AppConfig,
+  ctx: WorkerContext,
+  /**
+   * Tailwind CSS æ–‡å­—åˆ—ã€‚Node ã¯ server.ts ãŒèª­ã¿æ¸¡ã™ã€‚
+   * Cloudflare ã¯ nullï¼ˆ/assets/tailwind.css ã¯ static assets ãŒå…ˆã«é…ä¿¡ã™ã‚‹ãŸã‚ Worker ã¯åˆ°é”ã—ãªã„ï¼‰ã€‚
+   */
+  tailwindCss: string | null
+): Promise<Hono> {
   const triggerHealing = makeTriggerHealing(config, ctx);
   const cancelHealing = makeCancelHealing(ctx);
-  const tailwindCss = loadTailwindCss();
   const app = new Hono();
 
   const apiDeps = {
@@ -178,6 +172,7 @@ export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<H
   };
 
   app.get("/assets/tailwind.css", (c) => {
+    if (!tailwindCss) return c.notFound();
     return c.body(tailwindCss, 200, {
       "content-type": "text/css; charset=utf-8",
       "cache-control": "public, max-age=3600",
@@ -222,11 +217,7 @@ export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<H
     if (run.inspection_id) {
       const row = await inspectionRepo.findById(run.inspection_id);
       if (row?.result) {
-        try {
-          result = JSON.parse(row.result);
-        } catch {
-          result = null;
-        }
+        result = parseJson(row.result, null);
       }
     }
     return c.html(<HealingAnalysisPage user={identity?.user} run={run} result={result} />);
@@ -248,7 +239,7 @@ export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<H
     const identity = c.get("identity");
     const sessionId = c.req.param("id")!;
     const { CodeSessionManager } = await import("./code/session.manager");
-    const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.codeRunner);
+    const manager = new CodeSessionManager(ctx.ports.db, ctx.ports.runner);
     const session = await manager.get(sessionId, identity!.user.id);
     const traceRows = await ctx.ports.db.query<{ value: string }>(
       `SELECT value FROM code_session_cache WHERE session_id = ? AND key = 'harnessTrace'`,
@@ -256,11 +247,7 @@ export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<H
     );
     let harnessTrace = null;
     if (traceRows[0]?.value) {
-      try {
-        harnessTrace = JSON.parse(traceRows[0].value);
-      } catch {
-        harnessTrace = null;
-      }
+      harnessTrace = parseJson(traceRows[0].value, null);
     }
     return c.html(
       <CodeSessionPage
@@ -302,10 +289,10 @@ export async function buildApp(config: AppConfig, ctx: WorkerContext): Promise<H
       getFeatureFlags(settingsRepo),
     ]);
 
-    let appSettings: Record<string, unknown> = { ...DEFAULT_APP_SETTINGS };
-    try {
-      appSettings = { ...DEFAULT_APP_SETTINGS, ...(rawSettings ? JSON.parse(rawSettings) : {}) };
-    } catch {}
+    const appSettings: Record<string, unknown> = {
+      ...DEFAULT_APP_SETTINGS,
+      ...parseJson<Record<string, unknown>>(rawSettings, {}),
+    };
 
     return c.html(
       <SettingsPage

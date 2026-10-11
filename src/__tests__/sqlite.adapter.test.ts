@@ -2,9 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SqliteAdapter } from "../adapters/sqlite.adapter";
-import { runMigrations } from "../db/migrate";
-import { MIGRATIONS } from "../db/migrations";
+import { SqliteAdapter } from "../db/sqlite";
+import { runMigrations, loadMigrations } from "../db/migrate";
 
 let dir: string;
 
@@ -79,7 +78,7 @@ describe("SqliteAdapter", () => {
   it("enforces foreign keys when enabled", async () => {
     const db = new SqliteAdapter(join(dir, "fk.sqlite"));
     try {
-      await db.batch(MIGRATIONS[0].statements.map((sql) => ({ sql })));
+      await db.batch(loadMigrations()[0].statements.map((sql) => ({ sql })));
       const violations = await db.query<{ table_name: string }>(`PRAGMA foreign_key_check`);
       expect(violations).toEqual([]);
     } finally {

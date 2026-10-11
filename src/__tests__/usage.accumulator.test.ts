@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { UsageAccumulator } from "../analytics/usage.accumulator";
+import { UsageAccumulator } from "../core/usage";
 import { mergeHealingSummary, parseHealingSummary, usageTotals } from "../healing/summary";
 import { canStartFix } from "../healing/fix";
 

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { LlmGateway } from "../adapters/ai/gateway";
-import type { AiCompletionRequest } from "../ports/ai";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { LlmGateway } from "../ai/gateway";
+import type { AiCompletionRequest } from "../ai/types";
 
 function stubFetch(impl: (url: string, init?: RequestInit) => Promise<Response>): void {
   vi.stubGlobal("fetch", vi.fn(impl));
@@ -23,7 +23,7 @@ const KEYS = {
 
 const COMPLETE: AiCompletionRequest = { system: "sys", prompt: "pro", maxTokens: 100 };
 
-/** 最後に呼ばれた fetch の URL と body を記録する。 */
+/** 譛蠕後↓蜻ｼ縺ｰ繧後◆ fetch 縺ｮ URL 縺ｨ body 繧定ｨ倬鹸縺吶ｋ縲・*/
 function recorder(responder?: (url: string, init: RequestInit) => Response): {
   calls: { url: string; init: RequestInit }[];
 } {
@@ -207,8 +207,7 @@ describe("LlmGateway.listModels", () => {
     const models = await gw.listModels();
     const values = models.map((m) => m.value);
 
-    // xai のキーは未設定 → 候補に出ない
-    expect(values).not.toContain("xai/grok-4");
+    // xai 縺ｮ繧ｭ繝ｼ縺ｯ譛ｪ險ｭ螳・竊・蛟呵｣懊↓蜃ｺ縺ｪ縺・    expect(values).not.toContain("xai/grok-4");
     expect(values).toContain("openai/gpt-6-luna");
     expect(values).toContain("anthropic/claude-sonnet-4-6");
     expect(values).toContain("openrouter/openai/gpt-6-luna");
@@ -221,11 +220,9 @@ describe("LlmGateway.listModels", () => {
       { unit: "output", price: 0.000002, currency: "USD" },
     ]);
 
-    // openrouter embeddings catalog も候補に入る
-    expect(values).toContain("openrouter/openai/text-embedding-3-small");
+    // openrouter embeddings catalog 繧ょ呵｣懊↓蜈･繧・    expect(values).toContain("openrouter/openai/text-embedding-3-small");
 
-    // 未設定プロバイダの URL は叩かない
-    expect(calls.some((c) => c.url.includes("api.x.ai"))).toBe(false);
+    // 譛ｪ險ｭ螳壹・繝ｭ繝舌う繝縺ｮ URL 縺ｯ蜿ｩ縺九↑縺・    expect(calls.some((c) => c.url.includes("api.x.ai"))).toBe(false);
   });
 
   it("caches the catalog for an hour", async () => {
@@ -251,9 +248,9 @@ describe("LlmGateway.decide", () => {
     const { calls } = recorder(() =>
       json({
         answers: [
-          // level index 0 起点の確率重み平均 → 0.1*1 + 0.6*2 + 0.3*3 = 2.2 → 2
+          // level index 0 襍ｷ轤ｹ縺ｮ遒ｺ邇・㍾縺ｿ蟷ｳ蝮・竊・0.1*1 + 0.6*2 + 0.3*3 = 2.2 竊・2
           { name: "difficulty", answer: { probabilities: { "0": 0.1, "1": 0.6, "2": 0.3 } } },
-          // index 4 → 5
+          // index 4 竊・5
           { name: "tier", answer: { choice: "performance" } },
         ],
       })
@@ -275,7 +272,7 @@ describe("LlmGateway.decide", () => {
     expect(body.input).toBe("task");
     expect(body.questions[0]).toMatchObject({ name: "difficulty", type: "score" });
     expect(body.questions[0].criteria).toEqual(["a", "b", "c"]);
-    // index 0 起点 → 1〜5 に正規化
+    // index 0 襍ｷ轤ｹ 竊・1縲・ 縺ｫ豁｣隕丞喧
     expect(res.answers.difficulty).toMatchObject({ score: 2 });
     expect((res.answers.difficulty as { probabilities: Record<string, number> }).probabilities).toEqual({
       "1": 0.1,

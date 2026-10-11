@@ -1,9 +1,9 @@
 import type { WorkerContext } from "../context";
 import { HealingRunRepository } from "../db/repositories";
-import { PRDeduplicator } from "../pr/pr.deduplicator";
-import { FixCache } from "../utils/fix.cache";
-import { Escalator } from "../utils/escalator";
-import { buildPRBody, buildPRTitle } from "../pr/pr.body";
+import { PRDeduplicator } from "../core/pr";
+import { FixCache } from "../core/fix.cache";
+import { Escalator } from "../core/escalator";
+import { buildPRBody, buildPRTitle } from "../core/pr";
 import type { FindingGroup, Priority } from "../types";
 import { parseHealingSummary, type HealingSummaryPr } from "./summary";
 import { persistFixUsage } from "./persist";

@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { AuthedUser } from "../../auth/service";
 import { Layout } from "../layout";
-import { FLAGS } from "../../flags/flag.service";
+import { FLAGS } from "../../core/flags";
 
 interface SettingsPageProps {
   user?: AuthedUser;

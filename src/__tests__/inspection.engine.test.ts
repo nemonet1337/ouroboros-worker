@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { InspectionCategory, InspectionRequest } from "../types";
 import { ASPECTS_BY_CATEGORY } from "../inspection/aspects";
-import type { AiProvider } from "../ports/ai";
+import type { AiProvider } from "../ai/types";
 
 // ─── Mock AiProvider ───────────────────────────────────────────────────────────
 

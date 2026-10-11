@@ -1,4 +1,4 @@
-import type { AiProvider, LocalDecisionConfig } from "../ports";
+import type { AiProvider, LocalDecisionConfig } from "../ai/types";
 import { retrieveContext, scorePathsByTokens, type RetrievalSource } from "../retrieval/retrieve";
 import type { CodeSnippet } from "../retrieval/chunk.rank";
 

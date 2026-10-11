@@ -9,9 +9,9 @@ import type {
   SettingsRepository,
   HealingRunRow,
 } from "../db/repositories";
-import type { Ports } from "../ports";
+import type { Ports } from "../context";
 import type { AuthService } from "../auth/service";
-import type { Logger } from "../logging/logger";
+import type { Logger } from "../core/logger";
 import type { InspectionRequest, InspectionResult } from "../types";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import { InspectionEngine } from "../inspection/inspection.engine";

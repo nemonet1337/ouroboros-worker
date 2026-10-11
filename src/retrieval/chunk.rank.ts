@@ -1,5 +1,5 @@
 import { MAX_RANKED_CHUNKS } from "../config/deployment";
-import type { AiProvider } from "../ports";
+import type { AiProvider } from "../ai/types";
 import { chunkFile, type ChunkKind, type CodeChunk } from "./chunker";
 
 export interface CodeSnippet {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodeSessionManager } from "../code/session.manager";
-import { NoopRunner } from "../ports/runner";
-import type { DbAdapter } from "../ports/db";
+import { NoopRunner } from "./helpers";
+import type { DbAdapter } from "../db/adapter";
 
 describe("CodeSessionManager", () => {
   let mockDb: DbAdapter;

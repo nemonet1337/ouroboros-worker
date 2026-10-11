@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CodeSessionRepository, RefactorRepository, type CodeSessionRow } from "../db/repositories";
-import type { DbAdapter } from "../ports/db";
+import type { DbAdapter } from "../db/adapter";
 
 function createMockDb(): { db: DbAdapter; queries: { sql: string; params: any[] }[] } {
   const queries: { sql: string; params: any[] }[] = [];

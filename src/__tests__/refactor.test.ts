@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ProposalManager } from "../refactor/proposal.manager";
-import { mockAi } from "./helpers";
-import { NoopRunner } from "../ports/runner";
-import type { DbAdapter } from "../ports/db";
-import type { VcsProvider } from "../ports/vcs";
+import { mockAi, NoopRunner } from "./helpers";
+import type { DbAdapter } from "../db/adapter";
+import type { VcsProvider } from "../core/vcs";
 
 describe("ProposalManager", () => {
   let mockDb: DbAdapter;

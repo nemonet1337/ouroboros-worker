@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { ModelsPage } from "../ui/pages/models";
 import { DEFAULT_ROUTING_CONFIG, type RoutingConfig } from "../config/routing";
-import type { AiModelInfo } from "../ports/ai";
+import type { AiModelInfo } from "../ai/types";
 
 const models: AiModelInfo[] = [
   { value: "openai/gpt-6-luna", label: "GPT-6 Luna", provider: "openai", task: "Text Generation" },

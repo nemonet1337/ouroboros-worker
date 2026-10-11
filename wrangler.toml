@@ -1,0 +1,52 @@
+name = "ouroboros-worker"
+main = "src/worker.tsx"
+compatibility_date = "2026-10-10"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers Observability — console.log/warn/error とリクエストトレースを
+# Cloudflare ダッシュボード（Workers & Pages → ログ）で確認できる。
+[observability]
+enabled = true
+
+# D1 (SQL) — users, sessions, settings, inspections, healing_runs
+# database_id は secret 相当なのでコミットしない。デプロイ前に
+#   scripts/resolve-d1.sh
+# で解決する（D1_DATABASE_ID を直接置くこともできる）。
+[[d1_databases]]
+binding = "DB"
+database_name = "ouroboros"
+database_id = "PLACEHOLDER"
+migrations_dir = "src/db/migrations"
+
+# static assets — Tailwind CSS を /assets/tailwind.css として配信
+# run_worker_first = false（既定）: CSS は Worker を呼ばず直接配信される
+[assets]
+directory = "./public"
+
+# Queues — GUI イベントの非同期取り込み
+# 重イベント（inspection / codegen）が 1 invocation に複数入ると
+# subrequest 予算を共有して枯渇するため batch size は 1。
+[[queues.producers]]
+binding = "GUI_EVENTS"
+queue = "ouroboros-gui-events"
+
+[[queues.consumers]]
+queue = "ouroboros-gui-events"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "ouroboros-dlq"
+
+# 毎時実行し、app_settings.schedule.time（UTC の HH:MM）と現在時刻を照合して
+# 一致時のみ自己修復をトリガーする
+[triggers]
+crons = ["0 * * * *"]
+
+# シークレット（`wrangler secret put <NAME>` で設定）:
+#   GITHUB_TOKEN       PR/Issue 作成。owner/repo はこのトークンから自動検出される
+#   OPENAI_API_KEY     AI キー（ANTHROPIC_API_KEY / XAI_API_KEY / OPENROUTER_API_KEY でも可。1 つ以上必須）
+#   LAYA_API_KEY       （任意）ローカル Laya に Bearer 認証が必要な場合だけ
+#
+# 注意: `[build] command` は書かない。Workers Builds は wrangler 設定内の
+# ビルド設定を無視するため、ビルドは package.json の `deploy` script が担う
+# （Workers Builds の Deploy command に `npm run deploy` を設定する）。

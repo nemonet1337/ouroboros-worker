@@ -39,6 +39,8 @@ const CLEARED = {
   PORT: undefined,
   OURO_DATA_DIR: undefined,
   OURO_DB_PATH: undefined,
+  OURO_DB: undefined,
+  OURO_RQLITE_URL: undefined,
   OURO_REGISTRATION_ENABLED: undefined,
 };
 
@@ -170,6 +172,37 @@ describe("loadConfig", () => {
     withEnv({ ...CLEARED, GITHUB_TOKEN: "t", OPENAI_API_KEY: "k", PORT: "70000" }, () => {
       writeEnv("");
       expect(() => loadConfig()).toThrow(/Invalid PORT/);
+    });
+  });
+
+  it("defaults the db driver to in-process sqlite", () => {
+    setup();
+    withEnv({ ...CLEARED, GITHUB_TOKEN: "t", OPENAI_API_KEY: "k" }, () => {
+      writeEnv("");
+      const config = loadConfig();
+      expect(config.dbDriver).toBe("sqlite");
+      expect(config.rqliteUrl).toBe("http://127.0.0.1:4001");
+    });
+  });
+
+  it("switches to the rqlite driver with an explicit URL", () => {
+    setup();
+    withEnv(
+      { ...CLEARED, GITHUB_TOKEN: "t", OPENAI_API_KEY: "k", OURO_DB: "rqlite", OURO_RQLITE_URL: "http://db:4001" },
+      () => {
+        writeEnv("");
+        const config = loadConfig();
+        expect(config.dbDriver).toBe("rqlite");
+        expect(config.rqliteUrl).toBe("http://db:4001");
+      }
+    );
+  });
+
+  it("falls back to sqlite for an unknown driver", () => {
+    setup();
+    withEnv({ ...CLEARED, GITHUB_TOKEN: "t", OPENAI_API_KEY: "k", OURO_DB: "postgres" }, () => {
+      writeEnv("");
+      expect(loadConfig().dbDriver).toBe("sqlite");
     });
   });
 

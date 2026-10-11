@@ -1,4 +1,4 @@
-import type { DbAdapter } from "../ports/db";
+import type { DbAdapter } from "../db/adapter";
 import { HEALING_ACTIVE_SQL, HEALING_INSPECTION_TARGET_PREFIX } from "../healing/status";
 import { mergeHealingSummary } from "../healing/summary";
 

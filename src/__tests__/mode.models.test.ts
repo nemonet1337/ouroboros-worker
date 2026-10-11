@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { userModelsSchema } from "../http/validation";
-import { NoopRunner } from "../ports/runner";
+import { NoopRunner } from "./helpers";
 
 describe("userModelsSchema", () => {
   it("accepts text and embedding model ids and empty string (reset)", () => {
