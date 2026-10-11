@@ -102,6 +102,24 @@ describe("UI fragments", () => {
     expect(await registration.text()).toContain("新規登録を受け付ける");
   });
 
+  it("admin config は AI プロバイダーキーの設定有無を表示する（値は出さない）", async () => {
+    const app = createFragments(
+      buildDeps({
+        aiKeys: { openai: true, anthropic: false, xai: false, openrouter: false, laya: false },
+      })
+    );
+    const res = await app.request("/admin/config", authed);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("AI プロバイダーキー");
+    for (const label of ["OpenAI", "Anthropic", "xAI", "OpenRouter", "Laya"]) {
+      expect(body).toContain(label);
+    }
+    expect(body).toContain("設定済み");
+    expect(body).toContain("未設定");
+    expect(body).not.toContain("sk-");
+  });
+
   it("returns an info alert when a feature flag disables the widget", async () => {
     const deps = buildDeps();
     (deps.ports.db.query as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string, params: unknown[] = []) => {

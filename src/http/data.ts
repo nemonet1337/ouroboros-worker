@@ -13,6 +13,7 @@ import type { Ports } from "../context";
 import type { AuthService } from "../auth/service";
 import type { Logger } from "../core/logger";
 import type { InspectionRequest, InspectionResult } from "../types";
+import type { AppConfig } from "../env";
 import { defaultInspectionConfig } from "../config/inspection.config";
 import { InspectionEngine } from "../inspection/inspection.engine";
 import { newId } from "../auth/tokens";
@@ -218,6 +219,23 @@ export const CONFIG_KEY = "app_config";
 export interface PublicConfig extends Record<string, unknown> {
   gitRepository: string;
   gitTokenSet: boolean;
+  /** AI プロバイダーキーの設定有無。値は含まない。 */
+  aiKeys: AiKeyStatus;
+}
+
+/** GUI に設定有無だけを露出する AI プロバイダーキー。 */
+export type AiProviderKeyName = "openai" | "anthropic" | "xai" | "openrouter" | "laya";
+export type AiKeyStatus = Record<AiProviderKeyName, boolean>;
+
+/** AppConfig の AI キーを設定有無だけに落とす。値は GUI に返さない。 */
+export function aiKeyStatus(config: AppConfig): AiKeyStatus {
+  return {
+    openai: !!config.openaiKey,
+    anthropic: !!config.anthropicKey,
+    xai: !!config.xaiKey,
+    openrouter: !!config.openrouterKey,
+    laya: !!config.layaKey,
+  };
 }
 
 export const DAILY_INSPECTION_LIMIT = 100;
@@ -287,7 +305,14 @@ export async function runUserInspection(opts: {
 export async function loadPublicConfig(
   settingsRepo: SettingsRepository,
   vcs: { owner: string; repo: string },
-  githubTokenSet: boolean
+  githubTokenSet: boolean,
+  aiKeys: AiKeyStatus = {
+    openai: false,
+    anthropic: false,
+    xai: false,
+    openrouter: false,
+    laya: false,
+  }
 ): Promise<PublicConfig> {
   const raw = await settingsRepo.get(CONFIG_KEY);
   const cfg = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
@@ -298,5 +323,6 @@ export async function loadPublicConfig(
     ...cfg,
     gitRepository: owner && repo ? `${owner}/${repo}` : "",
     gitTokenSet: githubTokenSet,
+    aiKeys,
   };
 }

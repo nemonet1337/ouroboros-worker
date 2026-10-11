@@ -5,6 +5,7 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { mountApi } from "./http/api";
+import { aiKeyStatus } from "./http/data";
 import {
   HealingRunRepository,
   SettingsRepository,
@@ -142,6 +143,7 @@ export async function buildApp(
 
   const apiDeps = {
     ...ctx,
+    aiKeys: aiKeyStatus(config),
     triggerHealing,
     cancelHealing,
   };

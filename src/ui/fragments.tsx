@@ -30,6 +30,7 @@ import {
   buildMetricsData,
   loadPublicConfig,
   parseHistoryEntry,
+  type AiKeyStatus,
 } from "../http/data";
 import { codeSessionCreateSchema } from "../http/validation";
 import { parseJson } from "../core/json";
@@ -69,6 +70,8 @@ export interface FragmentDeps {
   /** 環境変数 OURO_REGISTRATION_ENABLED による上書き。未設定なら DB 設定に従う。 */
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
+  /** AI プロバイダーキーの設定有無（値は含まない）。未指定なら全て未設定扱い。 */
+  aiKeys?: AiKeyStatus;
   triggerHealing: (opts: TriggerHealingOpts) => Promise<TriggerHealingResult>;
   cancelHealing?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -751,7 +754,12 @@ export function createFragments(deps: FragmentDeps): Hono<Env> {
   });
 
   app.get("/admin/config", requireAdmin, async (c) => {
-    const config = await loadPublicConfig(settingsRepo, deps.config.vcs, deps.githubTokenSet ?? false);
+    const config = await loadPublicConfig(
+      settingsRepo,
+      deps.config.vcs,
+      deps.githubTokenSet ?? false,
+      deps.aiKeys
+    );
     return c.html(<ConfigView config={config} />);
   });
 

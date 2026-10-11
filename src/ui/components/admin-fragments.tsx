@@ -53,10 +53,33 @@ export const RegistrationToggle: FC<RegistrationToggleProps> = ({ enabled, first
 
 // ─── システム構成 (読み取り専用) ───────────────────────────────────────────────
 
+/** 設定有無バッジ。値そのものは絶対に表示しない。 */
+const KeyStatusBadge: FC<{ ok: boolean; okLabel?: string }> = ({ ok, okLabel = "設定済み" }) =>
+  ok ? (
+    <span class="badge badge-sm rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 gap-1">
+      <i data-lucide="check" class="w-3 h-3" />
+      {okLabel}
+    </span>
+  ) : (
+    <span class="badge badge-sm rounded-full font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 gap-1">
+      <i data-lucide="x" class="w-3 h-3" />
+      未設定
+    </span>
+  );
+
+const AI_KEY_ROWS: Array<{ key: keyof PublicConfig["aiKeys"]; label: string }> = [
+  { key: "openai", label: "OpenAI" },
+  { key: "anthropic", label: "Anthropic" },
+  { key: "xai", label: "xAI" },
+  { key: "openrouter", label: "OpenRouter" },
+  { key: "laya", label: "Laya（ローカル判定・任意）" },
+];
+
 interface ConfigViewProps {
   config: {
     gitRepository?: string | null;
     gitTokenSet?: boolean;
+    aiKeys?: PublicConfig["aiKeys"];
   };
 }
 
@@ -79,17 +102,23 @@ export const ConfigView: FC<ConfigViewProps> = ({ config }) => {
       <div>
         <dt class="text-xs font-semibold uppercase tracking-wider opacity-50">GitHub トークン</dt>
         <dd class="mt-1.5">
-          {config.gitTokenSet ? (
-            <span class="badge badge-sm rounded-full font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 gap-1">
-              <i data-lucide="check" class="w-3 h-3" />
-              設定済み (CF Secret)
-            </span>
-          ) : (
-            <span class="badge badge-sm rounded-full font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 gap-1">
-              <i data-lucide="x" class="w-3 h-3" />
-              未設定
-            </span>
-          )}
+          <KeyStatusBadge ok={!!config.gitTokenSet} okLabel="設定済み (CF Secret)" />
+        </dd>
+      </div>
+
+      <div>
+        <dt class="text-xs font-semibold uppercase tracking-wider opacity-50">AI プロバイダーキー</dt>
+        <dd class="mt-1.5 space-y-2">
+          {AI_KEY_ROWS.map((row) => (
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs opacity-75">{row.label}</span>
+              <KeyStatusBadge ok={config.aiKeys?.[row.key] === true} />
+            </div>
+          ))}
+          <p class="text-[11px] opacity-45 pt-1">
+            値は表示されません。Node は <code class="font-mono">.env</code>、Cloudflare は{" "}
+            <code class="font-mono">wrangler secret put</code> で設定します。
+          </p>
         </dd>
       </div>
     </dl>

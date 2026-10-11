@@ -41,6 +41,7 @@ import {
   loadPublicConfig,
   parseHistoryEntry,
   runUserInspection,
+  type AiKeyStatus,
 } from "./data";
 
 const SESSION_COOKIE = "ouro_session";
@@ -76,6 +77,8 @@ export interface ApiDeps {
   cookieSecure?: boolean;
   registrationEnabled?: boolean;
   githubTokenSet?: boolean;
+  /** AI プロバイダーキーの設定有無（値は含まない）。未指定なら全て未設定扱い。 */
+  aiKeys?: AiKeyStatus;
   startedAt?: string;
 }
 
@@ -288,7 +291,9 @@ export function createApi(deps: ApiDeps): Hono<Env> {
 
   // ── App config (read-only: git + AI credentials come from CF Secrets) ──────
   app.get("/config", requireAuth(), async (c) => {
-    return c.json(await loadPublicConfig(settingsRepo, deps.config.vcs, deps.githubTokenSet ?? false));
+    return c.json(
+      await loadPublicConfig(settingsRepo, deps.config.vcs, deps.githubTokenSet ?? false, deps.aiKeys)
+    );
   });
 
   // ── AI models — 各プロバイダの live カタログ（キー未設定は候補に出ない）──────

@@ -54,4 +54,23 @@ describe("API Code Mode", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("not_found");
   });
+
+  it("GET /config は AI キーの設定有無だけを返す（値は含まない）", async () => {
+    const deps = buildDeps();
+    deps.aiKeys = { openai: true, anthropic: false, xai: false, openrouter: true, laya: false };
+    const api = createApi(deps);
+    const res = await api.request("/config", {
+      headers: { cookie: "ouro_session=valid-session-id" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { aiKeys: Record<string, boolean> };
+    expect(body.aiKeys).toEqual({
+      openai: true,
+      anthropic: false,
+      xai: false,
+      openrouter: true,
+      laya: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("sk-");
+  });
 });
